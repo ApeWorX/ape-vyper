@@ -21,10 +21,10 @@ jobs:
           run: black --check .
 
         - name: Run flake8
-          run: flake8 ./<MODULE_NAME> ./tests ./setup.py
+          run: flake8 ./ape_vyper ./tests ./setup.py
 
         - name: Run isort
-          run: isort --recursive --check-only --diff ./<MODULE_NAME> ./tests
+          run: isort --recursive --check-only --diff ./ape_vyper ./tests
     
     type-check:
         runs-on: ubuntu-latest
@@ -41,7 +41,7 @@ jobs:
           run: pip install .[lint]
 
         - name: Run MyPy
-          run: mypy -p <MODULE_NAME>
+          run: mypy -p ape_vyper
 
     functional:
         runs-on: ubuntu-latest

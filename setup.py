@@ -56,25 +56,25 @@ with open("./README.md") as readme:
 
 
 setup(
-    name="<PYPI_NAME>",
+    name="ape-vyper",
     use_scm_version=True,
-    setup_requires=['setuptools_scm'],
-    description="""<PYPI_NAME>: <SHORT_DESCRIPTION>""",
+    setup_requires=["setuptools_scm"],
+    description="Plugin for Ape Ethereum Framework for compiling Vyper contracts",
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="ApeWorX Ltd.",
     author_email="admin@apeworx.io",
-    url="https://github.com/ApeWorX/<REPO_NAME>",
+    url="https://github.com/ApeWorX/ape-vyper",
     include_package_data=True,
-    install_requires=[],  # NOTE: Add 3rd party libraries here
+    install_requires=["eth-ape>=0.1.0a2"],
     python_requires=">=3.6,<4",
     extras_require=extras_require,
-    py_modules=["<MODULE_NAME>"],
+    py_modules=["ape_vyper"],
     license="Apache-2.0",
     zip_safe=False,
     keywords="ethereum",
     packages=find_packages(exclude=["tests", "tests.*"]),
-    package_data={"<MODULE_NAME>": ["py.typed"]},
+    package_data={"ape_vyper": ["py.typed"]},
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
