@@ -2,13 +2,12 @@ import os
 from typing import Dict
 from pathlib import Path
 
-from ape.plugins.compiler_api import CompilerAPI
-from ape.ethpm import PackageManifest, ContractType, Bytecode
-
 import click
 import vvm
-
 import json
+
+from ape.plugins.compiler_api import CompilerAPI
+from ape.ethpm import PackageManifest, ContractType, Bytecode
 
 
 class VyperCompiler(CompilerAPI):
@@ -35,16 +34,11 @@ class VyperCompiler(CompilerAPI):
                 continue
 
             if not source.content:
-                # if error, e.g. no URL, error to console, let other 'good' contracts finish - don't halt entire process
+                # TODO if error, e.g. no URL, error to console, let other 'good' contracts finish - don't halt entire process
                 # TODO checksum checking
                 source.load_content()
 
             result = vvm.compile_source(source.content)
-
-            # o = source.urls[0].split("/")[-1]
-            # temp = f"/home/shade/source/ape-vyper/{o}"
-            # with open(temp, "w") as fp:
-            #     json.dump(result, fp, indent=4)
 
             result = result["<stdin>"]
             db = Bytecode(result["bytecode"], None, None)
