@@ -6,7 +6,7 @@ import click
 import vvm
 import json
 
-from ape.plugins.compiler_api import CompilerAPI
+from ape.api.compiler import CompilerAPI
 from ape.ethpm import PackageManifest, ContractType, Bytecode
 
 
