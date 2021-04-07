@@ -1,13 +1,7 @@
-import os
-from typing import Dict
-from pathlib import Path
-
 import click
 import vvm
-import json
-
 from ape.api.compiler import CompilerAPI
-from ape.ethpm import PackageManifest, ContractType, Bytecode
+from ape.package import Bytecode, ContractType, PackageManifest
 
 
 class VyperCompiler(CompilerAPI):
@@ -34,7 +28,8 @@ class VyperCompiler(CompilerAPI):
                 continue
 
             if not source.content:
-                # TODO if error, e.g. no URL, error to console, let other 'good' contracts finish - don't halt entire process
+                # TODO if error, e.g. no URL, error to console, let other
+                # 'good' contracts finish - don't halt entire process
                 # TODO checksum checking
                 source.load_content()
 
