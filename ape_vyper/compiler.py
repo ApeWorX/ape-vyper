@@ -16,7 +16,8 @@ class VyperCompiler(CompilerAPI):
 
         result = result["<stdin>"]
         return ContractType(
-            contractName=contract_filepath.name,
+            # NOTE: Vyper doesn't have internal contract type declarations, so use filename
+            contractName=contract_filepath.stem,
             sourceId=contract_filepath,
             deploymentBytecode=Bytecode(result["bytecode"]),  # type: ignore
             runtimeBytecode=Bytecode(result["bytecode_runtime"]),  # type: ignore
