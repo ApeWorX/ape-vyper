@@ -21,8 +21,9 @@ class VyperCompiler(CompilerAPI):
 
         if not pkg_manifest.sources:
             click.echo("nothing to compile")
-            return
+            return pkg_manifest
 
+        # TODO: explore async loop here
         for (name, source) in pkg_manifest.sources.items():
             if source.type != "vyper":
                 continue
@@ -43,9 +44,11 @@ class VyperCompiler(CompilerAPI):
             devdoc = result["devdoc"]
             contract = ContractType(name, name, db, rb, abi, userdoc, devdoc)
 
+            # TODO: avoid this via default arg w/ dataclass
             if not pkg_manifest.contractTypes:
                 pkg_manifest.contractTypes = []
 
             pkg_manifest.contractTypes.append(contract)
 
         click.echo("vyper compilation finished")
+        return pkg_manifest
