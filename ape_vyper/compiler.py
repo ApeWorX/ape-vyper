@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import click
 import vvm  # type: ignore
 from ape.api.compiler import CompilerAPI
 from ape.types import Bytecode, ContractType
