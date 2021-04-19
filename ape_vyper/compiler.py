@@ -12,8 +12,6 @@ class VyperCompiler(CompilerAPI):
         return "vyper"
 
     def compile(self, contract_filepath: Path) -> ContractType:
-        click.echo(f"Compiling '{contract_filepath}'")
-
         result = vvm.compile_source(contract_filepath.read_text())
 
         result = result["<stdin>"]
