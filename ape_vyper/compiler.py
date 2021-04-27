@@ -56,8 +56,9 @@ class VyperCompiler(CompilerAPI):
         package_version = [package_version] if package_version else []
         return package_version + vvm.get_installed_vyper_versions()
 
-    def compile(self, contract_filepath: Path) -> ContractType:
-        source = contract_filepath.read_text()
+    def compile(self, contract_filepaths: List[Path]) -> List[ContractType]:
+        paths = 0 if ".vy" in contract_filepaths[0] else paths = 1
+        source = contract_filepaths[paths].read_text()
 
         # Make sure we have the compiler available to compile this
         version_spec = get_pragma_spec(source)
@@ -80,8 +81,8 @@ class VyperCompiler(CompilerAPI):
 
         return ContractType(
             # NOTE: Vyper doesn't have internal contract type declarations, so use filename
-            contractName=contract_filepath.stem,
-            sourceId=contract_filepath,
+            contractName=contract_filepaths[paths].stem,
+            sourceId=contract_filepaths[paths],
             deploymentBytecode=Bytecode(result["bytecode"]),  # type: ignore
             runtimeBytecode=Bytecode(result["bytecode_runtime"]),  # type: ignore
             abi=result["abi"],
