@@ -59,6 +59,7 @@ class VyperCompiler(CompilerAPI):
     @cached_property
     def vyper_json(self):
         from vyper.cli import vyper_json
+
         return vyper_json
 
     def compile(self, contract_filepaths: List[Path]) -> List[ContractType]:
@@ -66,13 +67,13 @@ class VyperCompiler(CompilerAPI):
         for path in contract_filepaths:
             source = path.read_text()
             pragma_spec = get_pragma_spec(source)
-            #check if we need to install specified compiler version
+            # check if we need to install specified compiler version
             if pragma_spec and not pragma_spec.select(self.installed_versions):
                 version_to_install = pragma_spec.select(self.available_versions)
                 if version_to_install:
                     vvm.install_vyper(version_to_install, show_progress=True)
                 else:
-                    raise("No available version to install")
+                    raise ("No available version to install")
 
         result = vvm.compile_files(contract_filepaths)
         contract_types = []
@@ -91,5 +92,5 @@ class VyperCompiler(CompilerAPI):
                     devdoc=result["devdoc"],
                 )
             )
-            
+
         return contract_types
