@@ -68,7 +68,7 @@ class VyperCompiler(CompilerAPI):
             source = path.read_text()
             pragma_spec = get_pragma_spec(source)
             # check if we need to install specified compiler version
-            if pragma_spec and not pragma_spec.select(self.installed_versions):
+            if pragma_spec and pragma_spec is not pragma_spec.select(self.installed_versions):
                 version_to_install = pragma_spec.select(self.available_versions)
                 if version_to_install:
                     vvm.install_vyper(version_to_install, show_progress=True)
