@@ -52,14 +52,16 @@ class VyperCompiler(CompilerAPI):
 
     @property
     def installed_versions(self) -> List[Version]:
+        # doing this so it prefers package version - try debugging here
         package_version = self.package_version
         package_version = [package_version] if package_version else []
+        # currently package version is [] this should be ok
         return package_version + vvm.get_installed_vyper_versions()
 
     @cached_property
     def vyper_json(self):
         from vyper.cli import vyper_json
-
+        # step through this function to debug
         return vyper_json
 
     def compile(self, contract_filepaths: List[Path]) -> List[ContractType]:
