@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Set
 
 import vvm  # type: ignore
 from ape.api.compiler import CompilerAPI
@@ -34,6 +34,18 @@ class VyperCompiler(CompilerAPI):
     @property
     def name(self) -> str:
         return "vyper"
+
+    def get_versions(self, all_paths: List[Path]) -> Set[str]:
+        versions = set()
+        for path in all_paths:
+            source = path.read_text()
+
+            # Make sure we have the compiler available to compile this
+            version_spec = get_pragma_spec(source)
+            if version_spec:
+                versions.add(str(version_spec.select(self.available_versions)))
+
+        return versions
 
     @cached_property
     def package_version(self) -> Optional[Version]:
