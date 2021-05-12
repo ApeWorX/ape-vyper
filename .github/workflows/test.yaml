@@ -1,5 +1,8 @@
 on: ["push", "pull_request"]
 
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 name: Test
 
 jobs:
