@@ -61,6 +61,7 @@ class VyperCompiler(CompilerAPI):
     @cached_property
     def vyper_json(self):
         from vyper.cli import vyper_json
+
         # step through this function to debug
         return vyper_json
 
