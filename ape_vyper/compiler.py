@@ -64,39 +64,48 @@ class VyperCompiler(CompilerAPI):
 
     @property
     def installed_versions(self) -> List[Version]:
+        # doing this so it prefers package version - try debugging here
         package_version = self.package_version
         package_version = [package_version] if package_version else []
+        # currently package version is [] this should be ok
         return package_version + vvm.get_installed_vyper_versions()
 
-    def compile(self, contract_filepath: Path) -> ContractType:
-        source = contract_filepath.read_text()
+    @cached_property
+    def vyper_json(self):
+        from vyper.cli import vyper_json  # type: ignore
 
-        # Make sure we have the compiler available to compile this
-        version_spec = get_pragma_spec(source)
-        if version_spec:
-            version = version_spec.select(self.available_versions)
+        # step through this function to debug
+        return vyper_json
 
-            if version not in self.installed_versions:
-                vvm.install_vyper(version)
+    def compile(self, contract_filepaths: List[Path]) -> List[ContractType]:
+        # todo: move this to vvm
+        for path in contract_filepaths:
+            source = path.read_text()
+            pragma_spec = get_pragma_spec(source)
+            # check if we need to install specified compiler version
+            if pragma_spec and pragma_spec is not pragma_spec.select(self.installed_versions):
+                version_to_install = pragma_spec.select(self.available_versions)
+                if version_to_install:
+                    vvm.install_vyper(version_to_install, show_progress=True)
+                else:
+                    raise  # ("No available version to install")
 
-        elif len(self.installed_versions) == 0:
-            vvm.install_vyper(self.available_versions[0])
-            version = self.installed_versions[0]
+        result = vvm.compile_files(contract_filepaths)
+        contract_types = []
+        for path, result in vvm.compile_files(contract_filepaths).items():
+            if path == "version":
+                continue
+            contract_types.append(
+                ContractType(
+                    # NOTE: Vyper doesn't have internal contract type declarations, so use filename
+                    contractName=Path(path).stem,
+                    sourceId=path,
+                    deploymentBytecode=Bytecode(result["bytecode"]),  # type: ignore
+                    runtimeBytecode=Bytecode(result["bytecode_runtime"]),  # type: ignore
+                    abi=result["abi"],
+                    userdoc=result["userdoc"],
+                    devdoc=result["devdoc"],
+                )
+            )
 
-        else:
-            version = self.installed_versions[0]
-
-        # Actually do the compilation
-        result = vvm.compile_source(source)
-        result = result["<stdin>"]
-
-        return ContractType(
-            # NOTE: Vyper doesn't have internal contract type declarations, so use filename
-            contractName=contract_filepath.stem,
-            sourceId=contract_filepath,
-            deploymentBytecode=Bytecode(result["bytecode"]),  # type: ignore
-            runtimeBytecode=Bytecode(result["bytecode_runtime"]),  # type: ignore
-            abi=result["abi"],
-            userdoc=result["userdoc"],
-            devdoc=result["devdoc"],
-        )
+        return contract_types
