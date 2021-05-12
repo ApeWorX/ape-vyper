@@ -60,7 +60,7 @@ class VyperCompiler(CompilerAPI):
 
     @cached_property
     def vyper_json(self):
-        from vyper.cli import vyper_json
+        from vyper.cli import vyper_json  # type: ignore
 
         # step through this function to debug
         return vyper_json
@@ -76,7 +76,7 @@ class VyperCompiler(CompilerAPI):
                 if version_to_install:
                     vvm.install_vyper(version_to_install, show_progress=True)
                 else:
-                    raise ("No available version to install")
+                    raise  # ("No available version to install")
 
         result = vvm.compile_files(contract_filepaths)
         contract_types = []
