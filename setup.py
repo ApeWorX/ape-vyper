@@ -64,7 +64,11 @@ setup(
     author_email="admin@apeworx.io",
     url="https://github.com/ApeWorX/ape-vyper",
     include_package_data=True,
-    install_requires=["eth-ape>=0.1.0a5", "vvm>=0.1.0,<0.2.0"],
+    install_requires=[
+        "eth-ape>=0.1.0a5",
+        "tqdm>=4.60.0,<5.0",
+        "vvm>=0.1.0,<0.2.0",
+    ],
     python_requires=">=3.6,<4",
     extras_require=extras_require,
     py_modules=["ape_vyper"],
