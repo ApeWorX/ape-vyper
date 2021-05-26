@@ -93,8 +93,6 @@ class VyperCompiler(CompilerAPI):
         result = vvm.compile_files(contract_filepaths)
         contract_types = []
         for path, result in vvm.compile_files(contract_filepaths).items():
-            if path == "version":
-                continue
             contract_types.append(
                 ContractType(
                     # NOTE: Vyper doesn't have internal contract type declarations, so use filename
