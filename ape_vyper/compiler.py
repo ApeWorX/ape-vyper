@@ -79,20 +79,27 @@ class VyperCompiler(CompilerAPI):
 
     def compile(self, contract_filepaths: List[Path]) -> List[ContractType]:
         # todo: move this to vvm
+        contract_types = []
         for path in contract_filepaths:
             source = path.read_text()
             pragma_spec = get_pragma_spec(source)
             # check if we need to install specified compiler version
-            if pragma_spec and pragma_spec is not pragma_spec.select(self.installed_versions):
-                version_to_install = pragma_spec.select(self.available_versions)
-                if version_to_install:
-                    vvm.install_vyper(version_to_install, show_progress=True)
-                else:
-                    raise  # ("No available version to install")
+            if pragma_spec: 
+                if pragma_spec is not pragma_spec.select(self.installed_versions):
+                    vyper_version = pragma_spec.select(self.available_versions)
+                    if vyper_version:
+                        vvm.install_vyper(vyper_version, show_progress=True)
+                    else:
+                        raise  # ("No available version to install")
+            else:
+                vyper_version = max(self.available_versions)
 
-        result = vvm.compile_files(contract_filepaths)
-        contract_types = []
-        for path, result in vvm.compile_files(contract_filepaths).items():
+            result = vvm.compile_source(source,
+                vyper_version=vyper_version,
+            )['<stdin>']
+
+            breakpoint()
+                
             contract_types.append(
                 ContractType(
                     # NOTE: Vyper doesn't have internal contract type declarations, so use filename
