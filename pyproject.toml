@@ -32,11 +32,11 @@ exclude = '''
 [tool.pytest.ini_options]
 addopts = """
     -n auto
-	--cov-branch
-	--cov-report term
-	--cov-report html
-	--cov-report xml
-	--cov=ape_vyper
+    --cov-branch
+    --cov-report term
+    --cov-report html
+    --cov-report xml
+    --cov=ape_vyper
 """
 python_files = "test_*.py"
 testpaths = "tests"
