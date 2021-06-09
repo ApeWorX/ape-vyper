@@ -90,7 +90,7 @@ class VyperCompiler(CompilerAPI):
                     if vyper_version:
                         vvm.install_vyper(vyper_version, show_progress=True)
                     else:
-                        raise  # ("No available version to install")
+                        raise Exception("No available version to install")
             else:
                 vyper_version = max(self.available_versions)
 
@@ -98,8 +98,6 @@ class VyperCompiler(CompilerAPI):
                 vyper_version=vyper_version,
             )['<stdin>']
 
-            breakpoint()
-                
             contract_types.append(
                 ContractType(
                     # NOTE: Vyper doesn't have internal contract type declarations, so use filename
