@@ -103,10 +103,10 @@ class VyperCompiler(CompilerAPI):
                 ContractType(
                     # NOTE: Vyper doesn't have internal contract type declarations, so use filename
                     contractName=Path(path).stem,
-                    sourceId=path,
+                    sourceId=str(path),
                     deploymentBytecode=Bytecode(bytecode=result["bytecode"]),  # type: ignore
                     runtimeBytecode=Bytecode(bytecode=result["bytecode_runtime"]),  # type: ignore
-                    abi=result["abi"],
+                    abi=ABI.from_dict(result["abi"]),
                     userdoc=result["userdoc"],
                     devdoc=result["devdoc"],
                 )
