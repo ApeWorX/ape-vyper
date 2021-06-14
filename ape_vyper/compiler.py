@@ -4,7 +4,7 @@ from typing import List, Optional, Set
 
 import vvm  # type: ignore
 from ape.api.compiler import CompilerAPI
-from ape.types import Bytecode, ContractType
+from ape.types import Bytecode, ContractType, ABI
 from ape.utils import cached_property
 from semantic_version import NpmSpec, Version  # type: ignore
 
