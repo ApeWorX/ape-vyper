@@ -84,7 +84,7 @@ class VyperCompiler(CompilerAPI):
             source = path.read_text()
             pragma_spec = get_pragma_spec(source)
             # check if we need to install specified compiler version
-            if pragma_spec: 
+            if pragma_spec:
                 if pragma_spec is not pragma_spec.select(self.installed_versions):
                     vyper_version = pragma_spec.select(self.available_versions)
                     if vyper_version:
@@ -94,9 +94,10 @@ class VyperCompiler(CompilerAPI):
             else:
                 vyper_version = max(self.available_versions)
 
-            result = vvm.compile_source(source,
+            result = vvm.compile_source(
+                source,
                 vyper_version=vyper_version,
-            )['<stdin>']
+            )["<stdin>"]
 
             contract_types.append(
                 ContractType(
