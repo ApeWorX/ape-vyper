@@ -4,7 +4,7 @@ from typing import List, Optional, Set
 
 import vvm  # type: ignore
 from ape.api.compiler import CompilerAPI
-from ape.types import Bytecode, ContractType
+from ape.types import ABI, Bytecode, ContractType
 from ape.utils import cached_property
 from semantic_version import NpmSpec, Version  # type: ignore
 
@@ -103,10 +103,10 @@ class VyperCompiler(CompilerAPI):
                 ContractType(
                     # NOTE: Vyper doesn't have internal contract type declarations, so use filename
                     contractName=Path(path).stem,
-                    sourceId=path,
+                    sourceId=str(path),
                     deploymentBytecode=Bytecode(bytecode=result["bytecode"]),  # type: ignore
                     runtimeBytecode=Bytecode(bytecode=result["bytecode_runtime"]),  # type: ignore
-                    abi=result["abi"],
+                    abi=[ABI.from_dict(abi) for abi in result["abi"]],
                     userdoc=result["userdoc"],
                     devdoc=result["devdoc"],
                 )
