@@ -106,7 +106,7 @@ class VyperCompiler(CompilerAPI):
                     sourceId=str(path),
                     deploymentBytecode=Bytecode(bytecode=result["bytecode"]),  # type: ignore
                     runtimeBytecode=Bytecode(bytecode=result["bytecode_runtime"]),  # type: ignore
-                    abi=ABI.from_dict(result["abi"]),
+                    abi=[ABI.from_dict(abi) for abi in result["abi"]],
                     userdoc=result["userdoc"],
                     devdoc=result["devdoc"],
                 )
