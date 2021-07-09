@@ -105,7 +105,7 @@ class VyperCompiler(CompilerAPI):
 
                 contract_types.append(
                     ContractType(
-                        # NOTE: Vyper doesn't have internal contract type declarations, so use filename
+                        # NOTE: Vyper doesn't have internal contract type declarations, use filename
                         contractName=Path(path).stem,
                         sourceId=str(path),
                         deploymentBytecode=Bytecode(bytecode=result["bytecode"]),  # type: ignore
