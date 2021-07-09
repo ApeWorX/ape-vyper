@@ -78,51 +78,52 @@ class VyperCompiler(CompilerAPI):
         return vyper_json
 
     def compile(self, contract_filepaths: List[Path]) -> List[ContractType]:
-        try:
-            # todo: move this to vvm
-            contract_types = []
-            for path in contract_filepaths:
-                source = path.read_text()
-                pragma_spec = get_pragma_spec(source)
-                # check if we need to install specified compiler version
-                if pragma_spec:
-                    if pragma_spec is not pragma_spec.select(self.installed_versions):
-                        vyper_version = pragma_spec.select(self.available_versions)
-                        if vyper_version:
-                            try:
-                                vvm.install_vyper(vyper_version, show_progress=True)
-                            except Exception as e:
-                                raise Abort("Unable to install Vyper version", vyper_version) from e
-                        else:
-                            raise Exception("No available version to install")
-                else:
-                    if not self.installed_versions:
+        # todo: move this to vvm
+        contract_types = []
+        for path in contract_filepaths:
+            source = path.read_text()
+            pragma_spec = get_pragma_spec(source)
+            # check if we need to install specified compiler version
+            if pragma_spec:
+                if pragma_spec is not pragma_spec.select(self.installed_versions):
+                    vyper_version = pragma_spec.select(self.available_versions)
+                    if vyper_version:
                         try:
-                            vvm.install_vyper(max(self.available_versions), show_progress=True)
+                            vvm.install_vyper(vyper_version, show_progress=True)
                         except Exception as e:
-                            raise Abort("Unable to install Vyper version", max(self.available_versions)) from e
-                    vyper_version = max(self.installed_versions)
-                try:
-                    result = vvm.compile_source(
-                        source,
-                        vyper_version=vyper_version,
-                    )["<stdin>"]
-                except Exception as e:
-                    raise Abort("Unable to compile with Vyper version", vyper_version) from e
+                            raise Abort("Unable to install Vyper version", vyper_version) from e
+                    else:
+                        raise Exception("No available version to install")
+            else:
+                if not self.installed_versions:
+                    try:
+                        vvm.install_vyper(max(self.available_versions), show_progress=True)
+                    except Exception as e:
+                        raise Abort(
+                            "Unable to install Vyper version", max(self.available_versions)
+                        ) from e
+                vyper_version = max(self.installed_versions)
+            try:
+                result = vvm.compile_source(
+                    source,
+                    vyper_version=vyper_version,
+                )["<stdin>"]
+            except Exception as e:
+                raise Abort("Unable to compile with Vyper version", vyper_version) from e
 
-                contract_types.append(
-                    ContractType(
-                        # NOTE: Vyper doesn't have internal contract type declarations, use filename
-                        contractName=Path(path).stem,
-                        sourceId=str(path),
-                        # type: ignore
-                        deploymentBytecode=Bytecode(bytecode=result["bytecode"]),
-                        # type: ignore
-                        runtimeBytecode=Bytecode(bytecode=result["bytecode_runtime"]),
-                        abi=[ABI.from_dict(abi) for abi in result["abi"]],
-                        userdoc=result["userdoc"],
-                        devdoc=result["devdoc"],
-                    )
+            contract_types.append(
+                ContractType(
+                    # NOTE: Vyper doesn't have internal contract type declarations, use filename
+                    contractName=Path(path).stem,
+                    sourceId=str(path),
+                    # type: ignore
+                    deploymentBytecode=Bytecode(bytecode=result["bytecode"]),
+                    # type: ignore
+                    runtimeBytecode=Bytecode(bytecode=result["bytecode_runtime"]),
+                    abi=[ABI.from_dict(abi) for abi in result["abi"]],
+                    userdoc=result["userdoc"],
+                    devdoc=result["devdoc"],
                 )
+            )
 
         return contract_types
