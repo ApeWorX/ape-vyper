@@ -1,12 +1,11 @@
 import re
-import sys
 from pathlib import Path
 from typing import List, Optional, Set
 
 import vvm  # type: ignore
 from ape.api.compiler import CompilerAPI
 from ape.types import ABI, Bytecode, ContractType
-from ape.utils import cached_property
+from ape.utils import cached_property, Abort
 from semantic_version import NpmSpec, Version  # type: ignore
 
 
@@ -108,14 +107,16 @@ class VyperCompiler(CompilerAPI):
                         # NOTE: Vyper doesn't have internal contract type declarations, use filename
                         contractName=Path(path).stem,
                         sourceId=str(path),
-                        deploymentBytecode=Bytecode(bytecode=result["bytecode"]),  # type: ignore
-                        runtimeBytecode=Bytecode(bytecode=result["bytecode_runtime"]),  # type: ignore
+                        # type: ignore
+                        deploymentBytecode=Bytecode(bytecode=result["bytecode"]),
+                        # type: ignore
+                        runtimeBytecode=Bytecode(bytecode=result["bytecode_runtime"]),
                         abi=[ABI.from_dict(abi) for abi in result["abi"]],
                         userdoc=result["userdoc"],
                         devdoc=result["devdoc"],
                     )
                 )
         except Exception as e:
-            sys.exit(str(e))
+            raise Abort("Error:") from e
 
         return contract_types
