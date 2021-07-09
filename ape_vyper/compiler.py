@@ -92,7 +92,7 @@ class VyperCompiler(CompilerAPI):
                     else:
                         raise Exception("No available version to install")
             else:
-                if self.installed_versions is None:
+                if len(self.installed_versions) == 0:
                     vvm.install_vyper(max(self.available_versions), show_progress=True)
                 vyper_version = max(self.installed_versions)
 
