@@ -89,18 +89,26 @@ class VyperCompiler(CompilerAPI):
                     if pragma_spec is not pragma_spec.select(self.installed_versions):
                         vyper_version = pragma_spec.select(self.available_versions)
                         if vyper_version:
-                            vvm.install_vyper(vyper_version, show_progress=True)
+                            try:
+                                vvm.install_vyper(vyper_version, show_progress=True)
+                            except Exception as e:
+                                raise Abort("Error:") from e
                         else:
                             raise Exception("No available version to install")
                 else:
                     if not self.installed_versions:
-                        vvm.install_vyper(max(self.available_versions), show_progress=True)
+                        try:
+                            vvm.install_vyper(max(self.available_versions), show_progress=True)
+                        except Exception as e:
+                            raise Abort("Error:") from e
                     vyper_version = max(self.installed_versions)
-
-                result = vvm.compile_source(
-                    source,
-                    vyper_version=vyper_version,
-                )["<stdin>"]
+                try:
+                    result = vvm.compile_source(
+                        source,
+                        vyper_version=vyper_version,
+                    )["<stdin>"]
+                except Exception as e:
+                    raise Abort("Error:") from e
 
                 contract_types.append(
                     ContractType(
@@ -116,7 +124,5 @@ class VyperCompiler(CompilerAPI):
                         devdoc=result["devdoc"],
                     )
                 )
-        except Exception as e:
-            raise Abort("Error:") from e
 
         return contract_types
