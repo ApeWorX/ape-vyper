@@ -96,13 +96,11 @@ class VyperCompiler(CompilerAPI):
                         raise Exception("No available version to install")
             else:
                 if not self.installed_versions:
+                    vyper_version = max(self.available_versions)
                     try:
-                        vvm.install_vyper(max(self.available_versions), show_progress=True)
+                        vvm.install_vyper(vyper_version, show_progress=True)
                     except Exception as e:
-                        raise Abort(
-                            f"Unable to install Vyper version: {max(self.available_versions)}"
-                        ) from e
-                vyper_version = max(self.installed_versions)
+                        raise Abort(f"Unable to install Vyper version: {vyper_version}") from e
             try:
                 result = vvm.compile_source(
                     source,
