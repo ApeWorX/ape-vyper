@@ -1,4 +1,4 @@
-from ape.utils import Abort
+from vvm.exceptions import VyperError
 
 
 def test_integration(project):
@@ -9,5 +9,5 @@ def test_integration(project):
 def test_failure(project):
     try:
         assert "contract_with_error" in project.contracts
-    except Abort:
+    except VyperError:
         pass
