@@ -1,6 +1,5 @@
 from ape.utils import Abort
 
-
 # def test_integration(project):
 #     assert "contract" in project.contracts.passing_contracts
 #     assert "contract_no_pragma" in project.contracts.passing_contracts
