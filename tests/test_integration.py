@@ -9,5 +9,5 @@ from ape.utils import Abort
 def test_failure(project):
     try:
         assert "contract_with_error" in project.contracts.erroring_contracts
-    except Abort as e:
+    except Abort:
         pass
