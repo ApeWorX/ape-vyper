@@ -6,4 +6,11 @@ from ape import Project
 
 @pytest.fixture
 def project():
-    return Project(Path(__file__).parent)
+    breakpoint()
+    return Project(Path(__file__).parent.passing_contracts)
+
+@pytest.fixture
+def failing_project():
+    breakpoint()
+    return Project(Path(__file__).parent.erroring_projects)
+    
