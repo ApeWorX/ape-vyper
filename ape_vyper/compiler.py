@@ -94,6 +94,9 @@ class VyperCompiler(CompilerAPI):
                             raise Abort(f"Unable to install Vyper version: {vyper_version}") from e
                     else:
                         raise Exception("No available version to install")
+                else:
+                    vyper_version = pragma_spec.select(self.installed_versions)
+
             else:
                 if not self.installed_versions:
                     vyper_version = max(self.available_versions)
@@ -101,6 +104,8 @@ class VyperCompiler(CompilerAPI):
                         vvm.install_vyper(vyper_version, show_progress=True)
                     except Exception as e:
                         raise Abort(f"Unable to install Vyper version: {vyper_version}") from e
+                else:
+                    vyper_version = max(self.installed_versions)
             try:
                 result = vvm.compile_source(
                     source,
