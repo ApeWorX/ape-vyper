@@ -112,7 +112,7 @@ class VyperCompiler(CompilerAPI):
                     vyper_version=vyper_version,
                 )["<stdin>"]
             except Exception as e:
-                raise Abort(f"Unable to compile with Vyper version: {vyper_version}\n\n{e}") from e
+                raise Abort(f"Unable to compile {path} with Vyper version: {vyper_version}\n\n{e.stderr_data}") from e
 
             contract_types.append(
                 ContractType(
