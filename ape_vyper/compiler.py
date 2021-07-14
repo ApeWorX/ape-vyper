@@ -91,7 +91,6 @@ class VyperCompiler(CompilerAPI):
                         try:
                             vvm.install_vyper(vyper_version, show_progress=True)
                         except Exception as e:
-                            print(e)
                             raise Abort(f"Unable to install Vyper version: {vyper_version}") from e
                     else:
                         raise Exception("No available version to install")
@@ -104,7 +103,6 @@ class VyperCompiler(CompilerAPI):
                     try:
                         vvm.install_vyper(vyper_version, show_progress=True)
                     except Exception as e:
-                        print(e)
                         raise Abort(f"Unable to install Vyper version: {vyper_version}") from e
                 else:
                     vyper_version = max(self.installed_versions)
@@ -114,8 +112,7 @@ class VyperCompiler(CompilerAPI):
                     vyper_version=vyper_version,
                 )["<stdin>"]
             except Exception as e:
-                print(e)
-                raise Abort(f"Unable to compile with Vyper version: {vyper_version}") from e
+                raise Abort(f"Unable to compile with Vyper version: {vyper_version}\n\n{e}") from e
 
             contract_types.append(
                 ContractType(
