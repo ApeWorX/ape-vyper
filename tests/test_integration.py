@@ -1,6 +1,6 @@
 from pathlib import Path
 
-import pytest
+import pytest  # type: ignore
 
 PASSING_CONTRACTS_FOLDER = Path(__file__).parent / "contracts" / "passing_contracts"
 FAILING_CONTRACTS_FOLDER = Path(__file__).parent / "contracts" / "failing_contracts"
