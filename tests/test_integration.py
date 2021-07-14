@@ -1,11 +1,17 @@
-from ape.utils import Abort
+from ape.types import ContractType
+from pathlib import Path
 import pytest
 
-# def test_integration(passing_project):
-#     assert "contract" in passing_project
-#     assert "contract_no_pragma" in project.contracts.passing_contracts
+PASSING_CONTRACTS_FOLDER = Path(__file__).parent / "contracts" / "passing_contracts"
+FAILING_CONTRACTS_FOLDER = Path(__file__).parent / "contracts" / "failing_contracts"
+
+@pytest.mark.parametrize("path",PASSING_CONTRACTS_FOLDER.glob("*.vy"))
+def test_pass(path,compiler):
+    assert compiler.compile([path])
 
 
-def test_failure(failing_project):
-    with pytest.raises(Abort):
-        assert "contract_with_error" in failing_project
+@pytest.mark.parametrize("path",FAILING_CONTRACTS_FOLDER.glob("*.vy"))
+def test_failure(path,compiler):
+    with pytest.raises(Exception):
+        compiler.compile([path])
+
