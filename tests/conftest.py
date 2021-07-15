@@ -1,9 +1,8 @@
-from pathlib import Path
-
 import pytest  # type: ignore
-from ape import Project
+
+from ape_vyper.compiler import VyperCompiler
 
 
 @pytest.fixture
-def project():
-    return Project(Path(__file__).parent)
+def compiler():
+    return VyperCompiler()

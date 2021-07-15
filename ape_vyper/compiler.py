@@ -5,7 +5,7 @@ from typing import List, Optional, Set
 import vvm  # type: ignore
 from ape.api.compiler import CompilerAPI
 from ape.types import ABI, Bytecode, ContractType
-from ape.utils import cached_property
+from ape.utils import Abort, cached_property
 from semantic_version import NpmSpec, Version  # type: ignore
 
 
@@ -88,22 +88,38 @@ class VyperCompiler(CompilerAPI):
                 if pragma_spec is not pragma_spec.select(self.installed_versions):
                     vyper_version = pragma_spec.select(self.available_versions)
                     if vyper_version:
-                        vvm.install_vyper(vyper_version, show_progress=True)
+                        try:
+                            vvm.install_vyper(vyper_version, show_progress=True)
+                        except Exception as e:
+                            raise Abort(f"Unable to install Vyper version: {vyper_version}") from e
                     else:
                         raise Exception("No available version to install")
+                else:
+                    vyper_version = pragma_spec.select(self.installed_versions)
+
             else:
                 if not self.installed_versions:
-                    vvm.install_vyper(max(self.available_versions), show_progress=True)
-                vyper_version = max(self.installed_versions)
-
-            result = vvm.compile_source(
-                source,
-                vyper_version=vyper_version,
-            )["<stdin>"]
+                    vyper_version = max(self.available_versions)
+                    try:
+                        vvm.install_vyper(vyper_version, show_progress=True)
+                    except Exception as e:
+                        raise Abort(f"Unable to install Vyper version: {vyper_version}") from e
+                else:
+                    vyper_version = max(self.installed_versions)
+            try:
+                result = vvm.compile_source(
+                    source,
+                    vyper_version=vyper_version,
+                )["<stdin>"]
+            except Exception as e:
+                raise Abort(
+                    f"Unable to compile {path} with Vyper version: {vyper_version}"  # type: ignore
+                    f"\n\n{e.stderr_data}"
+                ) from e
 
             contract_types.append(
                 ContractType(
-                    # NOTE: Vyper doesn't have internal contract type declarations, so use filename
+                    # NOTE: Vyper doesn't have internal contract type declarations, use filename
                     contractName=Path(path).stem,
                     sourceId=str(path),
                     deploymentBytecode=Bytecode(bytecode=result["bytecode"]),  # type: ignore
