@@ -4,9 +4,23 @@ from typing import List, Optional, Set
 
 import vvm  # type: ignore
 from ape.api.compiler import CompilerAPI
+from ape.exceptions import CompilerError
 from ape.types import ABI, Bytecode, ContractType
-from ape.utils import Abort, cached_property
+from ape.utils import cached_property
 from semantic_version import NpmSpec, Version  # type: ignore
+
+
+class VyperInstallError(CompilerError):
+    """
+    An error raised when compiling with the ape-vyper plugin
+    and you don't yet have vyper installed and it fails
+    when trying to install it.
+    """
+
+    def __init__(self, vyper_version):
+        message = f"Unable to install Vyper version: {vyper_version}"
+        self.message = message
+        super().__init__(message)
 
 
 def get_pragma_spec(source: str) -> Optional[NpmSpec]:
@@ -90,8 +104,8 @@ class VyperCompiler(CompilerAPI):
                     if vyper_version:
                         try:
                             vvm.install_vyper(vyper_version, show_progress=True)
-                        except Exception as e:
-                            raise Abort(f"Unable to install Vyper version: {vyper_version}") from e
+                        except Exception as err:
+                            raise VyperInstallError(vyper_version) from err
                     else:
                         raise Exception("No available version to install")
                 else:
@@ -102,8 +116,8 @@ class VyperCompiler(CompilerAPI):
                     vyper_version = max(self.available_versions)
                     try:
                         vvm.install_vyper(vyper_version, show_progress=True)
-                    except Exception as e:
-                        raise Abort(f"Unable to install Vyper version: {vyper_version}") from e
+                    except Exception as err:
+                        raise VyperInstallError(vyper_version) from err
                 else:
                     vyper_version = max(self.installed_versions)
             try:
@@ -111,11 +125,12 @@ class VyperCompiler(CompilerAPI):
                     source,
                     vyper_version=vyper_version,
                 )["<stdin>"]
-            except Exception as e:
-                raise Abort(
-                    f"Unable to compile {path} with Vyper version: {vyper_version}"  # type: ignore
-                    f"\n\n{e.stderr_data}"
-                ) from e
+            except Exception as err:
+                new_err = VyperInstallError(vyper_version)
+                if hasattr(err, "stderr_data"):
+                    new_err.message += f"\n\t{err.stderr_data}"  # type: ignore
+
+                raise new_err from err
 
             contract_types.append(
                 ContractType(
