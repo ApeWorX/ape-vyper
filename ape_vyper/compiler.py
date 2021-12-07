@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import List, Optional, Set
 
 import vvm  # type: ignore
-from ape.api.compiler import CompilerAPI
+from ape.api import CompilerAPI, ConfigItem
 from ape.exceptions import CompilerError
 from ape.types import ABI, Bytecode, ContractType
 from ape.utils import cached_property
@@ -44,7 +44,13 @@ def get_pragma_spec(source: str) -> Optional[NpmSpec]:
         return None
 
 
+class VyperConfig(ConfigItem):
+    pass
+
+
 class VyperCompiler(CompilerAPI):
+    config = VyperConfig()
+
     @property
     def name(self) -> str:
         return "vyper"

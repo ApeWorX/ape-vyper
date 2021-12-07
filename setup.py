@@ -53,11 +53,11 @@ setup(
     url="https://github.com/ApeWorX/ape-vyper",
     include_package_data=True,
     install_requires=[
-        "eth-ape>=0.1.0a29",
+        "eth-ape>=0.1.0a31",
         "tqdm>=4.60.0,<5.0",
         "vvm>=0.1.0,<0.2.0",
     ],
-    python_requires=">=3.6,<4",
+    python_requires=">=3.7,<4",
     extras_require=extras_require,
     py_modules=["ape_vyper"],
     license="Apache-2.0",
