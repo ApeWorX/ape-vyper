@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import List, Optional, Set
 
 import vvm  # type: ignore
-
 from ape.api import ConfigDict
 from ape.api.compiler import CompilerAPI
 from ape.types import ABI, Bytecode, ContractType
@@ -42,7 +41,7 @@ def get_pragma_spec(source: str) -> Optional[NpmSpec]:
 
 
 class VyperCompiler(CompilerAPI):
-    config: ConfigDict
+    config: ConfigDict = ConfigDict()
 
     @property
     def name(self) -> str:
