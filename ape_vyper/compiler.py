@@ -99,7 +99,7 @@ class VyperCompiler(CompilerAPI):
                     if vyper_version:
                         _install_vyper(vyper_version)
                     else:
-                        raise VyperInstallError("No available version to install.") from err
+                        raise VyperInstallError("No available version to install.")
                 else:
                     vyper_version = pragma_spec.select(self.installed_versions)
 
