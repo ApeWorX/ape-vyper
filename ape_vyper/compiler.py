@@ -3,6 +3,8 @@ from pathlib import Path
 from typing import List, Optional, Set
 
 import vvm  # type: ignore
+
+from ape.api import ConfigDict
 from ape.api.compiler import CompilerAPI
 from ape.types import ABI, Bytecode, ContractType
 from ape.utils import cached_property
@@ -40,6 +42,8 @@ def get_pragma_spec(source: str) -> Optional[NpmSpec]:
 
 
 class VyperCompiler(CompilerAPI):
+    config: ConfigDict
+
     @property
     def name(self) -> str:
         return "vyper"
