@@ -3,24 +3,20 @@ from pathlib import Path
 from typing import List, Optional, Set
 
 import vvm  # type: ignore
+from ape.api import ConfigDict
 from ape.api.compiler import CompilerAPI
-from ape.exceptions import CompilerError
 from ape.types import ABI, Bytecode, ContractType
 from ape.utils import cached_property
 from semantic_version import NpmSpec, Version  # type: ignore
 
+from .exceptions import VyperCompileError, VyperInstallError
 
-class VyperInstallError(CompilerError):
-    """
-    An error raised when compiling with the ape-vyper plugin
-    and you don't yet have vyper installed and it fails
-    when trying to install it.
-    """
 
-    def __init__(self, vyper_version):
-        message = f"Unable to install Vyper version: {vyper_version}"
-        self.message = message
-        super().__init__(message)
+def _install_vyper(version: Version):
+    try:
+        vvm.install_vyper(version, show_progress=True)
+    except Exception as err:
+        raise VyperInstallError(f"Unable to install Vyper version: '{version}'.") from err
 
 
 def get_pragma_spec(source: str) -> Optional[NpmSpec]:
@@ -45,6 +41,8 @@ def get_pragma_spec(source: str) -> Optional[NpmSpec]:
 
 
 class VyperCompiler(CompilerAPI):
+    config: ConfigDict = ConfigDict()
+
     @property
     def name(self) -> str:
         return "vyper"
@@ -102,22 +100,16 @@ class VyperCompiler(CompilerAPI):
                 if pragma_spec is not pragma_spec.select(self.installed_versions):
                     vyper_version = pragma_spec.select(self.available_versions)
                     if vyper_version:
-                        try:
-                            vvm.install_vyper(vyper_version, show_progress=True)
-                        except Exception as err:
-                            raise VyperInstallError(vyper_version) from err
+                        _install_vyper(vyper_version)
                     else:
-                        raise Exception("No available version to install")
+                        raise VyperInstallError("No available version to install.")
                 else:
                     vyper_version = pragma_spec.select(self.installed_versions)
 
             else:
                 if not self.installed_versions:
                     vyper_version = max(self.available_versions)
-                    try:
-                        vvm.install_vyper(vyper_version, show_progress=True)
-                    except Exception as err:
-                        raise VyperInstallError(vyper_version) from err
+                    _install_vyper(vyper_version)
                 else:
                     vyper_version = max(self.installed_versions)
             try:
@@ -126,11 +118,7 @@ class VyperCompiler(CompilerAPI):
                     vyper_version=vyper_version,
                 )["<stdin>"]
             except Exception as err:
-                new_err = VyperInstallError(vyper_version)
-                if hasattr(err, "stderr_data"):
-                    new_err.message += f"\n\t{err.stderr_data}"  # type: ignore
-
-                raise new_err from err
+                raise VyperCompileError(err) from err
 
             contract_types.append(
                 ContractType(
