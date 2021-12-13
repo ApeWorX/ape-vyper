@@ -1,7 +1,5 @@
-# @version 0.2.8
+# @version 14021.2222.8
 
 @external
 def foo1() -> bool:
-    hello = world
     return True
-
