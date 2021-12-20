@@ -53,7 +53,7 @@ setup(
     url="https://github.com/ApeWorX/ape-vyper",
     include_package_data=True,
     install_requires=[
-        "eth-ape>=0.1.0a31",
+        "eth-ape>=0.1.0b2",
         "tqdm>=4.60.0,<5.0",
         "vvm>=0.1.0,<0.2.0",
     ],
@@ -66,7 +66,7 @@ setup(
     packages=find_packages(exclude=["tests", "tests.*"]),
     package_data={"ape_vyper": ["py.typed"]},
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
         "Natural Language :: English",
