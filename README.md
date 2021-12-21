@@ -32,8 +32,8 @@ TODO: Describe library overview in code
 
 ## Development
 
-This project is in early development and should be considered an alpha.
-Things might not work, breaking changes are likely.
+This project is in development and should be considered a beta.
+Things might not be in their final state and breaking changes may occur.
 Comments, questions, criticisms and pull requests are welcomed.
 
 ## License
