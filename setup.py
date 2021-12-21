@@ -21,7 +21,7 @@ extras_require = {
         "twine",  # Package upload tool
     ],
     "dev": [
-        "commitizen",  # Manage commits and publishing releases
+        "commitizen>=2.19,<2.20",  # Manage commits and publishing releases
         "pre-commit",  # Ensure that linters are run prior to commiting
         "pytest-watch",  # `ptw` test watcher/runner
         "IPython",  # Console for interacting
