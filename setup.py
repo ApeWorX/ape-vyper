@@ -54,7 +54,7 @@ setup(
     include_package_data=True,
     install_requires=[
         "eth-ape>=0.1.0b2",
-        "tqdm>=4.60.0,<5.0",
+        "tqdm>=4.62.3,<5.0",
         "vvm>=0.1.0,<0.2.0",
     ],
     python_requires=">=3.7,<4",
