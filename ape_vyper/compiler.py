@@ -1,6 +1,8 @@
 import json
 import re
+from importlib import import_module
 from pathlib import Path
+import shutil
 from typing import Dict, List, Optional, Set, Union
 
 import vvm  # type: ignore
@@ -65,7 +67,9 @@ class VyperCompiler(CompilerAPI):
         try:
             import vyper  # type: ignore
 
-            return Version(vyper.__version__)
+            # Strip off parts from source-installation
+            version = Version.coerce(vyper.__version__)
+            return Version(major=version.major, minor=version.minor, patch=version.patch)
 
         except ImportError:
             return None
@@ -100,9 +104,16 @@ class VyperCompiler(CompilerAPI):
             pragma_spec = get_pragma_spec(source)
             # check if we need to install specified compiler version
             if pragma_spec:
-                if pragma_spec is not pragma_spec.select(self.installed_versions):
+                if pragma_spec and not pragma_spec.select(self.installed_versions):
                     vyper_version = pragma_spec.select(self.available_versions)
-                    if vyper_version:
+
+                    try:
+                        # Check if 'vyper' installed as package
+                        vyper_package_version = import_module("vyper").__version__  # type: ignore
+                    except ModuleNotFoundError:
+                        vyper_package_version = None
+
+                    if vyper_version and vyper_version != vyper_package_version:
                         _install_vyper(vyper_version)
                     else:
                         raise VyperInstallError("No available version to install.")
@@ -118,7 +129,9 @@ class VyperCompiler(CompilerAPI):
             try:
                 result = vvm.compile_source(
                     source,
+                    base_path=base_path,
                     vyper_version=vyper_version,
+                    vyper_binary=shutil.which("vyper") or None
                 )["<stdin>"]
             except Exception as err:
                 raise VyperCompileError(err) from err
