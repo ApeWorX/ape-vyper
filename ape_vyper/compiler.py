@@ -1,8 +1,8 @@
 import json
 import re
+import shutil
 from importlib import import_module
 from pathlib import Path
-import shutil
 from typing import Dict, List, Optional, Set, Union
 
 import vvm  # type: ignore
@@ -131,7 +131,7 @@ class VyperCompiler(CompilerAPI):
                     source,
                     base_path=base_path,
                     vyper_version=vyper_version,
-                    vyper_binary=shutil.which("vyper") or None
+                    vyper_binary=shutil.which("vyper") or None,
                 )["<stdin>"]
             except Exception as err:
                 raise VyperCompileError(err) from err
