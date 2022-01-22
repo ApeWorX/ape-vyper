@@ -107,13 +107,7 @@ class VyperCompiler(CompilerAPI):
                 if pragma_spec and not pragma_spec.select(self.installed_versions):
                     vyper_version = pragma_spec.select(self.available_versions)
 
-                    try:
-                        # Check if 'vyper' installed as package
-                        vyper_package_version = import_module("vyper").__version__  # type: ignore
-                    except ModuleNotFoundError:
-                        vyper_package_version = None
-
-                    if vyper_version and vyper_version != vyper_package_version:
+                    if vyper_version and vyper_version != self.package_version:
                         _install_vyper(vyper_version)
                     else:
                         raise VyperInstallError("No available version to install.")
