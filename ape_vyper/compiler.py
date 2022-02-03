@@ -121,7 +121,7 @@ class VyperCompiler(CompilerAPI):
             else:
                 vyper_version = max(self.installed_versions)
 
-            vyper_binary = shutil.which("vyper") if vyper_version != self.package_version else None
+            vyper_binary = shutil.which("vyper") if vyper_version is self.package_version else None
             try:
                 result = vvm.compile_source(
                     source,
