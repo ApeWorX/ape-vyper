@@ -102,29 +102,32 @@ class VyperCompiler(CompilerAPI):
             source = path.read_text()
             pragma_spec = get_pragma_spec(source)
             # check if we need to install specified compiler version
-            if pragma_spec:
-                if pragma_spec and not pragma_spec.select(self.installed_versions):
-                    vyper_version = pragma_spec.select(self.available_versions)
+            if pragma_spec and not pragma_spec.select(self.installed_versions):
+                vyper_version = pragma_spec.select(self.available_versions)
 
-                    if vyper_version and vyper_version != self.package_version:
-                        _install_vyper(vyper_version)
-                    else:
-                        raise VyperInstallError("No available version to install.")
+                if vyper_version and vyper_version != self.package_version:
+                    _install_vyper(vyper_version)
+
                 else:
-                    vyper_version = pragma_spec.select(self.installed_versions)
+                    raise VyperInstallError("No available version to install.")
+
+            elif pragma_spec:
+                vyper_version = pragma_spec.select(self.installed_versions)
+
+            elif not self.installed_versions:
+                vyper_version = max(self.available_versions)
+                _install_vyper(vyper_version)
 
             else:
-                if not self.installed_versions:
-                    vyper_version = max(self.available_versions)
-                    _install_vyper(vyper_version)
-                else:
-                    vyper_version = max(self.installed_versions)
+                vyper_version = max(self.installed_versions)
+
+            vyper_binary = shutil.which("vyper") if vyper_version != self.package_version else None
             try:
                 result = vvm.compile_source(
                     source,
                     base_path=base_path,
                     vyper_version=vyper_version,
-                    vyper_binary=shutil.which("vyper") or None,
+                    vyper_binary=vyper_binary,
                 )["<stdin>"]
             except Exception as err:
                 raise VyperCompileError(err) from err
