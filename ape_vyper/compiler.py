@@ -1,13 +1,12 @@
-import json
 import re
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Union
+from typing import List, Optional, Set
 
 import vvm  # type: ignore
 from ape.api import ConfigDict
 from ape.api.compiler import CompilerAPI
-from ape.types import ABI, Bytecode, ContractType
+from ape.types import ContractType
 from ape.utils import cached_property, get_relative_path
 from semantic_version import NpmSpec, Version  # type: ignore
 
@@ -132,26 +131,18 @@ class VyperCompiler(CompilerAPI):
             except Exception as err:
                 raise VyperCompileError(err) from err
 
-            def load_dict(data: Union[str, dict]) -> Dict:
-                return data if isinstance(data, dict) else json.loads(data)
-
             contract_path = (
                 str(get_relative_path(path, base_path))
                 if base_path and path.is_absolute()
                 else str(path)
             )
 
-            contract_types.append(
-                ContractType(
-                    # NOTE: Vyper doesn't have internal contract type declarations, use filename
-                    contractName=Path(contract_path).stem,
-                    sourceId=contract_path,
-                    deploymentBytecode=Bytecode(bytecode=result["bytecode"]),  # type: ignore
-                    runtimeBytecode=Bytecode(bytecode=result["bytecode_runtime"]),  # type: ignore
-                    abi=[ABI(**abi) for abi in result["abi"]],
-                    userdoc=load_dict(result["userdoc"]),
-                    devdoc=load_dict(result["devdoc"]),
-                )
-            )
+            # NOTE: Vyper doesn't have internal contract type declarations, use filename
+            result["contractName"] = Path(contract_path).stem
+            result["sourceId"] = contract_path
+            result["deploymentBytecode"] = {"bytecode": result["bytecode"]}
+            result["runtimeBytecode"] = {"bytecode": result["bytecode_runtime"]}
+
+            contract_types.append(ContractType.parse_obj(result))
 
         return contract_types
