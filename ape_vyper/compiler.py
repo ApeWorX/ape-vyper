@@ -6,8 +6,9 @@ from typing import Dict, List, Optional, Set, Union
 import vvm  # type: ignore
 from ape.api import ConfigDict
 from ape.api.compiler import CompilerAPI
-from ape.types import ABI, Bytecode, ContractType
+from ape.types import Bytecode, ContractType
 from ape.utils import cached_property, get_relative_path
+from ethpm_types.abi import MethodABI
 from semantic_version import NpmSpec, Version  # type: ignore
 
 from .exceptions import VyperCompileError, VyperInstallError
@@ -139,7 +140,7 @@ class VyperCompiler(CompilerAPI):
                     sourceId=contract_path,
                     deploymentBytecode=Bytecode(bytecode=result["bytecode"]),  # type: ignore
                     runtimeBytecode=Bytecode(bytecode=result["bytecode_runtime"]),  # type: ignore
-                    abi=[ABI(**abi) for abi in result["abi"]],
+                    abi=[MethodABI(**abi) for abi in result["abi"]],
                     userdoc=load_dict(result["userdoc"]),
                     devdoc=load_dict(result["devdoc"]),
                 )
