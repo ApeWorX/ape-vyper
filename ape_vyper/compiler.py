@@ -11,12 +11,17 @@ from ape.logging import logger
 from ape.types import ContractType
 from ape.utils import cached_property, get_relative_path
 from semantic_version import NpmSpec, Version  # type: ignore
+from vvm.exceptions import VyperError  # type: ignore
 
 from .exceptions import VyperCompileError, VyperInstallError
 
 
+DEV_MSG_PATTERN = re.compile(r"#\s*(dev:.+)")
+
+
 class VyperConfig(PluginConfig):
     evm_version: Optional[str] = None
+    dependency_imports: Dict[str, str] = {}
 
 
 def _install_vyper(version: Version):
@@ -53,7 +58,13 @@ def get_pragma_spec(source: str) -> Optional[NpmSpec]:
 class VyperCompiler(CompilerAPI):
     @property
     def config(self) -> VyperConfig:
-        return cast(VyperConfig, self.config_manager.get_config("vyper"))
+        config = self.config_manager.get_config("vyper")
+
+        # TODO: remove when fixed https://github.com/ApeWorX/ape/issues/787
+        if not isinstance(config, VyperConfig):
+            return VyperConfig()
+
+        return config
 
     @property
     def name(self) -> str:
@@ -150,40 +161,77 @@ class VyperCompiler(CompilerAPI):
     ) -> List[ContractType]:
         contract_types = []
         base_path = base_path or self.config_manager.contracts_folder
-        version_map = self.get_version_map(
-            [p for p in contract_filepaths if p.parent.name != "interfaces"]
-        )
-        arguments_map = self._get_compiler_arguments(version_map, base_path)
+        sources = [p for p in contract_filepaths if p.parent.name != "interfaces"]
+        version_map = self.get_version_map(sources)
+        compiler_data = self._get_compiler_arguments(version_map, base_path)
+        all_settings = self.get_compiler_settings(sources, base_path=base_path)
 
         for vyper_version, source_paths in version_map.items():
-            arguments = arguments_map[vyper_version]
+            settings = all_settings.get(vyper_version, {})
+            path_args = {str(get_relative_path(p.absolute(), base_path)): p for p in source_paths}
+            input_json = {
+                "language": "Vyper",
+                "settings": settings,
+                "sources": {s: {"content": p.read_text()} for s, p in path_args.items()},
+            }
+            dependencies = self.config.dependency_imports
+            if dependencies:
+                input_json["interfaces"] = {
+                    f"{import_name}.json": self.project_manager.dependencies[dep_name]
+                    .extract_manifest()
+                    .dict()
+                    for import_name, dep_name in dependencies.items()
+                }
+
+            vyper_binary = compiler_data[vyper_version]["vyper_binary"]
+            try:
+                result = vvm.compile_standard(
+                    input_json,
+                    base_path=base_path,
+                    vyper_version=vyper_version,
+                    vyper_binary=vyper_binary,
+                )["contracts"]
+            except VyperError as err:
+                raise VyperCompileError(err) from err
+
+            # Requires `compile_source()` to get `pcmap` because it is not part
+            # of standard output JSON.
+            pc_maps: Dict[str, Dict] = {}
             for path in source_paths:
-                source = path.read_text()
+                res = vvm.compile_source(
+                    path,
+                    base_path=base_path,
+                    evm_version=self.evm_version,
+                    vyper_binary=vyper_binary,
+                    vyper_version=vyper_version,
+                )
+                pc_map = res["source_map"]["pc_pos_map_compressed"]
+                src_id = get_relative_path(path.absolute(), base_path)
+                pc_maps[src_id] = pc_map
 
-                try:
-                    result = vvm.compile_source(source, **arguments)["<stdin>"]
-                except Exception as err:
-                    raise VyperCompileError(err) from err
+            for source_id, output_items in result.items():
+                for name, output in output_items.items():
+                    # Find dev messages.
+                    pc_map = pc_maps.get(source_id)
+                    dev_messages = {}
+                    if pc_map:
+                        for line_index, line in enumerate((base_path / source_id).read_text().splitlines()):
+                            if match := re.search(DEV_MSG_PATTERN, line):
+                                dev_messages[line_index + 1] = match.group(1).strip()
 
-                contract_path = str(get_relative_path(path.absolute(), base_path))
-
-                # NOTE: Vyper doesn't have internal contract type declarations, use filename
-                result["contractName"] = Path(contract_path).stem
-                result["sourceId"] = contract_path
-                result["deploymentBytecode"] = {"bytecode": result["bytecode"]}
-                result["runtimeBytecode"] = {"bytecode": result["bytecode_runtime"]}
-                result["sourcemap"] = result["source_map"]["pc_pos_map_compressed"]
-                result["pcmap"] = result["source_map"]["pc_pos_map"]
-
-                dev_messages = {}
-                dev_msg_pattern = re.compile(r"#\s*(dev:.+)")
-                for line_index, line in enumerate(source.split("\n")):
-                    if match := re.search(dev_msg_pattern, line):
-                        dev_messages[line_index + 1] = match.group(1).strip()
-
-                result["dev_messages"] = dev_messages
-
-                contract_types.append(ContractType.parse_obj(result))
+                    contract_type = ContractType(
+                        contractName=name,
+                        sourceId=source_id,
+                        deploymentBytecode={"bytecode": output["evm"]["bytecode"]["object"]},
+                        runtimeBytecode={"bytecode": output["evm"]["deployedBytecode"]["object"]},
+                        abi=output["abi"],
+                        sourcemap=output["evm"]["deployedBytecode"]["sourceMap"],
+                        pcmap=pc_map,
+                        userdoc=output["userdoc"],
+                        devdoc=output["devdoc"],
+                        dev_messages=dev_messages,
+                    )
+                    contract_types.append(contract_type)
 
         return contract_types
 
@@ -250,7 +298,13 @@ class VyperCompiler(CompilerAPI):
         compiler_data = self._get_compiler_arguments(files_by_vyper_version, contracts_path)
         settings = {}
         for version, data in compiler_data.items():
+            source_paths = files_by_vyper_version.get(version)
+            if not source_paths:
+                continue
+
             version_settings = {"optimize": True}
+            path_args = {str(get_relative_path(p.absolute(), base_path)): p for p in source_paths}
+            version_settings["outputSelection"] = {s: [""] for s in path_args}
             if data["evm_version"]:
                 version_settings["evmVersion"] = data["evm_version"]
 

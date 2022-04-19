@@ -1,4 +1,5 @@
 from ape.exceptions import CompilerError
+from vvm.exceptions import VyperError  # type: ignore
 
 
 class VyperCompilerPluginError(CompilerError):
@@ -18,12 +19,8 @@ class VyperCompileError(VyperCompilerPluginError):
     A compiler-specific error in Vyper.
     """
 
-    def __init__(self, err: Exception):
-        self.base_err = err
-        if hasattr(err, "stderr_data"):
-            message = err.stderr_data
-        else:
-            message = str(err)
-
-        self.message = message
+    def __init__(self, err: VyperError):
+        message = "\n\n".join(
+            f"{e['sourceLocation']['file']}\n{e['type']}:{e['message']}" for e in err.error_dict
+        )
         super().__init__(message)
