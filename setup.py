@@ -53,7 +53,7 @@ setup(
     url="https://github.com/ApeWorX/ape-vyper",
     include_package_data=True,
     install_requires=[
-        "eth-ape>=0.2.2,<0.3.0",
+        "eth-ape>=0.3.0,<0.4.0",
         "tqdm>=4.62.3,<5.0",
         "vvm>=0.1.0,<0.2.0",
     ],
