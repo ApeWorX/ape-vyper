@@ -4,7 +4,7 @@ Ape compiler plugin around [VVM](https://github.com/vyperlang/vvm)
 
 ## Dependencies
 
-* [python3](https://www.python.org/downloads) version 3.6 or greater, python3-dev
+* [python3](https://www.python.org/downloads) version 3.7.2 or greater, python3-dev
 
 ## Installation
 
@@ -28,7 +28,15 @@ python3 setup.py install
 
 ## Quick Usage
 
-TODO: Describe library overview in code
+First, place Vyper contract source files (files with extension `.vy`) in your Ape project's contracts folder.
+An example Vyper contract can be found [here](https://vyper.readthedocs.io/en/stable/vyper-by-example.html).
+Then, from your root Ape project folder, run the command:
+
+```bash
+ape compile
+```
+
+The `.vy` files in your project will compile into `ContractTypes` that you can deploy and interact with in Ape.
 
 ## Development
 
