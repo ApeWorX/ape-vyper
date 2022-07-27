@@ -10,10 +10,10 @@ extras_require = {
         "hypothesis>=6.2.0,<7.0",  # Strategy-based fuzzer
     ],
     "lint": [
-        "black>=22.6.0,<23.0",  # auto-formatter and linter
-        "mypy>=0.971,<1.0",  # Static type analyzer
-        "flake8>=4.0.1,<4.0",  # Style linter
-        "isort>=5.10.1,<6.0",  # Import sorting linter
+        "black>=22.6.0",  # auto-formatter and linter
+        "mypy>=0.971",  # Static type analyzer
+        "flake8>=4.0.1",  # Style linter
+        "isort>=5.10.1",  # Import sorting linter
     ],
     "release": [  # `release` GitHub Action job uses this
         "setuptools",  # Installation tool
