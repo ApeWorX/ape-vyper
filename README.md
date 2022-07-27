@@ -28,7 +28,15 @@ python3 setup.py install
 
 ## Quick Usage
 
-TODO: Describe library overview in code
+First, place Vyper contract source files (files with extension `.vy`) in your Ape project's contracts folder.
+An example Vyper contract can be found [here](https://vyper.readthedocs.io/en/stable/vyper-by-example.html).
+Then, from your root Ape project folder, run the command:
+
+```bash
+ape compile
+```
+
+The `.vy` files in your project will compile into `ContractTypes` that you can deploy and interact with in Ape.
 
 ## Development
 
