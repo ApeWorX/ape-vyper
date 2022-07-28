@@ -135,6 +135,8 @@ class VyperCompiler(CompilerAPI):
                 result["sourceId"] = contract_path
                 result["deploymentBytecode"] = {"bytecode": result["bytecode"]}
                 result["runtimeBytecode"] = {"bytecode": result["bytecode_runtime"]}
+                result["sourcemap"] = result["source_map"]["pc_pos_map_compressed"]
+                result["pcmap"] = result["source_map"]["pc_pos_map"]
                 contract_types.append(ContractType.parse_obj(result))
 
         return contract_types
