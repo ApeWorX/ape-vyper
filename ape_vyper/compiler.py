@@ -1,7 +1,7 @@
 import re
 import shutil
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import Dict, List, Optional, Set
 
 import vvm  # type: ignore
 from ape.api import ConfigDict
@@ -97,6 +97,43 @@ class VyperCompiler(CompilerAPI):
     ) -> List[ContractType]:
         # todo: move this to vvm
         contract_types = []
+        base_folder = base_path or self.config_manager.contracts_folder
+        version_map = self.get_version_map(contract_filepaths)
+
+        for vyper_version, source_paths in version_map.items():
+            for path in source_paths:
+                vyper_binary = (
+                    shutil.which("vyper") if vyper_version is self.package_version else None
+                )
+                try:
+                    result = vvm.compile_source(
+                        path.read_text(),
+                        base_path=base_folder,
+                        vyper_version=vyper_version,
+                        vyper_binary=vyper_binary,
+                    )["<stdin>"]
+                except Exception as err:
+                    raise VyperCompileError(err) from err
+
+                contract_path = (
+                    str(get_relative_path(path, base_folder))
+                    if base_folder and path.is_absolute()
+                    else str(path)
+                )
+
+                # NOTE: Vyper doesn't have internal contract type declarations, use filename
+                result["contractName"] = Path(contract_path).stem
+                result["sourceId"] = contract_path
+                result["deploymentBytecode"] = {"bytecode": result["bytecode"]}
+                result["runtimeBytecode"] = {"bytecode": result["bytecode_runtime"]}
+                contract_types.append(ContractType.parse_obj(result))
+
+        return contract_types
+
+    def get_version_map(
+        self, contract_filepaths: List[Path], base_path: Optional[Path] = None
+    ) -> Dict[Version, Set[Path]]:
+        version_map = {}
         for path in contract_filepaths:
             source = path.read_text()
             pragma_spec = get_pragma_spec(source)
@@ -106,6 +143,9 @@ class VyperCompiler(CompilerAPI):
 
                 if vyper_version and vyper_version != self.package_version:
                     _install_vyper(vyper_version)
+
+                elif vyper_version:
+                    raise VyperInstallError(f"Unable to install vyper version '{vyper_version}'.")
 
                 else:
                     raise VyperInstallError("No available version to install.")
@@ -120,28 +160,9 @@ class VyperCompiler(CompilerAPI):
             else:
                 vyper_version = max(self.installed_versions)
 
-            vyper_binary = shutil.which("vyper") if vyper_version is self.package_version else None
-            try:
-                result = vvm.compile_source(
-                    source,
-                    base_path=base_path,
-                    vyper_version=vyper_version,
-                    vyper_binary=vyper_binary,
-                )["<stdin>"]
-            except Exception as err:
-                raise VyperCompileError(err) from err
+            if vyper_version not in version_map:
+                version_map[vyper_version] = {path}
+            else:
+                version_map[vyper_version].add(path)
 
-            contract_path = (
-                str(get_relative_path(path, base_path))
-                if base_path and path.is_absolute()
-                else str(path)
-            )
-
-            # NOTE: Vyper doesn't have internal contract type declarations, use filename
-            result["contractName"] = Path(contract_path).stem
-            result["sourceId"] = contract_path
-            result["deploymentBytecode"] = {"bytecode": result["bytecode"]}
-            result["runtimeBytecode"] = {"bytecode": result["bytecode_runtime"]}
-            contract_types.append(ContractType.parse_obj(result))
-
-        return contract_types
+        return version_map

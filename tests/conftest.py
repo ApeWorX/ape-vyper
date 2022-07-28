@@ -1,11 +1,16 @@
 import shutil
 from distutils.dir_util import copy_tree
 from pathlib import Path
+from tempfile import mkdtemp
 
 import ape
 import pytest  # type: ignore
 
 from ape_vyper.compiler import VyperCompiler
+
+# NOTE: Ensure that we don't use local paths for these
+ape.config.DATA_FOLDER = Path(mkdtemp()).resolve()
+ape.config.PROJECT_FOLDER = Path(mkdtemp()).resolve()
 
 
 @pytest.fixture
@@ -25,10 +30,10 @@ def project(config):
 
     # Delete build / .cache that may exist pre-copy
     project_path = Path(__file__).parent
-    for path in (project_path, project_path / "contracts/passing_projects"):
-        for cache in (path / ".build", path / "contracts" / ".cache"):
-            if cache.is_dir():
-                shutil.rmtree(cache)
+    cache = project_path / ".build"
+
+    if cache.is_dir():
+        shutil.rmtree(cache)
 
     copy_tree(project_source_dir.as_posix(), project_dest_dir.as_posix())
     with config.using_project(project_dest_dir) as project:
