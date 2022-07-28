@@ -58,6 +58,9 @@ def test_install_failure(compiler):
     assert str(err.value) == "No available version to install."
 
 
+@pytest.mark.xfail(
+    reason="Remove xfail when https://github.com/ApeWorX/ape/pull/871 is released", strict=False
+)
 def test_compiler_data_in_manifest(project):
     _ = project.contracts
     manifest = project.extract_manifest()
