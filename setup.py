@@ -4,16 +4,16 @@ from setuptools import find_packages, setup  # type: ignore
 
 extras_require = {
     "test": [  # `test` GitHub Action jobs uses this
-        "pytest>=6.0,<7.0",  # Core testing package
+        "pytest>=6.0",  # Core testing package
         "pytest-xdist",  # multi-process runner
         "pytest-cov",  # Coverage analyzer plugin
         "hypothesis>=6.2.0,<7.0",  # Strategy-based fuzzer
     ],
     "lint": [
-        "black>=22.3.0,<23.0",  # auto-formatter and linter
-        "mypy>=0.950,<1.0",  # Static type analyzer
-        "flake8>=3.9.2,<4.0",  # Style linter
-        "isort>=5.10.1,<6.0",  # Import sorting linter
+        "black>=22.6.0",  # auto-formatter and linter
+        "mypy>=0.971",  # Static type analyzer
+        "flake8>=4.0.1",  # Style linter
+        "isort>=5.10.1",  # Import sorting linter
     ],
     "release": [  # `release` GitHub Action job uses this
         "setuptools",  # Installation tool
@@ -53,7 +53,7 @@ setup(
     url="https://github.com/ApeWorX/ape-vyper",
     include_package_data=True,
     install_requires=[
-        "eth-ape>=0.3.0,<0.4.0",
+        "eth-ape>=0.4.0,<0.5.0",
         "tqdm>=4.62.3,<5.0",
         "vvm>=0.1.0,<0.2.0",
     ],
