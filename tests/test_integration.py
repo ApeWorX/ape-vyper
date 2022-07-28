@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import List
 
 import pytest
-from semantic_version import Version
+from semantic_version import Version  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper.exceptions import VyperCompileError, VyperInstallError
