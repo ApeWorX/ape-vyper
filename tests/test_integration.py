@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import List
 
 import pytest
+from semantic_version import Version
 from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper.exceptions import VyperCompileError, VyperInstallError
@@ -56,6 +57,17 @@ def test_install_failure(compiler):
         compiler.compile([path])
 
     assert str(err.value) == "No available version to install."
+
+
+def test_get_version_map(project, compiler):
+    version_map = compiler.get_version_map([x for x in project.contracts_folder.iterdir()])
+    assert len(version_map) == 2
+    assert len(version_map[Version("0.2.8")]) == 1
+    assert version_map[Version("0.2.8")].pop().name == "contract.vy"
+
+    # Uses the latest when no pragma is specified
+    assert len(version_map[Version("0.3.4")]) == 1
+    assert version_map[Version("0.3.4")].pop().name == "contract_no_pragma.vy"
 
 
 @pytest.mark.xfail(
