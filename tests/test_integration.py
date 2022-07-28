@@ -49,3 +49,7 @@ def test_failure_from_install(compiler):
         compiler.compile([path])
 
     assert str(err.value) == "No available version to install."
+
+def test_hello_world(project):
+    breakpoint()
+    pass
