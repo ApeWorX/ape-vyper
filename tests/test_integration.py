@@ -50,6 +50,7 @@ def test_failure_from_install(compiler):
 
     assert str(err.value) == "No available version to install."
 
+
 def test_compiler_data_in_manifest(project):
     manifest = project.extract_manifest()
-    assert manifest
+    assert manifest.compilers
