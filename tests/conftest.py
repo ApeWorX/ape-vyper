@@ -1,3 +1,4 @@
+import os
 import shutil
 from contextlib import contextmanager
 from pathlib import Path
@@ -24,7 +25,10 @@ def _tmp_vvm_path(monkeypatch):
         shutil.rmtree(vvm_install_path, ignore_errors=True)
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(
+    scope="session",
+    autouse=os.environ.get("APE_VYPER_USE_SYSTEM_VYPER") is None,
+)
 def setup_session_vvm_path(request):
     """
     Creates a new, temporary installation path for vvm when the test suite is

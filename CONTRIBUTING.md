@@ -47,3 +47,12 @@ If you are opening a work-in-progress pull request to verify that it passes CI t
 [marking it as a draft](https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/about-pull-requests#draft-pull-requests).
 
 Join the Ethereum Python [Discord](https://discord.gg/PcEJ54yX) if you have any questions.
+
+## Testing
+
+By default, the test suite will use a new, temporary path for the Vyper compiler installations.
+This ensures that the tests always run from a clean slate without any relying on existing installations.
+
+If you wish to use your existing `~/.vvm` installations instead, you must set the environment variable `APE_VYPER_USE_SYSTEM_VYPER=1`.
+
+This will ensure that vvm's default path will be used, but any compilers installed as part of the tests will not be removed after tests have completed.
