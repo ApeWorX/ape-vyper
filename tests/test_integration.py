@@ -53,10 +53,8 @@ def test_compile_failures(contract_name, compiler):
 
 def test_install_failure(compiler):
     path = BASE_CONTRACTS_PATH / "failing_contracts" / "contract_unknown_pragma.vy"
-    with pytest.raises(VyperInstallError) as err:
+    with pytest.raises(VyperInstallError, match="No available version to install."):
         compiler.compile([path])
-
-    assert str(err.value) == "No available version to install."
 
 
 def test_get_version_map(project, compiler):
@@ -66,22 +64,19 @@ def test_get_version_map(project, compiler):
     assert version_map[Version("0.2.8")].pop().name == "contract.vy"
 
     # Uses the latest when no pragma is specified
-    assert len(version_map[Version("0.3.4")]) == 1
-    assert version_map[Version("0.3.4")].pop().name == "contract_no_pragma.vy"
+    assert len(version_map[Version("0.3.6")]) == 1
+    assert version_map[Version("0.3.6")].pop().name == "contract_no_pragma.vy"
 
 
-@pytest.mark.xfail(
-    reason="Remove xfail when https://github.com/ApeWorX/ape/pull/871 is released", strict=False
-)
 def test_compiler_data_in_manifest(project):
     _ = project.contracts
     manifest = project.extract_manifest()
     assert len(manifest.compilers) == 2
 
-    vyper_034 = [c for c in manifest.compilers if str(c.version) == "0.3.4"][0]
+    vyper_036 = [c for c in manifest.compilers if str(c.version) == "0.3.6"][0]
     vyper_028 = [c for c in manifest.compilers if str(c.version) == "0.2.8"][0]
 
-    assert vyper_034.name == "vyper"
+    assert vyper_036.name == "vyper"
     assert vyper_028.name == "vyper"
-    assert vyper_034.contractTypes == ["contract_no_pragma"]
+    assert vyper_036.contractTypes == ["contract_no_pragma"]
     assert vyper_028.contractTypes == ["contract"]
