@@ -134,10 +134,19 @@ class VyperCompiler(CompilerAPI):
         self, contract_filepaths: List[Path], base_path: Optional[Path] = None
     ) -> Dict[Version, Set[Path]]:
         version_map = {}
+        source_path_by_pragma_spec: Dict[Optional[NpmSpec], Set[Path]] = {}
         for path in contract_filepaths:
             source = path.read_text()
             pragma_spec = get_pragma_spec(source)
-            # check if we need to install specified compiler version
+
+            if pragma_spec in source_path_by_pragma_spec:
+                source_path_by_pragma_spec[pragma_spec].add(path)
+            else:
+                source_path_by_pragma_spec[pragma_spec] = {path}
+
+        # NOTE: Sort backwards through pragma specs to use later versions as default.
+        for pragma_sepc, path_set in sorted(source_path_by_pragma_spec.items(), reverse=True):
+            # Check if we need to install specified compiler version
             if pragma_spec and not pragma_spec.select(self.installed_versions):
                 vyper_version = pragma_spec.select(self.available_versions)
 
