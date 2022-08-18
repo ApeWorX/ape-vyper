@@ -10,7 +10,8 @@ from ape_vyper.exceptions import VyperCompileError, VyperInstallError
 BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
 
 # Currently, this is the only version specified from a pragma spec
-VERSION_FROM_PRAGMA = Version("0.2.8")
+OLDER_VERSION_FROM_PRAGMA = Version("0.2.8")
+VERSION_FROM_PRAGMA = Version("0.3.4")
 
 
 def contract_test_cases(passing: bool) -> List[str]:
@@ -31,9 +32,10 @@ EXPECTED_FAIL_MESSAGES = {
 
 def test_compile_project(project):
     contracts = project.load_contracts()
-    assert len(contracts) == 2
+    assert len(contracts) == 3
     assert contracts["contract"].source_id == "contract.vy"
     assert contracts["contract_no_pragma"].source_id == "contract_no_pragma.vy"
+    assert contracts["older_version"].source_id == "older_version.vy"
 
 
 @pytest.mark.parametrize("contract_name", PASSING_CONTRACT_NAMES)
@@ -62,13 +64,13 @@ def test_install_failure(compiler):
 def test_get_version_map(project, compiler):
     version_map = compiler.get_version_map([x for x in project.contracts_folder.iterdir()])
     assert len(version_map) == 2
-    assert len(version_map[VERSION_FROM_PRAGMA]) == 1
-    assert version_map[VERSION_FROM_PRAGMA].pop().name == "contract.vy"
-
-    # Uses the latest when no pragma is specified
-    latest_version = [v for v in version_map if v != VERSION_FROM_PRAGMA][0]
-    assert len(version_map[latest_version]) == 1
-    assert version_map[latest_version].pop().name == "contract_no_pragma.vy"
+    assert len(version_map[OLDER_VERSION_FROM_PRAGMA]) == 1
+    assert len(version_map[VERSION_FROM_PRAGMA]) == 2
+    assert version_map[OLDER_VERSION_FROM_PRAGMA] == {project.contracts_folder / "older_version.vy"}
+    assert version_map[VERSION_FROM_PRAGMA] == {
+        project.contracts_folder / "contract.vy",
+        project.contracts_folder / "contract_no_pragma.vy",
+    }
 
 
 def test_compiler_data_in_manifest(project):
@@ -76,10 +78,15 @@ def test_compiler_data_in_manifest(project):
     manifest = project.extract_manifest()
     assert len(manifest.compilers) == 2
 
-    vyper_028 = [c for c in manifest.compilers if str(c.version) == str(VERSION_FROM_PRAGMA)][0]
-    vyper_latest = [c for c in manifest.compilers if str(c.version) != str(VERSION_FROM_PRAGMA)][0]
+    vyper_034 = [c for c in manifest.compilers if str(c.version) == str(VERSION_FROM_PRAGMA)][0]
+    vyper_028 = [c for c in manifest.compilers if str(c.version) == str(OLDER_VERSION_FROM_PRAGMA)][
+        0
+    ]
 
-    assert vyper_latest.name == "vyper"
+    assert vyper_034.name == "vyper"
     assert vyper_028.name == "vyper"
-    assert vyper_latest.contractTypes == ["contract_no_pragma"]
-    assert vyper_028.contractTypes == ["contract"]
+    assert len(vyper_034.contractTypes) == 2
+    assert len(vyper_028.contractTypes) == 1
+    assert "contract_no_pragma" in vyper_034.contractTypes
+    assert "contract" in vyper_034.contractTypes
+    assert "older_version" in vyper_028.contractTypes
