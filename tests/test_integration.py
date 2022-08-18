@@ -1,12 +1,17 @@
 from pathlib import Path
 from typing import List
 
-import pytest  # type: ignore
+import pytest
+from semantic_version import Version  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper.exceptions import VyperCompileError, VyperInstallError
 
 BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
+
+# Currently, this is the only version specified from a pragma spec
+OLDER_VERSION_FROM_PRAGMA = Version("0.2.8")
+VERSION_FROM_PRAGMA = Version("0.3.4")
 
 
 def contract_test_cases(passing: bool) -> List[str]:
@@ -25,8 +30,16 @@ EXPECTED_FAIL_MESSAGES = {
 }
 
 
+def test_compile_project(project):
+    contracts = project.load_contracts()
+    assert len(contracts) == 3
+    assert contracts["contract"].source_id == "contract.vy"
+    assert contracts["contract_no_pragma"].source_id == "contract_no_pragma.vy"
+    assert contracts["older_version"].source_id == "older_version.vy"
+
+
 @pytest.mark.parametrize("contract_name", PASSING_CONTRACT_NAMES)
-def test_pass(contract_name, compiler):
+def test_compile_individual_contracts(contract_name, compiler):
     path = BASE_CONTRACTS_PATH / "passing_contracts" / contract_name
     assert compiler.compile([path])
 
@@ -34,18 +47,46 @@ def test_pass(contract_name, compiler):
 @pytest.mark.parametrize(
     "contract_name", [n for n in FAILING_CONTRACT_NAMES if n != "contract_unknown_pragma.vy"]
 )
-def test_failure_from_compile(contract_name, compiler):
+def test_compile_failures(contract_name, compiler):
     path = BASE_CONTRACTS_PATH / "failing_contracts" / contract_name
-    with pytest.raises(VyperCompileError) as err:
+    with pytest.raises(VyperCompileError, match=EXPECTED_FAIL_MESSAGES[path.stem]) as err:
         compiler.compile([path])
 
     assert isinstance(err.value.base_err, VyperError)
-    assert EXPECTED_FAIL_MESSAGES[path.stem] in str(err.value)
 
 
-def test_failure_from_install(compiler):
+def test_install_failure(compiler):
     path = BASE_CONTRACTS_PATH / "failing_contracts" / "contract_unknown_pragma.vy"
-    with pytest.raises(VyperInstallError) as err:
+    with pytest.raises(VyperInstallError, match="No available version to install."):
         compiler.compile([path])
 
-    assert str(err.value) == "No available version to install."
+
+def test_get_version_map(project, compiler):
+    version_map = compiler.get_version_map([x for x in project.contracts_folder.iterdir()])
+    assert len(version_map) == 2
+    assert len(version_map[OLDER_VERSION_FROM_PRAGMA]) == 1
+    assert len(version_map[VERSION_FROM_PRAGMA]) == 2
+    assert version_map[OLDER_VERSION_FROM_PRAGMA] == {project.contracts_folder / "older_version.vy"}
+    assert version_map[VERSION_FROM_PRAGMA] == {
+        project.contracts_folder / "contract.vy",
+        project.contracts_folder / "contract_no_pragma.vy",
+    }
+
+
+def test_compiler_data_in_manifest(project):
+    _ = project.contracts
+    manifest = project.extract_manifest()
+    assert len(manifest.compilers) == 2
+
+    vyper_034 = [c for c in manifest.compilers if str(c.version) == str(VERSION_FROM_PRAGMA)][0]
+    vyper_028 = [c for c in manifest.compilers if str(c.version) == str(OLDER_VERSION_FROM_PRAGMA)][
+        0
+    ]
+
+    assert vyper_034.name == "vyper"
+    assert vyper_028.name == "vyper"
+    assert len(vyper_034.contractTypes) == 2
+    assert len(vyper_028.contractTypes) == 1
+    assert "contract_no_pragma" in vyper_034.contractTypes
+    assert "contract" in vyper_034.contractTypes
+    assert "older_version" in vyper_028.contractTypes

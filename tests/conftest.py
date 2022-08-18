@@ -1,13 +1,19 @@
 import os
 import shutil
 from contextlib import contextmanager
+from distutils.dir_util import copy_tree
 from pathlib import Path
 from tempfile import mkdtemp
 
+import ape
 import pytest  # type: ignore
 import vvm  # type: ignore
 
 from ape_vyper.compiler import VyperCompiler
+
+# NOTE: Ensure that we don't use local paths for these
+ape.config.DATA_FOLDER = Path(mkdtemp()).resolve()
+ape.config.PROJECT_FOLDER = Path(mkdtemp()).resolve()
 
 
 @contextmanager
@@ -59,3 +65,27 @@ def temp_vvm_path(monkeypatch):
 @pytest.fixture
 def compiler():
     return VyperCompiler()
+
+
+@pytest.fixture
+def config():
+    return ape.config
+
+
+@pytest.fixture(autouse=True)
+def project(config):
+    project_source_dir = Path(__file__).parent
+    project_dest_dir = config.PROJECT_FOLDER / project_source_dir.name
+
+    # Delete build / .cache that may exist pre-copy
+    project_path = Path(__file__).parent
+    cache = project_path / ".build"
+
+    if cache.is_dir():
+        shutil.rmtree(cache)
+
+    copy_tree(project_source_dir.as_posix(), project_dest_dir.as_posix())
+    with config.using_project(project_dest_dir) as project:
+        yield project
+        if project._project._cache_folder.is_dir():
+            shutil.rmtree(project._project._cache_folder)
