@@ -109,7 +109,7 @@ class VyperCompiler(CompilerAPI):
                 try:
                     result = vvm.compile_source(
                         path.read_text(),
-                        base_path=base_folder,
+                        base_path=self.project_manager.interfaces_folder,
                         vyper_version=vyper_version,
                         vyper_binary=vyper_binary,
                     )["<stdin>"]
