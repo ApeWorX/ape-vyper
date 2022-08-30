@@ -100,7 +100,7 @@ class VyperCompiler(CompilerAPI):
         contract_types = []
         base_path = base_path or self.config_manager.contracts_folder
         version_map = self.get_version_map(
-            [p for p in contract_filepaths if p.parent != "interfaces"]
+            [p for p in contract_filepaths if p.parent.name != "interfaces"]
         )
 
         for vyper_version, source_paths in version_map.items():
