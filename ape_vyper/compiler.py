@@ -192,8 +192,8 @@ class VyperCompiler(CompilerAPI):
         settings = {}
         for version, data in compiler_data.items():
             version_settings = {"optimize": True}
-            if data["evmVersion"]:
-                version_settings["evmVersion"] = data["evmVersion"]
+            if data["evm_version"]:
+                version_settings["evmVersion"] = data["evm_version"]
 
             settings[version] = version_settings
 
