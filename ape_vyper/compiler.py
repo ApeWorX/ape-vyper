@@ -98,21 +98,20 @@ class VyperCompiler(CompilerAPI):
         self, contract_filepaths: List[Path], base_path: Optional[Path] = None
     ) -> List[ContractType]:
         contract_types = []
-        base_folder = base_path or self.config_manager.contracts_folder
-        version_map = self.get_version_map(contract_filepaths)
+        base_path = base_path or self.config_manager.contracts_folder
+        version_map = self.get_version_map(
+            [p for p in contract_filepaths if p.parent != "interfaces"]
+        )
 
         for vyper_version, source_paths in version_map.items():
             for path in source_paths:
-                if path.parent.name == "interfaces":
-                    continue
-
                 vyper_binary = (
                     shutil.which("vyper") if vyper_version is self.package_version else None
                 )
                 try:
                     result = vvm.compile_source(
                         path.read_text(),
-                        base_path=self.project_manager.contracts_folder,
+                        base_path=base_path,
                         vyper_version=vyper_version,
                         vyper_binary=vyper_binary,
                     )["<stdin>"]
@@ -120,8 +119,8 @@ class VyperCompiler(CompilerAPI):
                     raise VyperCompileError(err) from err
 
                 contract_path = (
-                    str(get_relative_path(path, base_folder))
-                    if base_folder and path.is_absolute()
+                    str(get_relative_path(path, base_path))
+                    if base_path and path.is_absolute()
                     else str(path)
                 )
 
