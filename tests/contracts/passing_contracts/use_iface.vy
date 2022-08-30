@@ -1,5 +1,5 @@
 # @version ^0.3.3
-import IFace as IFace
+import interfaces.IFace as IFace
 
 
 @external

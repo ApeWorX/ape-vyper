@@ -103,13 +103,16 @@ class VyperCompiler(CompilerAPI):
 
         for vyper_version, source_paths in version_map.items():
             for path in source_paths:
+                if path.parent.name == "interfaces":
+                    continue
+
                 vyper_binary = (
                     shutil.which("vyper") if vyper_version is self.package_version else None
                 )
                 try:
                     result = vvm.compile_source(
                         path.read_text(),
-                        base_path=self.project_manager.interfaces_folder,
+                        base_path=self.project_manager.contracts_folder,
                         vyper_version=vyper_version,
                         vyper_binary=vyper_binary,
                     )["<stdin>"]
