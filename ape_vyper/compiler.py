@@ -103,7 +103,8 @@ class VyperCompiler(CompilerAPI):
             [p for p in contract_filepaths if p.parent.name != "interfaces"]
         )
 
-        for vyper_version, source_paths in version_map.items():
+        for vyper_version in sorted(version_map, reverse=True):
+            source_paths = version_map[vyper_version]
             for path in source_paths:
                 vyper_binary = (
                     shutil.which("vyper") if vyper_version is self.package_version else None
@@ -146,23 +147,28 @@ class VyperCompiler(CompilerAPI):
             else:
                 _safe_append(source_path_by_pragma_spec, pragma_spec, path)
 
+        # Install all requires versions *before* building map
         for pragma_spec, path_set in source_path_by_pragma_spec.items():
-            installed_compatible_version = pragma_spec.select(self.installed_versions)
-            if installed_compatible_version:
-                _safe_append(version_map, installed_compatible_version, path_set)
+            can_install = pragma_spec.select(self.installed_versions)
+            if can_install:
                 continue
 
-            # Check if we need to install specified compiler version
             available_vyper_version = pragma_spec.select(self.available_versions)
             if available_vyper_version and available_vyper_version != self.package_version:
                 _install_vyper(available_vyper_version)
-                _safe_append(version_map, available_vyper_version, path_set)
+
             elif available_vyper_version:
                 raise VyperInstallError(
                     f"Unable to install vyper version '{available_vyper_version}'."
                 )
             else:
                 raise VyperInstallError("No available version to install.")
+
+        # By this point, all the of necessary versions will be installed.
+        # Thus, we will select only the best versions to use per source set.
+        for pragma_spec, path_set in source_path_by_pragma_spec.items():
+            version = pragma_spec.select(self.installed_versions)
+            _safe_append(version_map, version, path_set)
 
         if not self.installed_versions:
             # If we have no installed versions by this point, we need to install one.

@@ -32,7 +32,7 @@ EXPECTED_FAIL_MESSAGES = {
 
 def test_compile_project(project):
     contracts = project.load_contracts()
-    assert len(contracts) == 3
+    assert len(contracts) == 4
     assert contracts["contract"].source_id == "contract.vy"
     assert contracts["contract_no_pragma"].source_id == "contract_no_pragma.vy"
     assert contracts["older_version"].source_id == "older_version.vy"
@@ -62,31 +62,46 @@ def test_install_failure(compiler):
 
 
 def test_get_version_map(project, compiler):
-    version_map = compiler.get_version_map([x for x in project.contracts_folder.iterdir()])
-    assert len(version_map) == 2
+    vyper_files = [
+        x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
+    ]
+    version_map = compiler.get_version_map(vyper_files)
+    latest_version = max([v for v in version_map])
+    assert len(version_map) == 3
     assert len(version_map[OLDER_VERSION_FROM_PRAGMA]) == 1
-    assert len(version_map[VERSION_FROM_PRAGMA]) == 2
+    assert len(version_map[VERSION_FROM_PRAGMA]) == 1
     assert version_map[OLDER_VERSION_FROM_PRAGMA] == {project.contracts_folder / "older_version.vy"}
-    assert version_map[VERSION_FROM_PRAGMA] == {
-        project.contracts_folder / "contract.vy",
+    assert version_map[VERSION_FROM_PRAGMA] == {project.contracts_folder / "contract.vy"}
+    assert version_map[latest_version] == {
         project.contracts_folder / "contract_no_pragma.vy",
+        project.contracts_folder / "use_iface.vy",
     }
 
 
 def test_compiler_data_in_manifest(project):
     _ = project.contracts
     manifest = project.extract_manifest()
-    assert len(manifest.compilers) == 2
+    assert len(manifest.compilers) == 3
 
     vyper_034 = [c for c in manifest.compilers if str(c.version) == str(VERSION_FROM_PRAGMA)][0]
     vyper_028 = [c for c in manifest.compilers if str(c.version) == str(OLDER_VERSION_FROM_PRAGMA)][
         0
     ]
+    latest_version = max(
+        [
+            c
+            for c in manifest.compilers
+            if str(c.version) not in (vyper_028.version, vyper_034.version)
+        ]
+    )
 
-    assert vyper_034.name == "vyper"
-    assert vyper_028.name == "vyper"
-    assert len(vyper_034.contractTypes) == 2
+    for compiler in (vyper_028, vyper_034, latest_version):
+        assert compiler.name == "vyper"
+
+    assert len(vyper_034.contractTypes) == 1
     assert len(vyper_028.contractTypes) == 1
-    assert "contract_no_pragma" in vyper_034.contractTypes
+    assert len(latest_version.contractTypes) == 2
     assert "contract" in vyper_034.contractTypes
     assert "older_version" in vyper_028.contractTypes
+    assert "contract_no_pragma" in latest_version.contractTypes
+    assert "use_iface" in latest_version.contractTypes
