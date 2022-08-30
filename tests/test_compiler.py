@@ -94,12 +94,6 @@ def test_compiler_data_in_manifest(project):
     assert "contract" in vyper_034.contractTypes
     assert "older_version" in vyper_028.contractTypes
 
-    expected_base_path = str(project.contracts_folder)
-    assert vyper_034.settings["base_path"] == expected_base_path
-    assert vyper_028.settings["base_path"] == expected_base_path
-    assert vyper_034.settings["evm_version"] is None
-    assert vyper_028.settings["evm_version"] is None
-    assert vyper_034.settings["vyper_version"] == "0.3.4"
-    assert vyper_028.settings["vyper_version"] == "0.2.8"
-    assert vyper_034.settings["vyper_binary"] is None
-    assert vyper_028.settings["vyper_binary"] is None
+    for compiler in (vyper_034, vyper_028):
+        assert compiler.settings["evm_version"] == "London"
+        assert compiler.settings["optimize"] is True

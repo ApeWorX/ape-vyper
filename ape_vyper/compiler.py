@@ -191,7 +191,7 @@ class VyperCompiler(CompilerAPI):
         compiler_data = self._get_compiler_arguments(files_by_vyper_version, contracts_path)
         settings = {}
         for version, data in compiler_data.items():
-            version_settings = {"optimize": data["optimize"]}
+            version_settings = {"optimize": True}
             if data["evmVersion"]:
                 version_settings["evmVersion"] = data["evmVersion"]
 
@@ -210,7 +210,6 @@ class VyperCompiler(CompilerAPI):
                 "evm_version": self.evm_version,
                 "vyper_version": str(vyper_version),
                 "vyper_binary": bin_arg,
-                "optimize": True,
             }
 
         return arguments_map
