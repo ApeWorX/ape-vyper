@@ -93,7 +93,6 @@ def test_compiler_data_in_manifest(project):
     assert "contract_no_pragma" in vyper_034.contractTypes
     assert "contract" in vyper_034.contractTypes
     assert "older_version" in vyper_028.contractTypes
-
     for compiler in (vyper_034, vyper_028):
-        assert compiler.settings["evm_version"] == "London"
+        assert compiler.settings["evmVersion"] == "constantinople"
         assert compiler.settings["optimize"] is True

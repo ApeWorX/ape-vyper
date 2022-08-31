@@ -49,7 +49,9 @@ def get_pragma_spec(source: str) -> Optional[NpmSpec]:
 
 
 class VyperCompiler(CompilerAPI):
-    config = VyperConfig()
+    @property
+    def config(self) -> VyperConfig:
+        return self.config_manager.get_config("vyper")  # type: ignore
 
     @property
     def name(self) -> str:
