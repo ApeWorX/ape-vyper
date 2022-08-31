@@ -140,7 +140,9 @@ class VyperCompiler(CompilerAPI):
         version_map: Dict[Version, Set[Path]] = {}
         source_path_by_pragma_spec: Dict[NpmSpec, Set[Path]] = {}
         source_paths_without_pragma = set()
-        for path in contract_filepaths:
+
+        # Sort contract_filepaths to promote consistent, reproduce-able behavior
+        for path in sorted(contract_filepaths):
             pragma_spec = get_pragma_spec(path.read_text())
             if not pragma_spec:
                 source_paths_without_pragma.add(path)

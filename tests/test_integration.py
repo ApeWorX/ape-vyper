@@ -66,13 +66,12 @@ def test_get_version_map(project, compiler):
         x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
     ]
     version_map = compiler.get_version_map(vyper_files)
-    latest_version = max([v for v in version_map])
-    assert len(version_map) == 3
+    assert len(version_map) == 2
     assert len(version_map[OLDER_VERSION_FROM_PRAGMA]) == 1
-    assert len(version_map[VERSION_FROM_PRAGMA]) == 1
+    assert len(version_map[VERSION_FROM_PRAGMA]) == 3
     assert version_map[OLDER_VERSION_FROM_PRAGMA] == {project.contracts_folder / "older_version.vy"}
-    assert version_map[VERSION_FROM_PRAGMA] == {project.contracts_folder / "contract.vy"}
-    assert version_map[latest_version] == {
+    assert version_map[VERSION_FROM_PRAGMA] == {
+        project.contracts_folder / "contract.vy",
         project.contracts_folder / "contract_no_pragma.vy",
         project.contracts_folder / "use_iface.vy",
     }
@@ -81,27 +80,19 @@ def test_get_version_map(project, compiler):
 def test_compiler_data_in_manifest(project):
     _ = project.contracts
     manifest = project.extract_manifest()
-    assert len(manifest.compilers) == 3
+    assert len(manifest.compilers) == 2
 
     vyper_034 = [c for c in manifest.compilers if str(c.version) == str(VERSION_FROM_PRAGMA)][0]
     vyper_028 = [c for c in manifest.compilers if str(c.version) == str(OLDER_VERSION_FROM_PRAGMA)][
         0
     ]
-    latest_version = max(
-        [
-            c
-            for c in manifest.compilers
-            if str(c.version) not in (vyper_028.version, vyper_034.version)
-        ]
-    )
 
-    for compiler in (vyper_028, vyper_034, latest_version):
+    for compiler in (vyper_028, vyper_034):
         assert compiler.name == "vyper"
 
-    assert len(vyper_034.contractTypes) == 1
+    assert len(vyper_034.contractTypes) == 3
     assert len(vyper_028.contractTypes) == 1
-    assert len(latest_version.contractTypes) == 2
     assert "contract" in vyper_034.contractTypes
     assert "older_version" in vyper_028.contractTypes
-    assert "contract_no_pragma" in latest_version.contractTypes
-    assert "use_iface" in latest_version.contractTypes
+    assert "contract_no_pragma" in vyper_034.contractTypes
+    assert "use_iface" in vyper_034.contractTypes
