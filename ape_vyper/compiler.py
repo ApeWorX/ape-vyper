@@ -4,13 +4,17 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Union
 
 import vvm  # type: ignore
-from ape.api import ConfigDict
+from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
 from ape.types import ContractType
 from ape.utils import cached_property, get_relative_path
 from semantic_version import NpmSpec, Version  # type: ignore
 
 from .exceptions import VyperCompileError, VyperInstallError
+
+
+class VyperConfig(PluginConfig):
+    evm_version: Optional[str] = None
 
 
 def _install_vyper(version: Version):
@@ -45,11 +49,17 @@ def get_pragma_spec(source: str) -> Optional[NpmSpec]:
 
 
 class VyperCompiler(CompilerAPI):
-    config: ConfigDict = ConfigDict()
+    @property
+    def config(self) -> VyperConfig:
+        return self.config_manager.get_config("vyper")  # type: ignore
 
     @property
     def name(self) -> str:
         return "vyper"
+
+    @property
+    def evm_version(self) -> Optional[str]:
+        return self.config.evm_version
 
     def get_versions(self, all_paths: List[Path]) -> Set[str]:
         versions = set()
@@ -90,9 +100,12 @@ class VyperCompiler(CompilerAPI):
 
     @cached_property
     def vyper_json(self):
-        from vyper.cli import vyper_json  # type: ignore
+        try:
+            from vyper.cli import vyper_json  # type: ignore
 
-        return vyper_json
+            return vyper_json
+        except ImportError:
+            return None
 
     def compile(
         self, contract_filepaths: List[Path], base_path: Optional[Path] = None
@@ -102,28 +115,20 @@ class VyperCompiler(CompilerAPI):
         version_map = self.get_version_map(
             [p for p in contract_filepaths if p.parent.name != "interfaces"]
         )
+        arguments_map = self._get_compiler_arguments(version_map, base_path)
 
-        for vyper_version in sorted(version_map, reverse=True):
-            source_paths = version_map[vyper_version]
+        for vyper_version, source_paths in version_map.items():
+            arguments = arguments_map[vyper_version]
             for path in source_paths:
-                vyper_binary = (
-                    shutil.which("vyper") if vyper_version is self.package_version else None
-                )
                 try:
                     result = vvm.compile_source(
                         path.read_text(),
-                        base_path=base_path,
-                        vyper_version=vyper_version,
-                        vyper_binary=vyper_binary,
+                        **arguments,
                     )["<stdin>"]
                 except Exception as err:
                     raise VyperCompileError(err) from err
 
-                contract_path = (
-                    str(get_relative_path(path, base_path))
-                    if base_path and path.is_absolute()
-                    else str(path)
-                )
+                contract_path = str(get_relative_path(path.absolute(), base_path))
 
                 # NOTE: Vyper doesn't have internal contract type declarations, use filename
                 result["contractName"] = Path(contract_path).stem
@@ -178,9 +183,47 @@ class VyperCompiler(CompilerAPI):
             _install_vyper(max(self.available_versions))
 
         # Handle no-pragma sources
-        max_installed_vyper_version = max(self.installed_versions)
-        _safe_append(version_map, max_installed_vyper_version, source_paths_without_pragma)
+        if source_paths_without_pragma:
+            max_installed_vyper_version = (
+                max(version_map) if version_map else max(self.installed_versions)
+            )
+            _safe_append(version_map, max_installed_vyper_version, source_paths_without_pragma)
+
         return version_map
+
+    def get_compiler_settings(
+        self, contract_filepaths: List[Path], base_path: Optional[Path] = None
+    ) -> Dict[Version, Dict]:
+        contracts_path = base_path or self.config_manager.contracts_folder
+        files_by_vyper_version = self.get_version_map(contract_filepaths, base_path=contracts_path)
+        if not files_by_vyper_version:
+            return {}
+
+        compiler_data = self._get_compiler_arguments(files_by_vyper_version, contracts_path)
+        settings = {}
+        for version, data in compiler_data.items():
+            version_settings = {"optimize": True}
+            if data["evm_version"]:
+                version_settings["evmVersion"] = data["evm_version"]
+
+            settings[version] = version_settings
+
+        return settings
+
+    def _get_compiler_arguments(self, version_map: Dict, base_path: Path) -> Dict[Version, Dict]:
+        base_path = base_path or self.project_manager.contracts_folder
+        arguments_map = {}
+        vyper_bin = shutil.which("vyper")
+        for vyper_version, source_paths in version_map.items():
+            bin_arg = vyper_bin if vyper_version is self.package_version else None
+            arguments_map[vyper_version] = {
+                "base_path": str(base_path),
+                "evm_version": self.evm_version,
+                "vyper_version": str(vyper_version),
+                "vyper_binary": bin_arg,
+            }
+
+        return arguments_map
 
 
 def _safe_append(data: Dict, version: Union[Version, NpmSpec], paths: Union[Path, Set]):

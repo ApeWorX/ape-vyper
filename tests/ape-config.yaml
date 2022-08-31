@@ -1,2 +1,6 @@
 # Allows compile to work from the project-level
 contracts_folder: contracts/passing_contracts
+
+vyper:
+  # Using evm_version compatible with older and newer vyper versions.
+  evm_version: constantinople

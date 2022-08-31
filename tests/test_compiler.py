@@ -65,12 +65,15 @@ def test_get_version_map(project, compiler):
     vyper_files = [
         x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
     ]
-    version_map = compiler.get_version_map(vyper_files)
-    assert len(version_map) == 2
-    assert len(version_map[OLDER_VERSION_FROM_PRAGMA]) == 1
-    assert len(version_map[VERSION_FROM_PRAGMA]) == 3
-    assert version_map[OLDER_VERSION_FROM_PRAGMA] == {project.contracts_folder / "older_version.vy"}
-    assert version_map[VERSION_FROM_PRAGMA] == {
+    actual = compiler.get_version_map(vyper_files)
+    expected_versions = (OLDER_VERSION_FROM_PRAGMA, VERSION_FROM_PRAGMA)
+    unexpected_versions = [str(k) for k in actual.keys() if k not in expected_versions]
+    fail_msg = f"Unexpected versions founds: {''.join(unexpected_versions)}"
+    assert not unexpected_versions, fail_msg
+    assert len(actual[OLDER_VERSION_FROM_PRAGMA]) == 1
+    assert len(actual[VERSION_FROM_PRAGMA]) == 3
+    assert actual[OLDER_VERSION_FROM_PRAGMA] == {project.contracts_folder / "older_version.vy"}
+    assert actual[VERSION_FROM_PRAGMA] == {
         project.contracts_folder / "contract.vy",
         project.contracts_folder / "contract_no_pragma.vy",
         project.contracts_folder / "use_iface.vy",
@@ -80,7 +83,7 @@ def test_get_version_map(project, compiler):
 def test_compiler_data_in_manifest(project):
     _ = project.contracts
     manifest = project.extract_manifest()
-    assert len(manifest.compilers) == 2
+    assert len(manifest.compilers) == 2, manifest.compilers
 
     vyper_034 = [c for c in manifest.compilers if str(c.version) == str(VERSION_FROM_PRAGMA)][0]
     vyper_028 = [c for c in manifest.compilers if str(c.version) == str(OLDER_VERSION_FROM_PRAGMA)][
@@ -94,5 +97,6 @@ def test_compiler_data_in_manifest(project):
     assert len(vyper_028.contractTypes) == 1
     assert "contract" in vyper_034.contractTypes
     assert "older_version" in vyper_028.contractTypes
-    assert "contract_no_pragma" in vyper_034.contractTypes
-    assert "use_iface" in vyper_034.contractTypes
+    for compiler in (vyper_034, vyper_028):
+        assert compiler.settings["evmVersion"] == "constantinople"
+        assert compiler.settings["optimize"] is True
