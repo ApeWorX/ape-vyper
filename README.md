@@ -38,6 +38,16 @@ ape compile
 
 The `.vy` files in your project will compile into `ContractTypes` that you can deploy and interact with in Ape.
 
+### Interfaces
+
+You can not compile interface source files directly.
+Thus, you must place interface files in a directory named `interfaces` in your `contracts_folder` e.g. `contracts/interfaces/IFace.vy`.
+Then, these files can be imported in other `.vy` sources files via:
+
+```python
+import interfaces.IFace as IFace
+```
+
 ## Development
 
 Please see the [contributing guide](CONTRIBUTING.md) to learn more how to contribute to this project.

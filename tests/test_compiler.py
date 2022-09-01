@@ -32,7 +32,7 @@ EXPECTED_FAIL_MESSAGES = {
 
 def test_compile_project(project):
     contracts = project.load_contracts()
-    assert len(contracts) == 3
+    assert len(contracts) == 4
     assert contracts["contract"].source_id == "contract.vy"
     assert contracts["contract_no_pragma"].source_id == "contract_no_pragma.vy"
     assert contracts["older_version"].source_id == "older_version.vy"
@@ -62,17 +62,21 @@ def test_install_failure(compiler):
 
 
 def test_get_version_map(project, compiler):
-    actual = compiler.get_version_map([x for x in project.contracts_folder.iterdir()])
+    vyper_files = [
+        x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
+    ]
+    actual = compiler.get_version_map(vyper_files)
     expected_versions = (OLDER_VERSION_FROM_PRAGMA, VERSION_FROM_PRAGMA)
     unexpected_versions = [str(k) for k in actual.keys() if k not in expected_versions]
     fail_msg = f"Unexpected versions founds: {''.join(unexpected_versions)}"
     assert not unexpected_versions, fail_msg
     assert len(actual[OLDER_VERSION_FROM_PRAGMA]) == 1
-    assert len(actual[VERSION_FROM_PRAGMA]) == 2
+    assert len(actual[VERSION_FROM_PRAGMA]) == 3
     assert actual[OLDER_VERSION_FROM_PRAGMA] == {project.contracts_folder / "older_version.vy"}
     assert actual[VERSION_FROM_PRAGMA] == {
         project.contracts_folder / "contract.vy",
         project.contracts_folder / "contract_no_pragma.vy",
+        project.contracts_folder / "use_iface.vy",
     }
 
 
@@ -86,11 +90,11 @@ def test_compiler_data_in_manifest(project):
         0
     ]
 
-    assert vyper_034.name == "vyper"
-    assert vyper_028.name == "vyper"
-    assert len(vyper_034.contractTypes) == 2
+    for compiler in (vyper_028, vyper_034):
+        assert compiler.name == "vyper"
+
+    assert len(vyper_034.contractTypes) == 3
     assert len(vyper_028.contractTypes) == 1
-    assert "contract_no_pragma" in vyper_034.contractTypes
     assert "contract" in vyper_034.contractTypes
     assert "older_version" in vyper_028.contractTypes
     for compiler in (vyper_034, vyper_028):
