@@ -120,11 +120,10 @@ class VyperCompiler(CompilerAPI):
         for vyper_version, source_paths in version_map.items():
             arguments = arguments_map[vyper_version]
             for path in source_paths:
+                source = path.read_text()
+
                 try:
-                    result = vvm.compile_source(
-                        path.read_text(),
-                        **arguments,
-                    )["<stdin>"]
+                    result = vvm.compile_source(source, **arguments)["<stdin>"]
                 except Exception as err:
                     raise VyperCompileError(err) from err
 
@@ -137,6 +136,14 @@ class VyperCompiler(CompilerAPI):
                 result["runtimeBytecode"] = {"bytecode": result["bytecode_runtime"]}
                 result["sourcemap"] = result["source_map"]["pc_pos_map_compressed"]
                 result["pcmap"] = result["source_map"]["pc_pos_map"]
+
+                dev_messages = {}
+                for line_num, line in enumerate(source.split("\n")):
+                    if match := re.search(r"#\s*dev\s*:\s*(.+)", line):
+                        dev_messages[line_num + 1] = match.group(1).strip()
+
+                result["dev_messages"] = dev_messages
+
                 contract_types.append(ContractType.parse_obj(result))
 
         return contract_types
