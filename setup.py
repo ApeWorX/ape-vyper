@@ -54,6 +54,7 @@ setup(
     include_package_data=True,
     install_requires=[
         "eth-ape>=0.5.0,<0.6.0",
+        "ethpm-types>=0.3.12,<0.4.0",
         "tqdm>=4.62.3,<5.0",
         "vvm>=0.1.0,<0.2.0",
     ],
