@@ -138,7 +138,7 @@ class VyperCompiler(CompilerAPI):
                 result["pcmap"] = result["source_map"]["pc_pos_map"]
 
                 dev_messages = {}
-                dev_msg_pattern = re.compile(r"#\s*dev\s*:\s*(.+)")
+                dev_msg_pattern = re.compile(r"#\s*(dev:.+)")
                 for line_index, line in enumerate(source.split("\n")):
                     if match := re.search(dev_msg_pattern, line):
                         dev_messages[line_index + 1] = match.group(1).strip()

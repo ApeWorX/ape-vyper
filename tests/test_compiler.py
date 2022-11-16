@@ -119,10 +119,9 @@ def test_compile_parse_dev_messages(compiler):
     contract = result[0]
 
     assert contract.dev_messages is not None
-    assert len(contract.dev_messages) == 5
-    assert contract.dev_messages[6] == "foo"
-    assert contract.dev_messages[9] == "bar"
-    assert contract.dev_messages[16] == "baz"
-    assert contract.dev_messages[20] == "odd spacing"
-    assert contract.dev_messages[23] == "你好，猿"
-    assert 26 not in contract.dev_messages
+    assert len(contract.dev_messages) == 4
+    assert contract.dev_messages[6] == "dev: foo"
+    assert contract.dev_messages[9] == "dev: bar"
+    assert contract.dev_messages[16] == "dev: baz"
+    assert contract.dev_messages[20] == "dev: 你好，猿"
+    assert 23 not in contract.dev_messages

@@ -16,9 +16,6 @@ def bar() -> bool:
 def baz() -> bool: # dev: baz
     return True
 
-# Test that whitespacing is non-specific
-#          dev    :      odd spacing
-
 # Test non-ascii character matching
 # dev: 你好，猿
 
