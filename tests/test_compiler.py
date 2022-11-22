@@ -11,7 +11,7 @@ BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
 
 # Currently, this is the only version specified from a pragma spec
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.8")
-VERSION_FROM_PRAGMA = Version("0.3.4")
+VERSION_FROM_PRAGMA = Version("0.3.7")
 
 
 def contract_test_cases(passing: bool) -> List[str]:
@@ -19,7 +19,7 @@ def contract_test_cases(passing: bool) -> List[str]:
     Returns test-case names for outputting nicely with pytest.
     """
     suffix = "passing_contracts" if passing else "failing_contracts"
-    return [p.name for p in (BASE_CONTRACTS_PATH / suffix).glob("*.vy")]
+    return [p.name for p in (BASE_CONTRACTS_PATH / suffix).glob("*.vy") if p.is_file()]
 
 
 PASSING_CONTRACT_NAMES = contract_test_cases(True)
@@ -67,9 +67,15 @@ def test_get_version_map(project, compiler):
     ]
     actual = compiler.get_version_map(vyper_files)
     expected_versions = (OLDER_VERSION_FROM_PRAGMA, VERSION_FROM_PRAGMA)
-    unexpected_versions = [str(k) for k in actual.keys() if k not in expected_versions]
-    fail_msg = f"Unexpected versions founds: {''.join(unexpected_versions)}"
-    assert not unexpected_versions, fail_msg
+
+    for version, sources in actual.items():
+        if version in expected_versions:
+            continue
+
+        sources = ", ".join([p.name for p in actual[version]])
+        fail_message = f"Unexpected version '{version}' with sources: {sources}"
+        pytest.fail(fail_message)
+
     assert len(actual[OLDER_VERSION_FROM_PRAGMA]) == 1
     assert len(actual[VERSION_FROM_PRAGMA]) == 4
     assert actual[OLDER_VERSION_FROM_PRAGMA] == {project.contracts_folder / "older_version.vy"}

@@ -6,7 +6,7 @@ from pathlib import Path
 from tempfile import mkdtemp
 
 import ape
-import pytest  # type: ignore
+import pytest
 import vvm  # type: ignore
 
 from ape_vyper.compiler import VyperCompiler
