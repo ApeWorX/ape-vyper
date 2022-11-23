@@ -207,7 +207,7 @@ class VyperCompiler(CompilerAPI):
     ) -> Dict[Version, Dict]:
         contracts_path = base_path or self.config_manager.contracts_folder
 
-        # Currently needed because of a bug in Ape core 0.5.5.
+        # Currently needed because of a bug in Ape core 0.5.6.
         only_files = []
         for path in contract_filepaths:
             if path.is_dir():
