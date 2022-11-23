@@ -1,11 +1,12 @@
 import re
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, List, Optional, Set, Union, cast
 
 import vvm  # type: ignore
 from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
+from ape.logging import logger
 from ape.types import ContractType
 from ape.utils import cached_property, get_relative_path
 from semantic_version import NpmSpec, Version  # type: ignore
@@ -51,7 +52,7 @@ def get_pragma_spec(source: str) -> Optional[NpmSpec]:
 class VyperCompiler(CompilerAPI):
     @property
     def config(self) -> VyperConfig:
-        return self.config_manager.get_config("vyper")  # type: ignore
+        return cast(VyperConfig, self.config_manager.get_config("vyper"))
 
     @property
     def name(self) -> str:
@@ -205,7 +206,18 @@ class VyperCompiler(CompilerAPI):
         self, contract_filepaths: List[Path], base_path: Optional[Path] = None
     ) -> Dict[Version, Dict]:
         contracts_path = base_path or self.config_manager.contracts_folder
-        files_by_vyper_version = self.get_version_map(contract_filepaths, base_path=contracts_path)
+
+        # Currently needed because of a bug in Ape core 0.5.5.
+        only_files = []
+        for path in contract_filepaths:
+            if path.is_dir():
+                logger.error(
+                    f"Unable to get compiler settings for directory '{path.name}'. Skipping."
+                )
+            else:
+                only_files.append(path)
+
+        files_by_vyper_version = self.get_version_map(only_files, base_path=contracts_path)
         if not files_by_vyper_version:
             return {}
 
