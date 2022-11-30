@@ -11,7 +11,7 @@ BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
 
 # Currently, this is the only version specified from a pragma spec
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.8")
-VERSION_FROM_PRAGMA = Version("0.3.8")
+VERSION_FROM_PRAGMA = Version("0.3.7")
 
 
 def contract_test_cases(passing: bool) -> List[str]:
