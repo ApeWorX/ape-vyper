@@ -15,7 +15,7 @@ class VyperCompileError(CompilerError):
     def __init__(self, err: Exception):
         self.base_err = err
         if hasattr(err, "stderr_data"):
-            message = err.stderr_data  # type: ignore
+            message = err.stderr_data
         else:
             message = str(err)
 

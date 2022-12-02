@@ -1,4 +1,4 @@
-# @version 0.3.4
+# @version 0.3.7
 
 @external
 def foo1() -> bool:

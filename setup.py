@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from setuptools import find_packages, setup  # type: ignore
+from setuptools import find_packages, setup
 
 extras_require = {
     "test": [  # `test` GitHub Action jobs uses this
@@ -10,9 +10,10 @@ extras_require = {
         "hypothesis>=6.2.0,<7.0",  # Strategy-based fuzzer
     ],
     "lint": [
-        "black>=22.6.0",  # auto-formatter and linter
-        "mypy==0.982",  # Static type analyzer
-        "flake8>=4.0.1",  # Style linter
+        "black>=22.10.0",  # auto-formatter and linter
+        "mypy>=0.991",  # Static type analyzer
+        "types-setuptools",  # Needed due to mypy typeshed
+        "flake8>=5.0.4",  # Style linter
         "isort>=5.10.1",  # Import sorting linter
     ],
     "release": [  # `release` GitHub Action job uses this
@@ -53,8 +54,8 @@ setup(
     url="https://github.com/ApeWorX/ape-vyper",
     include_package_data=True,
     install_requires=[
-        "eth-ape>=0.5.0,<0.6.0",
-        "ethpm-types>=0.3.12,<0.4.0",
+        "eth-ape>=0.5.7,<0.6.0",
+        "ethpm-types",  # Use same version as eth-ape
         "tqdm>=4.62.3,<5.0",
         "vvm>=0.1.0,<0.2.0",
     ],

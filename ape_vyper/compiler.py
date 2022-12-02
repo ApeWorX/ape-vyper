@@ -1,7 +1,7 @@
 import re
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, List, Optional, Set, Union, cast
 
 import vvm  # type: ignore
 from ape.api import PluginConfig
@@ -51,7 +51,7 @@ def get_pragma_spec(source: str) -> Optional[NpmSpec]:
 class VyperCompiler(CompilerAPI):
     @property
     def config(self) -> VyperConfig:
-        return self.config_manager.get_config("vyper")  # type: ignore
+        return cast(VyperConfig, self.config_manager.get_config("vyper"))
 
     @property
     def name(self) -> str:
