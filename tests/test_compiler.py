@@ -32,7 +32,9 @@ EXPECTED_FAIL_MESSAGES = {
 
 def test_compile_project(project):
     contracts = project.load_contracts()
-    assert len(contracts) == 5
+    assert len(contracts) == len(
+        [p.name for p in (BASE_CONTRACTS_PATH / "passing_contracts").glob("*.vy") if p.is_file()]
+    )
     assert contracts["contract"].source_id == "contract.vy"
     assert contracts["contract_no_pragma"].source_id == "contract_no_pragma.vy"
     assert contracts["older_version"].source_id == "older_version.vy"
@@ -77,13 +79,14 @@ def test_get_version_map(project, compiler):
         pytest.fail(fail_message)
 
     assert len(actual[OLDER_VERSION_FROM_PRAGMA]) == 1
-    assert len(actual[VERSION_FROM_PRAGMA]) == 4
+    assert len(actual[VERSION_FROM_PRAGMA]) == 5
     assert actual[OLDER_VERSION_FROM_PRAGMA] == {project.contracts_folder / "older_version.vy"}
     assert actual[VERSION_FROM_PRAGMA] == {
         project.contracts_folder / "contract.vy",
         project.contracts_folder / "contract_no_pragma.vy",
         project.contracts_folder / "contract_with_dev_messages.vy",
         project.contracts_folder / "use_iface.vy",
+        project.contracts_folder / "use_iface2.vy",
     }
 
 
@@ -100,7 +103,7 @@ def test_compiler_data_in_manifest(project):
     for compiler in (vyper_028, vyper_034):
         assert compiler.name == "vyper"
 
-    assert len(vyper_034.contractTypes) == 4
+    assert len(vyper_034.contractTypes) == 5
     assert len(vyper_028.contractTypes) == 1
     assert "contract" in vyper_034.contractTypes
     assert "older_version" in vyper_028.contractTypes
