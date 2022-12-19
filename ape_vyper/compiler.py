@@ -73,15 +73,28 @@ class VyperCompiler(CompilerAPI):
             for line in content:
                 if line.startswith("import "):
                     import_line_parts = line.replace("import ", "").split(" ")
-                    import_source_id = f"{Path(import_line_parts[0].replace('.', os.path.sep))}.vy"
-                    import_path = base_path / import_source_id
-                    if not import_path.is_file():
-                        raise VyperCompilerPluginError(f"Missing import source '{import_path}'.")
+                    import_source_id = (
+                        f"{import_line_parts[0].strip().replace('.', os.path.sep)}.vy"
+                    )
 
-                    if source_id not in import_map:
-                        import_map[source_id] = [import_source_id]
-                    elif import_source_id not in import_map[source_id]:
-                        import_map[source_id].append(source_id)
+                elif line.startswith("from ") and " import " in line:
+                    import_line_parts = line.replace("from ", "").split(" ")
+                    module_name = import_line_parts[0].strip().replace(".", os.path.sep)
+                    file_name = f"{import_line_parts[2].strip()}.vy"
+                    import_source_id = os.path.sep.join([module_name, file_name])
+
+                else:
+                    # Not an import line
+                    continue
+
+                import_path = base_path / import_source_id
+                if not import_path.is_file():
+                    raise VyperCompilerPluginError(f"Missing import source '{import_path}'.")
+
+                if source_id not in import_map:
+                    import_map[source_id] = [import_source_id]
+                elif import_source_id not in import_map[source_id]:
+                    import_map[source_id].append(source_id)
 
         return import_map
 

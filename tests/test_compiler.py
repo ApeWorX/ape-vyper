@@ -139,3 +139,4 @@ def test_get_imports(compiler, project):
     ]
     actual = compiler.get_imports(vyper_files)
     assert actual["use_iface.vy"] == ["interfaces/IFace.vy"]
+    assert actual["use_iface2.vy"] == ["interfaces/IFace.vy"]
