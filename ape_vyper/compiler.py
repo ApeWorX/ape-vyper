@@ -62,7 +62,7 @@ class VyperCompiler(CompilerAPI):
     def evm_version(self) -> Optional[str]:
         return self.config.evm_version
 
-    def get_imports(  # type: ignore[empty-body]
+    def get_imports(
         self, contract_filepaths: List[Path], base_path: Optional[Path] = None
     ) -> Dict[str, List[str]]:
         base_path = (base_path or self.project_manager.contracts_folder).absolute()
