@@ -131,3 +131,11 @@ def test_compile_parse_dev_messages(compiler):
     assert contract.dev_messages[16] == "dev: baz"
     assert contract.dev_messages[20] == "dev: 你好，猿"
     assert 23 not in contract.dev_messages
+
+
+def test_get_imports(compiler, project):
+    vyper_files = [
+        x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
+    ]
+    actual = compiler.get_imports(vyper_files)
+    assert actual["use_iface.vy"] == ["interfaces/IFace.vy"]

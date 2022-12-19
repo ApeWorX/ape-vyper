@@ -1,13 +1,19 @@
 from ape.exceptions import CompilerError
 
 
-class VyperInstallError(CompilerError):
+class VyperCompilerPluginError(CompilerError):
+    """
+    An error raised in the Vyper compiler.
+    """
+
+
+class VyperInstallError(VyperCompilerPluginError):
     """
     An error raised failing to install Vyper.
     """
 
 
-class VyperCompileError(CompilerError):
+class VyperCompileError(VyperCompilerPluginError):
     """
     A compiler-specific error in Vyper.
     """
