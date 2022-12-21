@@ -1,3 +1,4 @@
+import os
 import re
 import shutil
 from pathlib import Path
@@ -10,7 +11,7 @@ from ape.types import ContractType
 from ape.utils import cached_property, get_relative_path
 from semantic_version import NpmSpec, Version  # type: ignore
 
-from .exceptions import VyperCompileError, VyperInstallError
+from .exceptions import VyperCompileError, VyperCompilerPluginError, VyperInstallError
 
 
 class VyperConfig(PluginConfig):
@@ -60,6 +61,42 @@ class VyperCompiler(CompilerAPI):
     @property
     def evm_version(self) -> Optional[str]:
         return self.config.evm_version
+
+    def get_imports(
+        self, contract_filepaths: List[Path], base_path: Optional[Path] = None
+    ) -> Dict[str, List[str]]:
+        base_path = (base_path or self.project_manager.contracts_folder).absolute()
+        import_map = {}
+        for path in contract_filepaths:
+            content = path.read_text().splitlines()
+            source_id = str(get_relative_path(path.absolute(), base_path.absolute()))
+            for line in content:
+                if line.startswith("import "):
+                    import_line_parts = line.replace("import ", "").split(" ")
+                    import_source_id = (
+                        f"{import_line_parts[0].strip().replace('.', os.path.sep)}.vy"
+                    )
+
+                elif line.startswith("from ") and " import " in line:
+                    import_line_parts = line.replace("from ", "").split(" ")
+                    module_name = import_line_parts[0].strip().replace(".", os.path.sep)
+                    file_name = f"{import_line_parts[2].strip()}.vy"
+                    import_source_id = os.path.sep.join([module_name, file_name])
+
+                else:
+                    # Not an import line
+                    continue
+
+                import_path = base_path / import_source_id
+                if not import_path.is_file():
+                    raise VyperCompilerPluginError(f"Missing import source '{import_path}'.")
+
+                if source_id not in import_map:
+                    import_map[source_id] = [import_source_id]
+                elif import_source_id not in import_map[source_id]:
+                    import_map[source_id].append(source_id)
+
+        return import_map
 
     def get_versions(self, all_paths: List[Path]) -> Set[str]:
         versions = set()
