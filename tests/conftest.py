@@ -87,5 +87,5 @@ def project(config):
     copy_tree(project_source_dir.as_posix(), project_dest_dir.as_posix())
     with config.using_project(project_dest_dir) as project:
         yield project
-        if project._project._cache_folder.is_dir():
-            shutil.rmtree(project._project._cache_folder)
+        if project.local_project._cache_folder.is_dir():
+            shutil.rmtree(project.local_project._cache_folder)
