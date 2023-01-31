@@ -10,11 +10,14 @@ extras_require = {
         "hypothesis>=6.2.0,<7.0",  # Strategy-based fuzzer
     ],
     "lint": [
-        "black>=22.10.0",  # auto-formatter and linter
+        "black>=22.12.0",  # auto-formatter and linter
         "mypy>=0.991",  # Static type analyzer
         "types-setuptools",  # Needed due to mypy typeshed
         "flake8>=5.0.4",  # Style linter
         "isort>=5.10.1",  # Import sorting linter
+        "mdformat>=0.7.16",  # Auto-formatter for markdown
+        "mdformat-gfm>=0.3.5",  # Needed for formatting GitHub-flavored markdown
+        "mdformat-frontmatter>=0.4.1",  # Needed for frontmatters-style headers in issue templates
     ],
     "release": [  # `release` GitHub Action job uses this
         "setuptools",  # Installation tool
@@ -54,10 +57,10 @@ setup(
     url="https://github.com/ApeWorX/ape-vyper",
     include_package_data=True,
     install_requires=[
-        "eth-ape>=0.5.7,<0.6.0",
+        "eth-ape>=0.6.0,<0.7",
         "ethpm-types",  # Use same version as eth-ape
-        "tqdm>=4.62.3,<5.0",
-        "vvm>=0.1.0,<0.2.0",
+        "tqdm",  # Use same version as eth-ape
+        "vvm>=0.1.0,<0.2",
     ],
     python_requires=">=3.8,<3.11",
     extras_require=extras_require,

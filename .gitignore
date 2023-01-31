@@ -1,7 +1,3 @@
-.DS_Store
-*.swp
-**/.build
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -120,3 +116,7 @@ dmypy.json
 
 # setuptools-scm
 version.py
+
+**/.DS_Store
+*.swp
+*.swo
