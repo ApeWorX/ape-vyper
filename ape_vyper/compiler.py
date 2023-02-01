@@ -7,11 +7,12 @@ from typing import Dict, List, Optional, Set, Union, cast
 import vvm  # type: ignore
 from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
+from ape.logging import logger
 from ape.types import ContractType
 from ape.utils import cached_property, get_relative_path
 from semantic_version import NpmSpec, Version  # type: ignore
 
-from .exceptions import VyperCompileError, VyperCompilerPluginError, VyperInstallError
+from .exceptions import VyperCompileError, VyperInstallError
 
 
 class VyperConfig(PluginConfig):
@@ -88,8 +89,8 @@ class VyperCompiler(CompilerAPI):
                     continue
 
                 import_path = base_path / import_source_id
-                if not import_path.is_file():
-                    raise VyperCompilerPluginError(f"Missing import source '{import_path}'.")
+                if not import_path.is_file() and not str(import_source_id).startswith("vyper"):
+                    logger.error(f"Missing import source '{import_path}'.")
 
                 if source_id not in import_map:
                     import_map[source_id] = [import_source_id]
