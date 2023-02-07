@@ -5,10 +5,11 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Union, cast
 
 import vvm  # type: ignore
-from ape.api import PluginConfig
+from ape.api import PluginConfig, ReceiptAPI
 from ape.api.compiler import CompilerAPI
+from ape.exceptions import APINotImplementedError
 from ape.logging import logger
-from ape.types import ContractType
+from ape.types import ContractType, LineTraceNode, PCMap
 from ape.utils import cached_property, get_relative_path
 from semantic_version import NpmSpec, Version  # type: ignore
 
@@ -177,7 +178,7 @@ class VyperCompiler(CompilerAPI):
 
                 dev_messages = {}
                 dev_msg_pattern = re.compile(r"#\s*(dev:.+)")
-                for line_index, line in enumerate(source.split("\n")):
+                for line_index, line in enumerate(source.splitlines()):
                     if match := re.search(dev_msg_pattern, line):
                         dev_messages[line_index + 1] = match.group(1).strip()
 
@@ -257,6 +258,173 @@ class VyperCompiler(CompilerAPI):
             settings[version] = version_settings
 
         return settings
+
+    def get_line_trace(
+        self, receipt: ReceiptAPI, contract_type: ContractType
+    ) -> List[LineTraceNode]:
+        source_id = contract_type.source_id
+        if not source_id:
+            # Likely not a local contract.
+            return []
+
+        source = self.project_manager.lookup_path(Path(source_id))
+        if not source:
+            # Likely not a local contract.
+            return []
+
+        ext = Path(source_id).suffix
+        if ext != ".vy":
+            return self._get_line_trace_via_different_compiler(ext, receipt, contract_type)
+
+        call_tree = receipt.call_tree
+        if not call_tree:
+            return []
+
+        lines: List[LineTraceNode] = []
+
+        # src_id -> PC -> line_no -> line_str
+        root_src_maps: Dict[str, Dict[int, Dict[int, str]]] = {}
+
+        last_depth = 1
+        current_call = call_tree.copy()
+        previous_call = None
+        for trace in receipt.trace:
+            if "PUSH" in trace.op:
+                # Ignore PUSH opcodes to attempt to preserve a more-human
+                # friendly ordering of the lines. Else, things seem out-of
+                # -order, maybe for compiler reasons.
+                continue
+
+            elif trace.depth > last_depth and current_call.calls:
+                # Made a call
+                previous_call = current_call.copy()
+                current_call = current_call.calls.pop(0)
+
+            elif trace.depth > last_depth:
+                # Not sure if is possible.
+                continue
+
+            elif trace.depth < last_depth:
+                # Popped a call
+                current_call = previous_call
+
+            last_depth = trace.depth
+
+            # Find the address to get the contract type.
+            if call_tree.contract_id.startswith("0x"):
+                address = call_tree.contract_id
+            else:
+                # Handle enriched call tree.
+                address_bytes = current_call.raw["address"]
+                address = self.provider.network.ecosystem.decode_address(address_bytes)
+
+            contract_type = self.chain_manager.contracts.get(address)
+            if not contract_type or not contract_type.source_id:
+                # Unable to add source lines without contract type.
+                continue
+
+            source_id = str(contract_type.source_id)
+            ext = Path(source_id).suffix
+            if ext != ".vy":
+                return self._get_line_trace_via_different_compiler(ext, receipt, contract_type)
+            elif source_id in root_src_maps:
+                src_map = root_src_maps[source_id]
+            else:
+                # Cache for accessing next time faster.
+                src_map = self.project_manager.get_pc_map(contract_type)
+                root_src_maps[source_id] = src_map
+
+            if trace.pc not in src_map or not src_map[trace.pc]:
+                continue
+
+            src_material = src_map[trace.pc]
+
+            # Note the method called.
+            method_id = current_call.enrich(in_place=False).method_id
+
+            if not len(lines):
+                # First set being added; no merging necessary.
+                node = LineTraceNode(source_id=source_id, method_id=method_id, lines=src_material)
+                lines.append(node)
+
+            else:
+                # Merge with previous line data.
+                last_node = lines[-1]
+                if last_node.source_id == source_id and last_node.method_id == method_id:
+                    if src_material == last_node.lines:
+                        # Already covered.
+                        continue
+
+                    elif last_node.lines:
+                        # Check if continuing from last node.
+                        last_lines = list(last_node.lines.keys())
+                        first_new_line_num = list(src_material.keys())[0]
+                        if first_new_line_num in range(
+                            last_lines[0], last_lines[0] + len(last_lines) + 1
+                        ):
+                            last_node.lines = {**last_node.lines, **src_material}
+                            continue
+                else:
+                    # Is a new jump.
+                    node = LineTraceNode(
+                        source_id=source_id, method_id=method_id, lines=src_material
+                    )
+                    lines.append(node)
+
+        return lines
+
+    def get_pc_map(self, contract_type: ContractType) -> PCMap:
+        if not contract_type.pcmap:
+            # Compiler does not support PC Map
+            # TODO: Use alternative means
+            return {}
+
+        pc_map = contract_type.pcmap.parse()
+        source_id = contract_type.source_id
+        if not source_id:
+            # Not a receipt made to a contract in the active project.
+            return {}
+
+        source = self.project_manager.lookup_path(Path(source_id))
+        if not source:
+            # Not a receipt made to a contract in the active project.
+            return {}
+
+        src_map: PCMap = {}
+        content = source.read_text().splitlines()
+        for pc, item in pc_map.items():
+            if item.line_start is None:
+                continue
+
+            start = item.line_start
+            if item.line_end is None:
+                stop = start + 1
+            else:
+                stop = item.line_end + 1
+
+            lines = {}
+            for line_no in range(start, stop):
+                if line_no < len(content) and content[line_no]:
+                    lines[line_no] = content[line_no]
+
+            if lines:
+                src_map[pc] = lines
+
+        return src_map
+
+    def _get_line_trace_via_different_compiler(
+        self, ext: str, receipt: ReceiptAPI, contract_type: ContractType
+    ) -> List[LineTraceNode]:
+        if ext not in self.compiler_manager.registered_compilers:
+            return []
+
+        # Potentially got here from a sub-call.
+        # Attempt to use another compiler
+        compiler = self.compiler_manager.registered_compilers[ext]
+        try:
+            return compiler.get_line_trace(receipt, contract_type)
+        except APINotImplementedError:
+            return []
 
     def _get_compiler_arguments(self, version_map: Dict, base_path: Path) -> Dict[Version, Dict]:
         base_path = base_path or self.project_manager.contracts_folder

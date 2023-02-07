@@ -15,6 +15,8 @@ from ape_vyper.compiler import VyperCompiler
 ape.config.DATA_FOLDER = Path(mkdtemp()).resolve()
 ape.config.PROJECT_FOLDER = Path(mkdtemp()).resolve()
 
+GETH_URI = "http://127.0.0.1:5550"
+
 
 @contextmanager
 def _tmp_vvm_path(monkeypatch):
@@ -68,8 +70,18 @@ def compiler():
 
 
 @pytest.fixture
+def accounts():
+    return ape.accounts
+
+
+@pytest.fixture
 def config():
     return ape.config
+
+
+@pytest.fixture
+def networks():
+    return ape.networks
 
 
 @pytest.fixture(autouse=True)
@@ -89,3 +101,14 @@ def project(config):
         yield project
         if project.local_project._cache_folder.is_dir():
             shutil.rmtree(project.local_project._cache_folder)
+
+
+@pytest.fixture
+def geth_provider(networks):
+    if not networks.active_provider or networks.provider.name != "geth":
+        with networks.ethereum.local.use_provider(
+            "geth", provider_settings={"uri": GETH_URI}
+        ) as provider:
+            yield provider
+    else:
+        yield networks.provider

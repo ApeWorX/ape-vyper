@@ -143,3 +143,15 @@ def test_get_imports(compiler, project):
     actual = compiler.get_imports(vyper_files)
     assert actual["use_iface.vy"] == ["interfaces/IFace.vy"]
     assert actual["use_iface2.vy"] == ["interfaces/IFace.vy"]
+
+
+def test_line_trace(accounts, project, geth_provider):
+    owner = accounts.test_accounts[0]
+    contract = owner.deploy(project.get_contract("contract"))
+    receipt = contract.foo2(123, owner, sender=owner)
+    actual = receipt.line_trace
+    assert actual
+
+    main = [x for x in actual if x.source_id == "contract.vy" and x.method_id == "foo2"]
+    # TODO: Improve assertions once we have the getters working.
+    assert main
