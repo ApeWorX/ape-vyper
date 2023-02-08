@@ -331,7 +331,7 @@ class VyperCompiler(CompilerAPI):
                 src_map = root_src_maps[source_id]
             else:
                 # Cache for accessing next time faster.
-                src_map = self.project_manager.get_pc_map(contract_type)
+                src_map = self.compiler_manager.get_pc_map(contract_type)
                 root_src_maps[source_id] = src_map
 
             if trace.pc not in src_map or not src_map[trace.pc]:
