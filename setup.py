@@ -59,6 +59,7 @@ setup(
     install_requires=[
         "eth-ape>=0.6.0,<0.7",
         "ethpm-types",  # Use same version as eth-ape
+        "evm-trace",  # Use same version as eth-ape
         "tqdm",  # Use same version as eth-ape
         "vvm>=0.1.0,<0.2",
     ],
