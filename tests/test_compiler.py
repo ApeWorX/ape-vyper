@@ -152,7 +152,11 @@ def test_line_trace(accounts, project, geth_provider):
     receipt = contract.foo2(123, owner, sender=owner)
     actual = receipt.line_trace
     assert actual
-
-    main = [x for x in actual if x.source_id == "contract.vy" and x.method_id == "foo2"]
-    # TODO: Improve assertions once we have the getters working.
-    assert main
+    assert len(actual) == 1
+    assert actual[0].source_id == "contract.vy"
+    assert actual[0].method_id == "foo2(uint256 a, address b) -> uint256"
+    assert actual[0].lines == {
+        16: "def foo2(a: uint256, b: address) -> uint256:",
+        17: '    assert a != 0, "zero"',
+        18: "    self.bar1 = a + 3",
+    }

@@ -2,16 +2,18 @@ import os
 import re
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Union, cast
+from typing import Dict, Iterator, List, Optional, Set, Tuple, Union, cast
 
 import vvm  # type: ignore
 from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
 from ape.exceptions import APINotImplementedError
 from ape.logging import logger
-from ape.types import ContractType, LineTraceNode, PCMap, TraceFrame
+from ape.types import AddressType, ContractType, LineTraceNode, PCMap, TraceFrame
 from ape.utils import cached_property, get_relative_path
-from evm_trace import CallTreeNode, get_calltree_from_geth_trace
+from ethpm_types.abi import MethodABI
+from evm_trace import CallType
+from evm_trace.geth import _extract_memory
 from semantic_version import NpmSpec, Version  # type: ignore
 
 from .exceptions import VyperCompileError, VyperInstallError
@@ -263,12 +265,22 @@ class VyperCompiler(CompilerAPI):
         return settings
 
     def get_line_trace(
-        self, trace: List[TraceFrame], contract_type: ContractType
+        self,
+        trace: Iterator[TraceFrame],
+        contract_address: AddressType,
+        method_abi: MethodABI,
     ) -> List[LineTraceNode]:
         if not trace:
             return []
 
-        source_id = contract_type.source_id
+        root_contract_type = method_abi.contract_type
+        if not root_contract_type:
+            # Look it up.
+            root_contract_type = self.chain_manager.contracts.get(contract_address)
+            if not root_contract_type:
+                return []
+
+        source_id = root_contract_type.source_id
         if not source_id:
             # Likely not a local contract.
             return []
@@ -280,75 +292,101 @@ class VyperCompiler(CompilerAPI):
 
         ext = Path(source_id).suffix
         if ext not in EXTENSIONS:
-            return self._get_line_trace_via_different_compiler(ext, trace, contract_type)
+            return self._get_line_trace_via_different_compiler(
+                ext, trace, contract_address, method_abi
+            )
 
         lines: List[LineTraceNode] = []
 
         # src_id -> PC -> line_no -> line_str
         root_src_maps: Dict[str, Dict[int, Dict[int, str]]] = {}
 
-        current_call = get_calltree_from_geth_trace(trace)
-        previous_call: Optional[CallTreeNode] = None
+        Stack = List[Tuple[AddressType, Optional[ContractType], Optional[MethodABI]]]
+        call_stack: Stack = [(contract_address, root_contract_type, method_abi)]
+
         last_depth = 1
         for frame in trace:
+            stack = frame.raw["stack"]
             if "PUSH" in frame.op:
                 # Ignore PUSH opcodes to attempt to preserve a more-human
                 # friendly ordering of the lines. Else, things seem out-of
                 # -order, maybe for compiler reasons.
                 continue
 
-            elif frame.depth > last_depth and frame.op in ("CALL", "DELEGATECALL", "STATICCALL"):
-                # Made a call
-                previous_call = current_call
-                current_call = current_call.calls.pop(0)
+            elif frame.op in (
+                CallType.CALL.value,
+                CallType.DELEGATECALL.value,
+                CallType.STATICCALL.value,
+            ):
+                # Find matching method.
+                mem = frame.raw["memory"]
+                if frame.op == CallType.CALL.value:
+                    data = _extract_memory(offset=stack[-4], size=stack[-5], memory=mem)
+                elif frame.op == CallType.DELEGATECALL.value:
+                    data = _extract_memory(offset=stack[-3], size=stack[-4], memory=mem)
+                else:
+                    data = _extract_memory(offset=stack[-3], size=stack[-4], memory=mem)
+
+                raw_address = stack[-2][-20:]
+                if not raw_address:
+                    continue
+
+                address = self.provider.network.ecosystem.decode_address(raw_address)
+                contract_type = self.chain_manager.contracts.get(address)
+                if not contract_type:
+                    call_stack.append((address, None, None))
+
+                else:
+                    method_id = contract_type.methods[data[:4]]
+                    new_method = contract_type.methods[method_id]
+                    call_stack.append((address, contract_type, new_method))
+
+            elif frame.op in ("RETURN", "REVERT"):
+                call_stack.pop()
+                if not call_stack:
+                    return lines
 
             elif frame.depth > last_depth:
                 # Not sure if is possible.
                 continue
 
-            elif frame.depth < last_depth:
-                # Popped a call
-                current_call = previous_call
-
+            addr, ct, function = call_stack[-1]
             last_depth = frame.depth
-
-            # Find the address to get the contract type.
-            raw_address = current_call.address
-            address = self.provider.network.ecosystem.decode_address(raw_address)
-            contract_type = self.chain_manager.contracts.get(address)
-            if not contract_type or not contract_type.source_id:
+            if not ct or not ct.source_id:
                 # Unable to add source lines without contract type.
                 continue
 
-            source_id = str(contract_type.source_id)
+            source_id = str(ct.source_id)
             ext = Path(source_id).suffix
-            if ext not in EXTENSIONS:
-                return self._get_line_trace_via_different_compiler(ext, trace, contract_type)
-            elif source_id in root_src_maps:
+            if ext not in EXTENSIONS and function:
+                sub_lines = self._get_line_trace_via_different_compiler(ext, trace, addr, function)
+                lines = [*lines, *sub_lines]
+                continue
+            elif ext not in EXTENSIONS:
+                continue
+
+            if source_id in root_src_maps:
                 src_map = root_src_maps[source_id]
             else:
                 # Cache for accessing next time faster.
-                src_map = self.compiler_manager.get_pc_map(contract_type)
+                src_map = self.compiler_manager.get_pc_map(ct)
                 root_src_maps[source_id] = src_map
 
             if frame.pc not in src_map or not src_map[frame.pc]:
                 continue
 
             src_material = src_map[frame.pc]
-
-            # Note the method called.
-            method_abi = contract_type.methods[current_call.calldata[:4]]
-            method_id = method_abi.name
-
-            if not len(lines):
+            if not len(lines) and function:
                 # First set being added; no merging necessary.
-                node = LineTraceNode(source_id=source_id, method_id=method_id, lines=src_material)
+                node = LineTraceNode(
+                    source_id=source_id, method_id=function.signature, lines=src_material
+                )
                 lines.append(node)
 
-            else:
+            elif function:
                 # Merge with previous line data.
                 last_node = lines[-1]
-                if last_node.source_id == source_id and last_node.method_id == method_id:
+                if last_node.source_id == source_id and last_node.method_id == function.signature:
                     if src_material == last_node.lines:
                         # Already covered.
                         continue
@@ -365,7 +403,7 @@ class VyperCompiler(CompilerAPI):
                 else:
                     # Is a new jump.
                     node = LineTraceNode(
-                        source_id=source_id, method_id=method_id, lines=src_material
+                        source_id=source_id, method_id=function.signature, lines=src_material
                     )
                     lines.append(node)
 
@@ -412,7 +450,11 @@ class VyperCompiler(CompilerAPI):
         return src_map
 
     def _get_line_trace_via_different_compiler(
-        self, ext: str, trace: List[TraceFrame], contract_type: ContractType
+        self,
+        ext: str,
+        trace: Iterator[TraceFrame],
+        contract_address: AddressType,
+        method_abi: MethodABI,
     ) -> List[LineTraceNode]:
         if ext not in self.compiler_manager.registered_compilers:
             return []
@@ -421,7 +463,7 @@ class VyperCompiler(CompilerAPI):
         # Attempt to use another compiler
         compiler = self.compiler_manager.registered_compilers[ext]
         try:
-            return compiler.get_line_trace(trace, contract_type)
+            return compiler.get_line_trace(trace, contract_address, method_abi)
         except APINotImplementedError:
             return []
 
