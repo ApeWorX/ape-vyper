@@ -406,8 +406,9 @@ class VyperCompiler(CompilerAPI):
 
             lines = {}
             for line_no in range(start, stop):
-                if line_no < len(content) and content[line_no]:
-                    lines[line_no] = content[line_no]
+                line_index = line_no - 1  # Because starts at 0.
+                if line_index < len(content) and content[line_index]:
+                    lines[line_no] = content[line_index]
 
             if lines:
                 src_map[pc] = lines
