@@ -15,6 +15,8 @@ from semantic_version import NpmSpec, Version  # type: ignore
 
 from .exceptions import VyperCompileError, VyperInstallError
 
+EXTENSIONS = (".vy",)
+
 
 class VyperConfig(PluginConfig):
     evm_version: Optional[str] = None
@@ -269,11 +271,11 @@ class VyperCompiler(CompilerAPI):
 
         source = self.project_manager.lookup_path(Path(source_id))
         if not source:
-            # Likely not a local contract.
+            # Definitely not a local contract.
             return []
 
         ext = Path(source_id).suffix
-        if ext != ".vy":
+        if ext not in EXTENSIONS:
             return self._get_line_trace_via_different_compiler(ext, receipt, contract_type)
 
         call_tree = receipt.call_tree
@@ -325,7 +327,7 @@ class VyperCompiler(CompilerAPI):
 
             source_id = str(contract_type.source_id)
             ext = Path(source_id).suffix
-            if ext != ".vy":
+            if ext not in EXTENSIONS:
                 return self._get_line_trace_via_different_compiler(ext, receipt, contract_type)
             elif source_id in root_src_maps:
                 src_map = root_src_maps[source_id]

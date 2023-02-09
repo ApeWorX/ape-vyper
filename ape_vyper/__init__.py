@@ -1,6 +1,6 @@
 from ape import plugins
 
-from .compiler import VyperCompiler, VyperConfig
+from .compiler import EXTENSIONS, VyperCompiler, VyperConfig
 
 
 @plugins.register(plugins.Config)
@@ -10,4 +10,4 @@ def config_class():
 
 @plugins.register(plugins.CompilerPlugin)
 def register_compiler():
-    return (".vy",), VyperCompiler
+    return EXTENSIONS, VyperCompiler

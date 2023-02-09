@@ -5,6 +5,7 @@ import pytest
 from semantic_version import Version  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
+from ape_vyper import EXTENSIONS
 from ape_vyper.exceptions import VyperCompileError, VyperInstallError
 
 BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
@@ -65,7 +66,7 @@ def test_install_failure(compiler):
 
 def test_get_version_map(project, compiler):
     vyper_files = [
-        x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
+        x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix in EXTENSIONS
     ]
     actual = compiler.get_version_map(vyper_files)
     expected_versions = (OLDER_VERSION_FROM_PRAGMA, VERSION_FROM_PRAGMA)
@@ -138,7 +139,7 @@ def test_compile_parse_dev_messages(compiler):
 
 def test_get_imports(compiler, project):
     vyper_files = [
-        x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
+        x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix in EXTENSIONS
     ]
     actual = compiler.get_imports(vyper_files)
     assert actual["use_iface.vy"] == ["interfaces/IFace.vy"]
