@@ -9,7 +9,7 @@ from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
 from ape.exceptions import APINotImplementedError
 from ape.logging import logger
-from ape.types import AddressType, ContractType, LineTraceNode, PCMap, TraceFrame
+from ape.types import AddressType, ContractType, CoverageItem, LineTraceNode, PCMap, TraceFrame
 from ape.utils import cached_property, get_relative_path
 from ethpm_types.abi import MethodABI
 from evm_trace import CallType
@@ -490,6 +490,49 @@ class VyperCompiler(CompilerAPI):
                 src_map[pc] = lines
 
         return src_map
+
+    def get_coverage_profile(self, contract: ContractType) -> CoverageItem:
+        source_id = contract.source_id
+        if not source_id:
+            raise ValueError("Unable to get coverage profile - missing source ID")
+
+        source_path = self.config_manager.contracts_folder / source_id
+        if not source_path.is_file():
+            raise FileNotFoundError(str(source_path))
+
+        item = CoverageItem()
+        pc_map = self.compiler_manager.get_pc_map(contract)
+        for line_numbers in pc_map.values():
+            for line_no in line_numbers:
+                item.lines.add(line_no)
+
+        # Add external methods.
+        for method in contract.methods:
+            if not method.name:
+                continue
+
+            item.functions.add(method.signature)
+
+        # Add internal methods.
+        lines = source_path.read_text().splitlines()
+        for idx, line in enumerate(lines):
+            if line.startswith("@internal"):
+                start = idx + 1
+                for idx_2, sub_line in enumerate(lines[start:]):
+                    if not sub_line.startswith("def "):
+                        continue
+
+                    signature = sub_line
+                    start_2 = idx_2 + 1
+                    for sub_sub_line in lines[start_2:]:
+                        new_line = sub_sub_line.strip()
+                        signature += new_line
+                        if new_line.endswith(":"):
+                            item.functions.add(signature)
+                            break
+
+        return item
+        # TODO: Add branches
 
     def _get_line_trace_via_different_compiler(
         self,
