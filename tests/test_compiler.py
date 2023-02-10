@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import List
 
 import pytest
+from ape.types import LineTraceNode
 from semantic_version import Version  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
@@ -151,12 +152,31 @@ def test_line_trace(accounts, project, geth_provider):
     contract = owner.deploy(project.get_contract("contract"))
     receipt = contract.foo2(123, owner, sender=owner)
     actual = receipt.line_trace
-    assert actual
-    assert len(actual) == 1
-    assert actual[0].source_id == "contract.vy"
-    assert actual[0].method_id == "foo2(uint256 a, address b) -> uint256"
-    assert actual[0].lines == {
-        16: "def foo2(a: uint256, b: address) -> uint256:",
-        17: '    assert a != 0, "zero"',
-        18: "    self.bar1 = a + 3",
-    }
+
+    assert actual == [
+        # Start off by calling `foo2()` and getting through some of those lines.
+        LineTraceNode(
+            source_id="contract.vy",
+            method_id="foo2(uint256 a, address b) -> uint256",
+            lines={
+                16: "def foo2(a: uint256, b: address) -> uint256:",
+                17: '    assert a != 0, "zero"',
+                18: "    self.bar1 = self.baz(a)",
+            },
+        ),
+        # End up INTERNAL method `baz()`.
+        LineTraceNode(
+            source_id="contract.vy",
+            method_id="[INTERNAL] baz(a: uint256) -> uint256:",
+            lines={
+                24: "def baz(a: uint256) -> uint256:",
+                25: "    return a + 123",
+            },
+        ),
+        # Pop back to original method foo2().
+        LineTraceNode(
+            source_id="contract.vy",
+            method_id="foo2(uint256 a, address b) -> uint256",
+            lines={18: "    self.bar1 = self.baz(a)", 19: "    log FooHappened(self.bar1)"},
+        ),
+    ]

@@ -301,7 +301,7 @@ class VyperCompiler(CompilerAPI):
         # src_id -> PC -> line_no -> line_str
         root_src_maps: Dict[str, Dict[int, Dict[int, str]]] = {}
 
-        Stack = List[Tuple[AddressType, Optional[ContractType], Optional[MethodABI]]]
+        Stack = List[Tuple[AddressType, Optional[ContractType], Optional[Union[MethodABI, str]]]]
         call_stack: Stack = [(contract_address, root_contract_type, method_abi)]
 
         last_depth = 1
@@ -358,7 +358,7 @@ class VyperCompiler(CompilerAPI):
 
             source_id = str(ct.source_id)
             ext = Path(source_id).suffix
-            if ext not in EXTENSIONS and function:
+            if ext not in EXTENSIONS and function and isinstance(function, MethodABI):
                 sub_lines = self._get_line_trace_via_different_compiler(ext, trace, addr, function)
                 lines = [*lines, *sub_lines]
                 continue
@@ -376,34 +376,70 @@ class VyperCompiler(CompilerAPI):
                 continue
 
             src_material = src_map[frame.pc]
+
             if not len(lines) and function:
                 # First set being added; no merging necessary.
-                node = LineTraceNode(
-                    source_id=source_id, method_id=function.signature, lines=src_material
-                )
+                signature = function.signature if hasattr(function, "signature") else str(function)
+                node = LineTraceNode(source_id=source_id, method_id=signature, lines=src_material)
                 lines.append(node)
 
             elif function:
                 # Merge with previous line data.
                 last_node = lines[-1]
-                if last_node.source_id == source_id and last_node.method_id == function.signature:
+                signature = function.signature if hasattr(function, "signature") else str(function)
+                if last_node.source_id == source_id and last_node.method_id == signature:
+                    last_line_nos = list(last_node.lines.keys())
+                    line_nos = list(src_material.keys())
+                    first_new_line_no = line_nos[0]
+                    first_line = src_material[first_new_line_no]
+
                     if src_material == last_node.lines:
                         # Already covered.
                         continue
 
                     elif last_node.lines:
                         # Check if continuing from last node.
-                        last_lines = list(last_node.lines.keys())
-                        first_new_line_num = list(src_material.keys())[0]
-                        if first_new_line_num in range(
-                            last_lines[0], last_lines[0] + len(last_lines) + 1
+                        if first_new_line_no in range(
+                            last_line_nos[0], last_line_nos[0] + len(last_line_nos) + 1
                         ):
                             last_node.lines = {**last_node.lines, **src_material}
                             continue
+
+                        elif first_line.startswith("def "):
+                            # INTERNAL call from the same contract.
+
+                            signature = first_line
+                            if not signature.endswith(":"):
+                                for line_no in line_nos[1:]:
+                                    new_line = src_material[line_no].strip()
+                                    signature += new_line
+                                    if new_line.endswith(":"):
+                                        break
+
+                            signature = signature.replace("def ", "")
+                            signature = f"[INTERNAL] {signature}"
+                            call_stack.append((addr, ct, signature))
+                            node = LineTraceNode(
+                                source_id=source_id, method_id=signature, lines=src_material
+                            )
+                            lines.append(node)
+
+                        elif len(lines) >= 2:
+                            # Check if popped from INTERNAL call
+                            penultimate = lines[-2]
+                            nos = list(penultimate.lines.keys())
+                            if first_new_line_no in range(nos[0], nos[0] + len(nos) + 1):
+                                penultimate.lines = {**penultimate.lines, **src_material}
+                                call_stack.pop()
+                                continue
+
                 else:
                     # Is a new jump.
+                    signature = (
+                        function.signature if hasattr(function, "signature") else str(function)
+                    )
                     node = LineTraceNode(
-                        source_id=source_id, method_id=function.signature, lines=src_material
+                        source_id=source_id, method_id=signature, lines=src_material
                     )
                     lines.append(node)
 

@@ -15,7 +15,11 @@ def foo1() -> bool:
 @external
 def foo2(a: uint256, b: address) -> uint256:
     assert a != 0, "zero"
-    self.bar1 = a + 3
-    self.bar2 = b
+    self.bar1 = self.baz(a)
     log FooHappened(self.bar1)
     return self.bar1
+
+
+@internal
+def baz(a: uint256) -> uint256:
+    return a + 123
