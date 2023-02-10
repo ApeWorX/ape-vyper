@@ -407,6 +407,12 @@ class VyperCompiler(CompilerAPI):
                     )
                     lines.append(node)
 
+        if not lines:
+            # At least add called method sig.
+            # Happens on auto-getters.
+            node = LineTraceNode(source_id=source_id, method_id=method_abi.signature, lines=[])
+            lines.append(node)
+
         return lines
 
     def get_pc_map(self, contract_type: ContractType) -> PCMap:
