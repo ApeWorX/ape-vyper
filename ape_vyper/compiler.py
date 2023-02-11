@@ -11,6 +11,7 @@ from ape.exceptions import APINotImplementedError
 from ape.logging import logger
 from ape.types import AddressType, ContractType, CoverageItem, LineTraceNode, PCMap, TraceFrame
 from ape.utils import cached_property, get_relative_path
+from ethpm_types import HexBytes
 from ethpm_types.abi import MethodABI
 from evm_trace import CallType
 from evm_trace.geth import _extract_memory
@@ -308,9 +309,8 @@ class VyperCompiler(CompilerAPI):
         for frame in trace:
             stack = frame.raw["stack"]
             if "PUSH" in frame.op:
-                # Ignore PUSH opcodes to attempt to preserve a more-human
-                # friendly ordering of the lines. Else, things seem out-of
-                # -order, maybe for compiler reasons.
+                # Ignore PUSH opcodes to attempt to preserve
+                # friendlier ordering of the lines.
                 continue
 
             elif frame.op in (
@@ -319,7 +319,8 @@ class VyperCompiler(CompilerAPI):
                 CallType.STATICCALL.value,
             ):
                 # Find matching method.
-                mem = frame.raw["memory"]
+                mem = [HexBytes(m) for m in frame.raw["memory"]]
+                stack = [HexBytes(s) for s in stack]
                 if frame.op == CallType.CALL.value:
                     data = _extract_memory(offset=stack[-4], size=stack[-5], memory=mem)
                 elif frame.op == CallType.DELEGATECALL.value:
@@ -390,8 +391,8 @@ class VyperCompiler(CompilerAPI):
                 if last_node.source_id == source_id and last_node.method_id == signature:
                     last_line_nos = list(last_node.lines.keys())
                     line_nos = list(src_material.keys())
-                    first_new_line_no = line_nos[0]
-                    first_line = src_material[first_new_line_no]
+                    first_new_no = line_nos[0]
+                    first_line = src_material[first_new_no]
 
                     if src_material == last_node.lines:
                         # Already covered.
@@ -399,7 +400,7 @@ class VyperCompiler(CompilerAPI):
 
                     elif last_node.lines:
                         # Check if continuing from last node.
-                        if first_new_line_no in range(
+                        if first_new_no in range(
                             last_line_nos[0], last_line_nos[0] + len(last_line_nos) + 1
                         ):
                             last_node.lines = {**last_node.lines, **src_material}
@@ -428,7 +429,7 @@ class VyperCompiler(CompilerAPI):
                             # Check if popped from INTERNAL call
                             penultimate = lines[-2]
                             nos = list(penultimate.lines.keys())
-                            if first_new_line_no in range(nos[0], nos[0] + len(nos) + 1):
+                            if first_new_no in range(nos[0], nos[0] + len(nos) + 1):
                                 penultimate.lines = {**penultimate.lines, **src_material}
                                 call_stack.pop()
                                 continue
@@ -532,7 +533,6 @@ class VyperCompiler(CompilerAPI):
                             break
 
         return item
-        # TODO: Add branches
 
     def _get_line_trace_via_different_compiler(
         self,
