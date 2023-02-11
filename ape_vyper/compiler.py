@@ -275,6 +275,7 @@ class VyperCompiler(CompilerAPI):
             return []
 
         root_contract_type = method_abi.contract_type
+        src_map = self.compiler_manager.get_pc_map(root_contract_type)
         if not root_contract_type:
             # Look it up.
             root_contract_type = self.chain_manager.contracts.get(contract_address)
@@ -298,10 +299,6 @@ class VyperCompiler(CompilerAPI):
             )
 
         lines: List[LineTraceNode] = []
-
-        # src_id -> PC -> line_no -> line_str
-        root_src_maps: Dict[str, Dict[int, Dict[int, str]]] = {}
-
         Stack = List[Tuple[AddressType, Optional[ContractType], Optional[Union[MethodABI, str]]]]
         call_stack: Stack = [(contract_address, root_contract_type, method_abi)]
 
@@ -338,8 +335,7 @@ class VyperCompiler(CompilerAPI):
                     call_stack.append((address, None, None))
 
                 else:
-                    method_id = contract_type.methods[data[:4]]
-                    new_method = contract_type.methods[method_id]
+                    new_method = contract_type.methods[data[:4]]
                     call_stack.append((address, contract_type, new_method))
 
             elif frame.op in ("RETURN", "REVERT"):
@@ -363,17 +359,13 @@ class VyperCompiler(CompilerAPI):
                 sub_lines = self._get_line_trace_via_different_compiler(ext, trace, addr, function)
                 lines = [*lines, *sub_lines]
                 continue
+
             elif ext not in EXTENSIONS:
                 continue
 
-            if source_id in root_src_maps:
-                src_map = root_src_maps[source_id]
-            else:
-                # Cache for accessing next time faster.
-                src_map = self.compiler_manager.get_pc_map(ct)
-                root_src_maps[source_id] = src_map
-
             if frame.pc not in src_map or not src_map[frame.pc]:
+                if source_id != "contract.vy":
+                    breakpoint()
                 continue
 
             src_material = src_map[frame.pc]

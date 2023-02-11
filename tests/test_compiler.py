@@ -149,9 +149,12 @@ def test_get_imports(compiler, project):
 
 def test_line_trace(accounts, project, geth_provider):
     owner = accounts.test_accounts[0]
-    contract = owner.deploy(project.get_contract("contract"))
+    registry = project.registry.deploy(sender=owner)
+    contract = owner.deploy(project.contract, registry)
     receipt = contract.foo2(123, owner, sender=owner)
     actual = receipt.line_trace
+
+    raise ValueError(actual)
 
     assert actual == [
         # Start off by calling `foo2()` and getting through some of those lines.
