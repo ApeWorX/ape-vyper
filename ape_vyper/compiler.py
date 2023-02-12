@@ -275,7 +275,6 @@ class VyperCompiler(CompilerAPI):
             return []
 
         root_contract_type = method_abi.contract_type
-        src_map = self.compiler_manager.get_pc_map(root_contract_type)
         if not root_contract_type:
             # Look it up.
             root_contract_type = self.chain_manager.contracts.get(contract_address)
@@ -287,6 +286,7 @@ class VyperCompiler(CompilerAPI):
             # Likely not a local contract.
             return []
 
+        src_maps = {source_id: self.compiler_manager.get_pc_map(root_contract_type)}
         source = self.project_manager.lookup_path(Path(source_id))
         if not source:
             # Definitely not a local contract.
@@ -302,15 +302,10 @@ class VyperCompiler(CompilerAPI):
         Stack = List[Tuple[AddressType, Optional[ContractType], Optional[Union[MethodABI, str]]]]
         call_stack: Stack = [(contract_address, root_contract_type, method_abi)]
 
-        last_depth = 1
         for frame in trace:
             stack = frame.raw["stack"]
-            if "PUSH" in frame.op:
-                # Ignore PUSH opcodes to attempt to preserve
-                # friendlier ordering of the lines.
-                continue
 
-            elif frame.op in (
+            if frame.op in (
                 CallType.CALL.value,
                 CallType.DELEGATECALL.value,
                 CallType.STATICCALL.value,
@@ -343,12 +338,7 @@ class VyperCompiler(CompilerAPI):
                 if not call_stack:
                     return lines
 
-            elif frame.depth > last_depth:
-                # Not sure if is possible.
-                continue
-
             addr, ct, function = call_stack[-1]
-            last_depth = frame.depth
             if not ct or not ct.source_id:
                 # Unable to add source lines without contract type.
                 continue
@@ -363,13 +353,27 @@ class VyperCompiler(CompilerAPI):
             elif ext not in EXTENSIONS:
                 continue
 
+            if source_id not in src_maps:
+                src_maps[source_id] = self.compiler_manager.get_pc_map(ct)
+
+            src_map = src_maps[source_id]
             if frame.pc not in src_map or not src_map[frame.pc]:
-                if source_id != "contract.vy":
-                    breakpoint()
-                continue
+                if frame.op == "POP" and len(call_stack) >= 2:
+                    # Check if popped back to last call.
+                    penultimate = call_stack[-2]
+                    if penultimate[1]:
+                        sid = str(penultimate[1].source_id or "")  # Will never be empty.
+                        if sid in src_maps:
+                            source_id = sid
+                            src_map = src_maps[sid]
+                            addr, ct, function = penultimate
+                            call_stack.pop()
+
+                else:
+                    # Unclear.
+                    continue
 
             src_material = src_map[frame.pc]
-
             if not len(lines) and function:
                 # First set being added; no merging necessary.
                 signature = function.signature if hasattr(function, "signature") else str(function)
@@ -419,12 +423,13 @@ class VyperCompiler(CompilerAPI):
 
                         elif len(lines) >= 2:
                             # Check if popped from INTERNAL call
-                            penultimate = lines[-2]
-                            nos = list(penultimate.lines.keys())
-                            if first_new_no in range(nos[0], nos[0] + len(nos) + 1):
-                                penultimate.lines = {**penultimate.lines, **src_material}
-                                call_stack.pop()
-                                continue
+                            penultimate_ls = lines[-2]
+                            if penultimate_ls and penultimate_ls.lines:
+                                nos = list(penultimate_ls.lines.keys())
+                                if first_new_no in range(nos[0], nos[0] + len(nos) + 1):
+                                    penultimate_ls.lines = {**penultimate_ls.lines, **src_material}
+                                    call_stack.pop()
+                                    continue
 
                 else:
                     # Is a new jump.

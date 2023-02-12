@@ -154,32 +154,50 @@ def test_line_trace(accounts, project, geth_provider):
     receipt = contract.foo2(123, owner, sender=owner)
     actual = receipt.line_trace
 
-    raise ValueError(actual)
-
     assert actual == [
-        # Start off by calling `foo2()` and getting through some of those lines.
+        # Start in external method called.
         LineTraceNode(
             source_id="contract.vy",
             method_id="foo2(uint256 a, address b) -> uint256",
             lines={
-                16: "def foo2(a: uint256, b: address) -> uint256:",
-                17: '    assert a != 0, "zero"',
-                18: "    self.bar1 = self.baz(a)",
+                26: "def foo2(a: uint256, b: address) -> uint256:",
+                27: '    assert a != 0, "zero"',
+                28: "    self.registry.register(b)",
             },
         ),
-        # End up INTERNAL method `baz()`.
+        # GOTO library method, run full thing.
+        LineTraceNode(
+            source_id="registry.vy",
+            method_id="register(address addr)",
+            lines={
+                6: "def register(addr: address):",
+                7: "    assert addr != self.addr",
+                8: "    self.addr = addr",
+            },
+        ),
+        # Pop back into main method.
+        LineTraceNode(
+            source_id="contract.vy",
+            method_id="foo2(uint256 a, address b) -> uint256",
+            lines={
+                28: "    self.registry.register(b)",
+                29: "    self.bar1 = self.baz(a)",
+            },
+        ),
+        # GOTO internal method in main contract.
         LineTraceNode(
             source_id="contract.vy",
             method_id="[INTERNAL] baz(a: uint256) -> uint256:",
-            lines={
-                24: "def baz(a: uint256) -> uint256:",
-                25: "    return a + 123",
-            },
+            lines={35: "def baz(a: uint256) -> uint256:", 36: "    return a + 123"},
         ),
-        # Pop back to original method foo2().
+        # Pop back to main method and complete.
         LineTraceNode(
             source_id="contract.vy",
             method_id="foo2(uint256 a, address b) -> uint256",
-            lines={18: "    self.bar1 = self.baz(a)", 19: "    log FooHappened(self.bar1)"},
+            lines={
+                29: "    self.bar1 = self.baz(a)",
+                30: "    log FooHappened(self.bar1)",
+                31: "    return self.bar1",
+            },
         ),
     ]
