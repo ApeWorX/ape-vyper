@@ -530,6 +530,10 @@ class VyperCompiler(CompilerAPI):
 
             lines = {}
             for line_no in range(start, stop):
+                _, is_sig = get_defining_method(source, line_no)
+                if is_sig:
+                    continue
+
                 line_index = line_no - 1  # Because starts at 0.
                 if line_index < len(content) and content[line_index]:
                     lines[line_no] = content[line_index]
@@ -544,8 +548,8 @@ class VyperCompiler(CompilerAPI):
         if not source_id:
             raise ValueError("Unable to get coverage profile - missing source ID")
 
-        source_path = self.config_manager.contracts_folder / source_id
-        if not source_path.is_file():
+        source_path = self.project_manager.lookup_path(Path(source_id))
+        if not source_path or not source_path.is_file():
             raise FileNotFoundError(str(source_path))
 
         item = CoverageItem()
