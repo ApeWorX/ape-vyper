@@ -153,49 +153,46 @@ def test_line_trace(accounts, project, geth_provider):
     contract = owner.deploy(project.contract, registry)
     receipt = contract.foo2(123, owner, sender=owner)
     actual = receipt.line_trace
-
     assert actual == [
-        # Start off in external method.
         LineTraceNode(
             source_id="contract.vy",
-            method_id="foo2(uint256 a, address b) -> uint256",
+            method_id="foo2(a: uint256, b: address) -> uint256",
             lines={
                 31: '    assert a != 0, "zero"  # TEST COMMENT 5 def foo2():',
                 32: "    self.registry.register(b)  # TEST COMMENT 6 def foo2():",
             },
         ),
-        # Call library method (different contract).
         LineTraceNode(
             source_id="registry.vy",
-            method_id="register(address addr)",
-            lines={
-                7: "    assert addr != self.addr",
-                8: "    self.addr = addr",
-            },
+            method_id="register(addr: address)",
+            lines={7: "    assert addr != self.addr", 8: "    self.addr = addr"},
         ),
-        # Back to externally called method.
         LineTraceNode(
             source_id="contract.vy",
-            method_id="foo2(uint256 a, address b) -> uint256",
+            method_id="foo2(a: uint256, b: address) -> uint256",
             lines={
                 32: "    self.registry.register(b)  # TEST COMMENT 6 def foo2():",
                 33: "    self.bar1 = self.baz(a)  # TEST COMMENT 7 def foo2():",
             },
         ),
-        # Reach internal method.
         LineTraceNode(
             source_id="contract.vy",
-            method_id="[INTERNAL] baz(a: uint256) -> uint256:",
-            lines={40: "    return a + 123"},
+            method_id="baz(a: uint256) -> uint256",
+            lines={50: "    return a + 123"},
         ),
-        # Pop back to external method and complete.
         LineTraceNode(
             source_id="contract.vy",
-            method_id="foo2(uint256 a, address b) -> uint256",
+            method_id="foo2(a: uint256, b: address) -> uint256",
             lines={
                 33: "    self.bar1 = self.baz(a)  # TEST COMMENT 7 def foo2():",
                 34: "    log FooHappened(self.bar1)  # TEST COMMENT 8 def foo2():",
-                35: "    return self.bar1  # TEST COMMENT 9 def foo2():",
+                37: "    for i in [1, 2, 3, 4, 5]:",
+                38: "        if i == a:",
+                39: "            break",
+                41: "    for i in [1, 2, 3, 4, 5]:",
+                42: "        if i != a:",
+                43: "            continue",
+                45: "    return self.bar1  # TEST COMMENT 9 def foo2():",
             },
         ),
     ]
