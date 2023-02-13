@@ -301,6 +301,8 @@ class VyperCompiler(CompilerAPI):
         lines: List[LineTraceNode] = []
         Stack = List[Tuple[AddressType, Optional[ContractType], Optional[Union[MethodABI, str]]]]
         call_stack: Stack = [(contract_address, root_contract_type, method_abi)]
+        last_op = None
+        push_src = None
 
         for frame in trace:
             stack = frame.raw["stack"]
@@ -334,9 +336,17 @@ class VyperCompiler(CompilerAPI):
                     call_stack.append((address, contract_type, new_method))
 
             elif frame.op in ("RETURN", "REVERT"):
-                call_stack.pop()
-                if not call_stack:
-                    return lines
+                addr, ct, function = call_stack[-1]
+                if not ct:
+                    continue
+
+                # Find last line and make sure it is included.
+                src_map = src_maps[str(ct.source_id)]
+                start = list(src_map.keys())[0]
+                for _pc in range(frame.pc, start, -1):
+                    if _pc in src_map:
+                        src_map[frame.pc] = src_map[_pc]
+                        break
 
             addr, ct, function = call_stack[-1]
             if not ct or not ct.source_id:
@@ -344,7 +354,8 @@ class VyperCompiler(CompilerAPI):
                 continue
 
             source_id = str(ct.source_id)
-            ext = Path(source_id).suffix
+            source = self.config_manager.contracts_folder / source_id
+            ext = source.suffix
             if ext not in EXTENSIONS and function and isinstance(function, MethodABI):
                 sub_lines = self._get_line_trace_via_different_compiler(ext, trace, addr, function)
                 lines = [*lines, *sub_lines]
@@ -356,7 +367,12 @@ class VyperCompiler(CompilerAPI):
             if source_id not in src_maps:
                 src_maps[source_id] = self.compiler_manager.get_pc_map(ct)
 
-            src_map = src_maps[source_id]
+            if frame.op == "SSTORE" and "PUSH" in str(last_op) and push_src:
+                src_map = {frame.pc: push_src}
+            else:
+                src_map = src_maps[source_id]
+
+            last_op = frame.op
             if frame.pc not in src_map or not src_map[frame.pc]:
                 if frame.op == "POP" and len(call_stack) >= 2:
                     # Check if popped back to last call.
@@ -365,6 +381,7 @@ class VyperCompiler(CompilerAPI):
                         sid = str(penultimate[1].source_id or "")  # Will never be empty.
                         if sid in src_maps:
                             source_id = sid
+                            source = self.config_manager.contracts_folder / source_id
                             src_map = src_maps[sid]
                             addr, ct, function = penultimate
                             call_stack.pop()
@@ -373,7 +390,37 @@ class VyperCompiler(CompilerAPI):
                     # Unclear.
                     continue
 
-            src_material = src_map[frame.pc]
+            if "PUSH" in frame.op:
+                if frame.pc in src_map:
+                    push_src = src_map[frame.pc]
+
+                continue
+
+            src_mat = src_map[frame.pc]
+            src_material = {}
+            content = source.read_text().splitlines()
+
+            for line_no, line in src_mat.items():
+                # Exclude definitions
+                if line.startswith("def "):
+                    continue
+
+                # Check if part of a multi-line signature.
+                for i in range(line_no - 2, -1, -1):
+                    # Remove comments.
+                    ln = content[i].split("#")[0].rstrip()
+                    if ln.endswith(":"):
+                        # Not part a signature because found colon before def.
+                        src_material[line_no] = line
+                        continue
+
+                    elif ln.startswith("def "):
+                        # Is in a signature because found a `def` before a colon.
+                        break
+
+            if not src_material:
+                continue
+
             if not len(lines) and function:
                 # First set being added; no merging necessary.
                 signature = function.signature if hasattr(function, "signature") else str(function)
@@ -388,7 +435,6 @@ class VyperCompiler(CompilerAPI):
                     last_line_nos = list(last_node.lines.keys())
                     line_nos = list(src_material.keys())
                     first_new_no = line_nos[0]
-                    first_line = src_material[first_new_no]
 
                     if src_material == last_node.lines:
                         # Already covered.
@@ -402,10 +448,18 @@ class VyperCompiler(CompilerAPI):
                             last_node.lines = {**last_node.lines, **src_material}
                             continue
 
-                        elif first_line.startswith("def "):
-                            # INTERNAL call from the same contract.
+                        else:
+                            # Check if popped from INTERNAL call
+                            penultimate_ls = lines[-2]
+                            if penultimate_ls and penultimate_ls.lines:
+                                nos = list(penultimate_ls.lines.keys())
+                                if first_new_no in range(nos[0], nos[0] + len(nos) + 1):
+                                    penultimate_ls.lines = {**penultimate_ls.lines, **src_material}
+                                    call_stack.pop()
+                                    continue
 
-                            signature = first_line
+                            # INTERNAL call from the same contract.
+                            signature = content[first_new_no - 2]
                             if not signature.endswith(":"):
                                 for line_no in line_nos[1:]:
                                     new_line = src_material[line_no].strip()
@@ -420,16 +474,6 @@ class VyperCompiler(CompilerAPI):
                                 source_id=source_id, method_id=signature, lines=src_material
                             )
                             lines.append(node)
-
-                        elif len(lines) >= 2:
-                            # Check if popped from INTERNAL call
-                            penultimate_ls = lines[-2]
-                            if penultimate_ls and penultimate_ls.lines:
-                                nos = list(penultimate_ls.lines.keys())
-                                if first_new_no in range(nos[0], nos[0] + len(nos) + 1):
-                                    penultimate_ls.lines = {**penultimate_ls.lines, **src_material}
-                                    call_stack.pop()
-                                    continue
 
                 else:
                     # Is a new jump.
