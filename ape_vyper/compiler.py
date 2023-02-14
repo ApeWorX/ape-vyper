@@ -11,7 +11,7 @@ from ape.exceptions import APINotImplementedError
 from ape.logging import logger
 from ape.types import AddressType, ContractType, CoverageItem, LineTraceNode, PCMap, TraceFrame
 from ape.utils import cached_property, get_relative_path
-from ethpm_types import HexBytes
+from ethpm_types import HexBytes, Source
 from ethpm_types.abi import ABIType, MethodABI
 from evm_trace import CallType
 from evm_trace.geth import _extract_memory
@@ -282,24 +282,18 @@ class VyperCompiler(CompilerAPI):
                 return []
 
         source_id = root_contract_type.source_id
-        if not source_id:
+        sources = self.project_manager.sources
+        if not source_id or source_id not in sources:
             # Likely not a local contract.
             return []
 
         src_maps = {source_id: self.compiler_manager.get_pc_map(root_contract_type)}
-        source = self.project_manager.lookup_path(Path(source_id))
-        if not source:
-            # Definitely not a local contract.
-            return []
-
-        ext = Path(source_id).suffix
+        ext = _get_ext(source_id)
         if ext not in EXTENSIONS:
             return self._get_line_trace_via_different_compiler(
                 ext, trace, contract_address, method_abi
             )
 
-        srcs: Dict[str, Path] = {source_id: source}
-        non_local_srcs: Set[str] = set()
         lines: List[LineTraceNode] = []
         Stack = List[Tuple[AddressType, Optional[ContractType], Optional[Union[MethodABI, str]]]]
         call_stack: Stack = [(contract_address, root_contract_type, method_abi)]
@@ -356,19 +350,11 @@ class VyperCompiler(CompilerAPI):
                 continue
 
             source_id = str(ct.source_id)
-            if source_id in non_local_srcs:
+            if source_id not in sources:
                 continue
 
-            if source_id not in srcs:
-                src = self.project_manager.lookup_path(Path(source_id))
-                if not src:
-                    non_local_srcs.add(source_id)
-                    continue
-
-                srcs[source_id] = src
-
-            source = srcs[source_id]
-            ext = source.suffix
+            source = sources[source_id]
+            ext = _get_ext(source_id)
             if ext not in EXTENSIONS and function and isinstance(function, MethodABI):
                 sub_lines = self._get_line_trace_via_different_compiler(ext, trace, addr, function)
                 lines = [*lines, *sub_lines]
@@ -394,7 +380,7 @@ class VyperCompiler(CompilerAPI):
                         sid = str(penultimate[1].source_id or "")  # Will never be empty.
                         if sid in src_maps:
                             source_id = sid
-                            source = srcs[sid]
+                            source = sources[sid]
                             src_map = src_maps[sid]
                             addr, ct, function = penultimate
                             call_stack.pop()
@@ -507,17 +493,12 @@ class VyperCompiler(CompilerAPI):
 
         pc_map = contract_type.pcmap.parse()
         source_id = contract_type.source_id
-        if not source_id:
-            # Not a receipt made to a contract in the active project.
-            return {}
-
-        source = self.project_manager.lookup_path(Path(source_id))
-        if not source:
+        if not source_id or source_id not in self.project_manager.sources:
             # Not a receipt made to a contract in the active project.
             return {}
 
         src_map: PCMap = {}
-        content = source.read_text().splitlines()
+        source = self.project_manager.sources[source_id]
         for pc, item in pc_map.items():
             if item.line_start is None:
                 continue
@@ -535,8 +516,8 @@ class VyperCompiler(CompilerAPI):
                     continue
 
                 line_index = line_no - 1  # Because starts at 0.
-                if line_index < len(content) and content[line_index]:
-                    lines[line_no] = content[line_index]
+                if line_index < len(source) and source[line_index]:
+                    lines[line_no] = source[line_index]
 
             if lines:
                 src_map[pc] = lines
@@ -545,18 +526,14 @@ class VyperCompiler(CompilerAPI):
 
     def get_coverage_profile(self, contract: ContractType) -> CoverageItem:
         source_id = contract.source_id
-        if not source_id:
+        if not source_id or source_id not in self.project_manager.sources:
             raise ValueError("Unable to get coverage profile - missing source ID")
-
-        source_path = self.project_manager.lookup_path(Path(source_id))
-        if not source_path or not source_path.is_file():
-            raise FileNotFoundError(str(source_path))
 
         item = CoverageItem()
         pc_map = self.compiler_manager.get_pc_map(contract)
         for line_numbers in pc_map.values():
             for line_no in line_numbers:
-                item.lines.add(line_no)
+                item.hit_line(line_no, times=0)
 
         # Add external methods.
         for method in contract.methods:
@@ -566,15 +543,15 @@ class VyperCompiler(CompilerAPI):
             item.functions.add(method.signature)
 
         # Add internal methods.
-        lines = source_path.read_text().splitlines()
-        for idx, line in enumerate(lines):
+        src = self.project_manager.sources[source_id]
+        for idx, line in enumerate(src):
             if line.startswith("@internal"):
                 start = idx + 1
-                for idx_2, sub_line in enumerate(lines[start:]):
+                for idx_2, sub_line in enumerate(src[start:]):
                     if not sub_line.startswith("def "):
                         continue
 
-                    signature, _ = get_defining_method(source_path, idx + 1)
+                    signature, _ = get_defining_method(src, idx + 1)
                     if signature:
                         item.functions.add(signature)
 
@@ -623,42 +600,42 @@ def _safe_append(data: Dict, version: Union[Version, NpmSpec], paths: Union[Path
         data[version] = paths
 
 
-def get_defining_method(source: Path, line_no: int) -> Tuple[Optional[str], bool]:
+def get_defining_method(source: Source, line_no: int) -> Tuple[Optional[str], bool]:
     """
     Returns the method signature and a bool that is True when the line is
     part of the signature.
     """
-    content = source.read_text().splitlines()
-    if not content:
+
+    if not source.content:
         return "", False
 
     line_index = line_no - 1
-    line = _strip_comments(content[line_index])
+    line = _strip_comments(source[line_index])
 
     # Line is literally a `def` statement.
     if line.startswith("def "):
         # Gather rest of signature.
-        signature, _ = _build_signature(line, line_index, content)
+        signature, _ = _build_signature(line, line_index, source)
         return signature, True
 
     # Find defining method.
     for i in range(line_index - 1, -1, -1):
-        sub_line = _strip_comments(content[i])
+        sub_line = _strip_comments(source[i])
         if sub_line.startswith("def "):
-            signature, indices = _build_signature(sub_line, i, content)
+            signature, indices = _build_signature(sub_line, i, source)
             return signature, line_index in indices
 
     return None, False
 
 
-def _build_signature(def_line: str, line_index: int, content: List[str]) -> Tuple[str, List[int]]:
+def _build_signature(def_line: str, line_index: int, source: Source) -> Tuple[str, List[int]]:
     signature = _strip_comments(def_line.replace("def ", ""))
     if signature.endswith(":"):
         return signature.rstrip(":"), [line_index]
 
     start = line_index + 1
     line_indices = [line_index]
-    for idx, sub_line in enumerate(content[start:]):
+    for idx, sub_line in enumerate(source[start:]):
         sub_line = _strip_comments(sub_line).lstrip()
         if signature.endswith(","):
             sub_line = f" {sub_line}"
@@ -699,3 +676,7 @@ def _get_sig(item: Union[MethodABI, str, ABIType]) -> str:
 
     else:
         return str(item)
+
+
+def _get_ext(source_id: str) -> str:
+    return f".{source_id.split('.')[-1]}"
