@@ -178,21 +178,19 @@ def test_line_trace(accounts, project, geth_provider):
         LineTraceNode(
             source_id="contract.vy",
             method_id="baz(a: uint256) -> uint256",
-            lines={50: "    return a + 123"},
+            lines={52: "    return a + 123"},
         ),
         LineTraceNode(
             source_id="contract.vy",
             method_id="foo2(a: uint256, b: address) -> uint256",
             lines={
                 33: "    self.bar1 = self.baz(a)  # TEST COMMENT 7 def foo2():",
-                34: "    log FooHappened(self.bar1)  # TEST COMMENT 8 def foo2():",
-                37: "    for i in [1, 2, 3, 4, 5]:",
-                38: "        if i == a:",
-                39: "            break",
-                41: "    for i in [1, 2, 3, 4, 5]:",
-                42: "        if i != a:",
-                43: "            continue",
-                45: "    return self.bar1  # TEST COMMENT 9 def foo2():",
+                34: "    log FooHappened(",
+                39: "    for i in [1, 2, 3, 4, 5]:",
+                40: "        if i == a:",
+                43: "    for i in [1, 2, 3, 4, 5]:",
+                44: "        if i != a:",
+                47: "    return self.bar1  # TEST COMMENT 9 def foo2():",
             },
         ),
     ]

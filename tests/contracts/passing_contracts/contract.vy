@@ -31,7 +31,9 @@ def foo2(  # TEST COMMENT 1 def foo2():
     assert a != 0, "zero"  # TEST COMMENT 5 def foo2():
     self.registry.register(b)  # TEST COMMENT 6 def foo2():
     self.bar1 = self.baz(a)  # TEST COMMENT 7 def foo2():
-    log FooHappened(self.bar1)  # TEST COMMENT 8 def foo2():
+    log FooHappened(
+        self.bar1
+    )  # TEST COMMENT 8 def foo2():
 
     # Run some loops.
     for i in [1, 2, 3, 4, 5]:

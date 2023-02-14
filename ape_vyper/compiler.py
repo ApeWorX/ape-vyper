@@ -271,9 +271,6 @@ class VyperCompiler(CompilerAPI):
         contract_address: AddressType,
         method_abi: MethodABI,
     ) -> List[LineTraceNode]:
-        if not trace:
-            return []
-
         root_contract_type = method_abi.contract_type
         if not root_contract_type:
             # Look it up.
@@ -396,12 +393,13 @@ class VyperCompiler(CompilerAPI):
                 continue
 
             src_mat = src_map[frame.pc]
-            src_material = {}
+            src_material: Dict[int, str] = {}
             fmap = {}
 
             for line_no, line in src_mat.items():
                 defining_f, is_sig = get_defining_method(source, line_no)
-                if not is_sig:
+                if not is_sig and not src_material:
+                    # Only add first line.
                     src_material[line_no] = line
                 else:
                     fmap[line_no] = defining_f
@@ -448,7 +446,7 @@ class VyperCompiler(CompilerAPI):
                                 continue
 
                             if defining_f == _get_sig(function):
-                                # Is same function but separated by comments or whitespace.
+                                # Same func but separated by comments, ws, or multi-line stmts.
                                 last_node.lines = {**last_node.lines, **src_material}
                                 continue
 
