@@ -4,7 +4,7 @@
 import interfaces.IFace as IFace
 
 # Import from input JSON (ape-config.yaml).
-import Dependency as Dep
+import exampledep.Dependency as Dep
 
 from interfaces import IFace2 as IFace2
 

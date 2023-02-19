@@ -61,7 +61,7 @@ dependencies:
 # Automatically allow importing voting contracts in your project.
 vyper:
   dependency_imports:
-    - VyperVoting@v0.3.7
+    voting: VyperVoting@v0.3.7
 ```
 
 Import the voting contract types like this:
@@ -69,5 +69,5 @@ Import the voting contract types like this:
 ```python
 # @version 0.3.7
 
-import ballot as ballot
+import voting.ballot as ballot
 ```
