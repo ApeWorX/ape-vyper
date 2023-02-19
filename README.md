@@ -47,3 +47,27 @@ Then, these files can be imported in other `.vy` sources files via:
 ```python
 import interfaces.IFace as IFace
 ```
+
+Alternatively, use JSON interfaces from dependency contract types by listing them under the `dependency_imports` key:
+
+```yaml
+# Use `voting` example contracts from Vyperlang repo.
+dependencies:
+  - name: VyperVoting
+    github: vyperlang/vyper
+    contracts_folder: examples/voting/
+    version: v0.3.7
+
+# Automatically allow importing voting contracts in your project.
+vyper:
+  dependency_imports:
+    - VyperVoting@v0.3.7
+```
+
+Import the voting contract types like this:
+
+```python
+# @version 0.3.7
+
+import ballot as ballot
+```

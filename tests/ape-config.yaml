@@ -12,4 +12,4 @@ vyper:
 
   # Allows importing dependencies.
   dependency_imports:
-    example_dependency: ExampleDependency
+    - ExampleDependency

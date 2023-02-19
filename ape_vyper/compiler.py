@@ -21,7 +21,7 @@ DEV_MSG_PATTERN = re.compile(r"#\s*(dev:.+)")
 class VyperConfig(PluginConfig):
     evm_version: Optional[str] = None
 
-    dependency_imports: Dict[str, str] = {}
+    dependency_imports: List[str] = []
     """
     Configuration of an import name mapped to a dependency listing.
     To use a specific version of a dependency, specify using ``@`` symbol.
@@ -29,8 +29,8 @@ class VyperConfig(PluginConfig):
     Usage example::
 
         dependency_imports:
-          import_a: dependency_a@0.1.1
-          import_b: dependency  # Uses only version. Will raise if more than 1.
+          - dependency_a@0.1.1
+          - dependency  # Uses only version. Will raise if more than 1.
 
     """
 
@@ -173,7 +173,7 @@ class VyperCompiler(CompilerAPI):
 
         interfaces = {}
         dependencies = self.config.dependency_imports
-        for import_name, dep_str in dependencies.items():
+        for dep_str in dependencies:
             parts = dep_str.split("@")
             dep_name = parts[0]
             dependency_versions = self.project_manager.dependencies[dep_name]
@@ -192,7 +192,7 @@ class VyperCompiler(CompilerAPI):
 
             dependency = dependency_versions[version].compile()
             for name, ct in dependency.contract_types.items():
-                interfaces[f"{import_name}.json"] = {"abi": [x.dict() for x in ct.abi]}
+                interfaces[f"{name}.json"] = {"abi": [x.dict() for x in ct.abi]}
 
         return interfaces
 
