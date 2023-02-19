@@ -144,7 +144,7 @@ def test_get_imports(compiler, project):
     builtin_import = "vyper/interfaces/ERC20.json"
     local_import = "interfaces/IFace.vy"
     local_from_import = "interfaces/IFace2.vy"
-    dependency_import = "example_dependency.json"
+    dependency_import = "exampledep/Dependency.json"
 
     assert len(actual["contract.vy"]) == 1
     assert set(actual["contract.vy"]) == {builtin_import}
