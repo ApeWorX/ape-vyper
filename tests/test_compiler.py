@@ -141,5 +141,14 @@ def test_get_imports(compiler, project):
         x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
     ]
     actual = compiler.get_imports(vyper_files)
-    assert actual["use_iface.vy"] == ["interfaces/IFace.vy"]
-    assert actual["use_iface2.vy"] == ["interfaces/IFace.vy"]
+    builtin_import = "vyper/interfaces/ERC20.json"
+    local_import = "interfaces/IFace.vy"
+    local_from_import = "interfaces/IFace2.vy"
+    dependency_import = "example_dependency.json"
+
+    assert len(actual["contract.vy"]) == 1
+    assert set(actual["contract.vy"]) == {builtin_import}
+    assert len(actual["use_iface.vy"]) == 3
+    assert set(actual["use_iface.vy"]) == {local_import, local_from_import, dependency_import}
+    assert len(actual["use_iface2.vy"]) == 1
+    assert set(actual["use_iface2.vy"]) == {local_import}

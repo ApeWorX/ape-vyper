@@ -96,28 +96,26 @@ class VyperCompiler(CompilerAPI):
             for line in content:
                 if line.startswith("import "):
                     import_line_parts = line.replace("import ", "").split(" ")
-                    import_source_id = (
-                        f"{import_line_parts[0].strip().replace('.', os.path.sep)}.vy"
-                    )
+                    suffix = import_line_parts[0].strip().replace(".", os.path.sep)
 
                 elif line.startswith("from ") and " import " in line:
                     import_line_parts = line.replace("from ", "").split(" ")
                     module_name = import_line_parts[0].strip().replace(".", os.path.sep)
-                    file_name = f"{import_line_parts[2].strip()}.vy"
-                    import_source_id = os.path.sep.join([module_name, file_name])
+                    suffix = os.path.sep.join([module_name, import_line_parts[2].strip()])
 
                 else:
                     # Not an import line
                     continue
 
-                import_path = base_path / import_source_id
-                if not import_path.is_file() and not str(import_source_id).startswith("vyper"):
-                    logger.error(f"Missing import source '{import_path}'.")
+                # NOTE: Defaults to JSON (assuming from input JSON or a local JSON),
+                #  unless a Vyper file exists.
+                ext = "vy" if (base_path / f"{suffix}.vy").is_file() else "json"
 
+                import_source_id = f"{suffix}.{ext}"
                 if source_id not in import_map:
                     import_map[source_id] = [import_source_id]
                 elif import_source_id not in import_map[source_id]:
-                    import_map[source_id].append(source_id)
+                    import_map[source_id].append(import_source_id)
 
         return import_map
 
@@ -168,7 +166,11 @@ class VyperCompiler(CompilerAPI):
             return None
 
     @property
-    def interfaces(self) -> Dict[str, Dict]:
+    def dependency_interfaces(self) -> Dict[str, Dict]:
+        """
+        Configured interface imports from dependencies.
+        """
+
         interfaces = {}
         dependencies = self.config.dependency_imports
         for import_name, dep_str in dependencies.items():
@@ -178,8 +180,8 @@ class VyperCompiler(CompilerAPI):
             if not dependency_versions:
                 raise VyperCompileError(f"Missing dependency '{dep_str}'.")
 
-            elif not len(parts) and len(dependency_versions) < 2:
-                # Check if only 1 version.
+            elif len(parts) == 1 and len(dependency_versions) < 2:
+                # Use only version.
                 version = list(dependency_versions.keys())[0]
 
             elif parts[1] not in dependency_versions:
@@ -188,8 +190,9 @@ class VyperCompiler(CompilerAPI):
             else:
                 version = parts[1]
 
-            dependency = dependency_versions[version].extract_manifest().dict()
-            interfaces[f"{import_name}.json"] = dependency
+            dependency = dependency_versions[version].compile()
+            for name, ct in dependency.contract_types.items():
+                interfaces[f"{import_name}.json"] = {"abi": [x.dict() for x in ct.abi]}
 
         return interfaces
 
@@ -211,7 +214,7 @@ class VyperCompiler(CompilerAPI):
                 "settings": settings,
                 "sources": {s: {"content": p.read_text()} for s, p in path_args.items()},
             }
-            interfaces = self.interfaces
+            interfaces = self.dependency_interfaces
             if interfaces:
                 input_json["interfaces"] = interfaces
 
@@ -227,16 +230,25 @@ class VyperCompiler(CompilerAPI):
                 raise VyperCompileError(err) from err
 
             for source_id, output_items in result.items():
-                # Requires `compile_source()` to get `pcmap` because it is not part
-                # of standard output JSON.
-                res = vvm.compile_source(
-                    (base_path / source_id).read_text(),
-                    base_path=base_path,
-                    evm_version=self.evm_version,
-                    vyper_binary=vyper_binary,
-                    vyper_version=vyper_version,
-                )["<stdin>"]
-                pc_map = res["source_map"]["pc_pos_map"]
+                try:
+                    # Requires `compile_source()` to get `pcmap` because it is not part
+                    # of standard output JSON.
+                    src_compile_res = vvm.compile_source(
+                        (base_path / source_id).read_text(),
+                        base_path=base_path,
+                        evm_version=self.evm_version,
+                        vyper_binary=vyper_binary,
+                        vyper_version=vyper_version,
+                    )["<stdin>"]
+                    pc_map = src_compile_res["source_map"]["pc_pos_map"]
+                except VyperError:
+                    logger.warning(
+                        f"Unable to get PCMap for '{source_id}' "
+                        "Reason: PCMap is not present on Standard JSON output"
+                        "and dependency-interfaces are not allowed for `compile_source()`. "
+                        "Some trace-related features may not work."
+                    )
+                    pc_map = {}
 
                 for name, output in output_items.items():
                     # Find dev messages.
@@ -346,9 +358,8 @@ class VyperCompiler(CompilerAPI):
     def _get_compiler_arguments(self, version_map: Dict, base_path: Path) -> Dict[Version, Dict]:
         base_path = base_path or self.project_manager.contracts_folder
         arguments_map = {}
-        vyper_bin = shutil.which("vyper")
         for vyper_version, source_paths in version_map.items():
-            bin_arg = vyper_bin if vyper_version is self.package_version else None
+            bin_arg = self._get_vyper_bin(vyper_version)
             arguments_map[vyper_version] = {
                 "base_path": str(base_path),
                 "evm_version": self.evm_version,
@@ -357,6 +368,9 @@ class VyperCompiler(CompilerAPI):
             }
 
         return arguments_map
+
+    def _get_vyper_bin(self, vyper_version: Version):
+        return shutil.which("vyper") if vyper_version is self.package_version else None
 
 
 def _safe_append(data: Dict, version: Union[Version, NpmSpec], paths: Union[Path, Set]):
