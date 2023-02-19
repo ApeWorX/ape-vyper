@@ -2,7 +2,7 @@ import os
 import re
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Union, cast
+from typing import Dict, List, Optional, Set, Union
 
 import vvm  # type: ignore
 from ape.api import PluginConfig
@@ -15,13 +15,24 @@ from vvm.exceptions import VyperError  # type: ignore
 
 from .exceptions import VyperCompileError, VyperInstallError
 
-
 DEV_MSG_PATTERN = re.compile(r"#\s*(dev:.+)")
 
 
 class VyperConfig(PluginConfig):
     evm_version: Optional[str] = None
+
     dependency_imports: Dict[str, str] = {}
+    """
+    Configuration of an import name mapped to a dependency listing.
+    To use a specific version of a dependency, specify using ``@`` symbol.
+
+    Usage example::
+
+        dependency_imports:
+          import_a: dependency_a@0.1.1
+          import_b: dependency  # Uses only version. Will raise if more than 1.
+
+    """
 
 
 def _install_vyper(version: Version):
@@ -156,6 +167,32 @@ class VyperCompiler(CompilerAPI):
         except ImportError:
             return None
 
+    @property
+    def interfaces(self) -> Dict[str, Dict]:
+        interfaces = {}
+        dependencies = self.config.dependency_imports
+        for import_name, dep_str in dependencies.items():
+            parts = dep_str.split("@")
+            dep_name = parts[0]
+            dependency_versions = self.project_manager.dependencies[dep_name]
+            if not dependency_versions:
+                raise VyperCompileError(f"Missing dependency '{dep_str}'.")
+
+            elif not len(parts) and len(dependency_versions) < 2:
+                # Check if only 1 version.
+                version = list(dependency_versions.keys())[0]
+
+            elif parts[1] not in dependency_versions:
+                raise VyperCompileError(f"Missing dependency '{dep_str}'.")
+
+            else:
+                version = parts[1]
+
+            dependency = dependency_versions[version].extract_manifest().dict()
+            interfaces[f"{import_name}.json"] = dependency
+
+        return interfaces
+
     def compile(
         self, contract_filepaths: List[Path], base_path: Optional[Path] = None
     ) -> List[ContractType]:
@@ -174,14 +211,9 @@ class VyperCompiler(CompilerAPI):
                 "settings": settings,
                 "sources": {s: {"content": p.read_text()} for s, p in path_args.items()},
             }
-            dependencies = self.config.dependency_imports
-            if dependencies:
-                input_json["interfaces"] = {
-                    f"{import_name}.json": self.project_manager.dependencies[dep_name]
-                    .extract_manifest()
-                    .dict()
-                    for import_name, dep_name in dependencies.items()
-                }
+            interfaces = self.interfaces
+            if interfaces:
+                input_json["interfaces"] = interfaces
 
             vyper_binary = compiler_data[vyper_version]["vyper_binary"]
             try:
@@ -194,28 +226,25 @@ class VyperCompiler(CompilerAPI):
             except VyperError as err:
                 raise VyperCompileError(err) from err
 
-            # Requires `compile_source()` to get `pcmap` because it is not part
-            # of standard output JSON.
-            pc_maps: Dict[str, Dict] = {}
-            for path in source_paths:
+            for source_id, output_items in result.items():
+                # Requires `compile_source()` to get `pcmap` because it is not part
+                # of standard output JSON.
                 res = vvm.compile_source(
-                    path,
+                    (base_path / source_id).read_text(),
                     base_path=base_path,
                     evm_version=self.evm_version,
                     vyper_binary=vyper_binary,
                     vyper_version=vyper_version,
-                )
-                pc_map = res["source_map"]["pc_pos_map_compressed"]
-                src_id = get_relative_path(path.absolute(), base_path)
-                pc_maps[src_id] = pc_map
+                )["<stdin>"]
+                pc_map = res["source_map"]["pc_pos_map"]
 
-            for source_id, output_items in result.items():
                 for name, output in output_items.items():
                     # Find dev messages.
-                    pc_map = pc_maps.get(source_id)
                     dev_messages = {}
                     if pc_map:
-                        for line_index, line in enumerate((base_path / source_id).read_text().splitlines()):
+                        for line_index, line in enumerate(
+                            (base_path / source_id).read_text().splitlines()
+                        ):
                             if match := re.search(DEV_MSG_PATTERN, line):
                                 dev_messages[line_index + 1] = match.group(1).strip()
 
@@ -302,9 +331,11 @@ class VyperCompiler(CompilerAPI):
             if not source_paths:
                 continue
 
-            version_settings = {"optimize": True}
-            path_args = {str(get_relative_path(p.absolute(), base_path)): p for p in source_paths}
-            version_settings["outputSelection"] = {s: [""] for s in path_args}
+            version_settings: Dict = {"optimize": True}
+            path_args = {
+                str(get_relative_path(p.absolute(), contracts_path)): p for p in source_paths
+            }
+            version_settings["outputSelection"] = {s: ["*"] for s in path_args}
             if data["evm_version"]:
                 version_settings["evmVersion"] = data["evm_version"]
 

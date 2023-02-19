@@ -20,6 +20,7 @@ class VyperCompileError(VyperCompilerPluginError):
     """
 
     def __init__(self, err: VyperError):
+        self.base_err = err  # For debugging purposes.
         message = "\n\n".join(
             f"{e['sourceLocation']['file']}\n{e['type']}:{e['message']}" for e in err.error_dict
         )

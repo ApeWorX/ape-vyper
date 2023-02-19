@@ -8,6 +8,8 @@ from vvm.exceptions import VyperError  # type: ignore
 from ape_vyper.exceptions import VyperCompileError, VyperInstallError
 
 BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
+PASSING_BASE = BASE_CONTRACTS_PATH / "passing_contracts"
+FAILING_BASE = BASE_CONTRACTS_PATH / "failing_contracts"
 
 # Currently, this is the only version specified from a pragma spec
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.8")
@@ -32,9 +34,7 @@ EXPECTED_FAIL_MESSAGES = {
 
 def test_compile_project(project):
     contracts = project.load_contracts()
-    assert len(contracts) == len(
-        [p.name for p in (BASE_CONTRACTS_PATH / "passing_contracts").glob("*.vy") if p.is_file()]
-    )
+    assert len(contracts) == len([p.name for p in PASSING_BASE.glob("*.vy") if p.is_file()])
     assert contracts["contract"].source_id == "contract.vy"
     assert contracts["contract_no_pragma"].source_id == "contract_no_pragma.vy"
     assert contracts["older_version"].source_id == "older_version.vy"
@@ -42,7 +42,7 @@ def test_compile_project(project):
 
 @pytest.mark.parametrize("contract_name", PASSING_CONTRACT_NAMES)
 def test_compile_individual_contracts(contract_name, compiler):
-    path = BASE_CONTRACTS_PATH / "passing_contracts" / contract_name
+    path = PASSING_BASE / contract_name
     assert compiler.compile([path])
 
 
@@ -50,15 +50,15 @@ def test_compile_individual_contracts(contract_name, compiler):
     "contract_name", [n for n in FAILING_CONTRACT_NAMES if n != "contract_unknown_pragma.vy"]
 )
 def test_compile_failures(contract_name, compiler):
-    path = BASE_CONTRACTS_PATH / "failing_contracts" / contract_name
+    path = FAILING_BASE / contract_name
     with pytest.raises(VyperCompileError, match=EXPECTED_FAIL_MESSAGES[path.stem]) as err:
-        compiler.compile([path])
+        compiler.compile([path], base_path=FAILING_BASE)
 
     assert isinstance(err.value.base_err, VyperError)
 
 
 def test_install_failure(compiler):
-    path = BASE_CONTRACTS_PATH / "failing_contracts" / "contract_unknown_pragma.vy"
+    path = FAILING_BASE / "contract_unknown_pragma.vy"
     with pytest.raises(VyperInstallError, match="No available version to install."):
         compiler.compile([path])
 
@@ -119,7 +119,7 @@ def test_compile_parse_dev_messages(compiler):
     The compiler will output a map that maps dev messages to line numbers.
     See contract_with_dev_messages.vy for more information.
     """
-    path = BASE_CONTRACTS_PATH / "passing_contracts" / "contract_with_dev_messages.vy"
+    path = PASSING_BASE / "contract_with_dev_messages.vy"
 
     result = compiler.compile([path])
 
