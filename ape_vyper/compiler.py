@@ -167,7 +167,7 @@ class VyperCompiler(CompilerAPI):
             return None
 
     @property
-    def dependency_interfaces(self) -> Dict[str, Dict]:
+    def import_remapping(self) -> Dict[str, Dict]:
         """
         Configured interface imports from dependencies.
         """
@@ -215,7 +215,7 @@ class VyperCompiler(CompilerAPI):
                 "settings": settings,
                 "sources": {s: {"content": p.read_text()} for s, p in path_args.items()},
             }
-            interfaces = self.dependency_interfaces
+            interfaces = self.import_remapping
             if interfaces:
                 input_json["interfaces"] = interfaces
 

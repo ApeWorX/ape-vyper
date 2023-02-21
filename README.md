@@ -48,7 +48,7 @@ Then, these files can be imported in other `.vy` sources files via:
 import interfaces.IFace as IFace
 ```
 
-Alternatively, use JSON interfaces from dependency contract types by listing them under the `dependency_imports` key:
+Alternatively, use JSON interfaces from dependency contract types by listing them under the `import_remapping` key:
 
 ```yaml
 # Use `voting` example contracts from Vyperlang repo.
