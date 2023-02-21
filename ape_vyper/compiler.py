@@ -21,16 +21,17 @@ DEV_MSG_PATTERN = re.compile(r"#\s*(dev:.+)")
 class VyperConfig(PluginConfig):
     evm_version: Optional[str] = None
 
-    dependency_imports: Dict[str, str] = {}
+    import_remapping: List[str] = []
     """
     Configuration of an import name mapped to a dependency listing.
     To use a specific version of a dependency, specify using ``@`` symbol.
 
     Usage example::
 
-        dependency_imports:
-          dep_a: dependency_a@0.1.1
-          dep_b: dependency  # Uses only version. Will raise if more than 1.
+        vyper:
+          import_remapping:
+            - "dep_a=dependency_a@0.1.1"
+            - "dep_b=dependency"  # Uses only version. Will raise if more than 1.
 
     """
 
@@ -172,27 +173,27 @@ class VyperCompiler(CompilerAPI):
         """
 
         interfaces = {}
-        dependencies = self.config.dependency_imports
-        for namespace, dep_str in dependencies.items():
-            parts = dep_str.split("@")
+        for remapping in self.config.import_remapping:
+            key, value = remapping.split("=")
+            parts = value.split("@")
             dep_name = parts[0]
             dependency_versions = self.project_manager.dependencies[dep_name]
             if not dependency_versions:
-                raise VyperCompileError(f"Missing dependency '{dep_str}'.")
+                raise VyperCompileError(f"Missing dependency '{dep_name}'.")
 
             elif len(parts) == 1 and len(dependency_versions) < 2:
                 # Use only version.
                 version = list(dependency_versions.keys())[0]
 
             elif parts[1] not in dependency_versions:
-                raise VyperCompileError(f"Missing dependency '{dep_str}'.")
+                raise VyperCompileError(f"Missing dependency '{dep_name}'.")
 
             else:
                 version = parts[1]
 
             dependency = dependency_versions[version].compile()
-            for name, ct in dependency.contract_types.items():
-                interfaces[f"{namespace}/{name}.json"] = {"abi": [x.dict() for x in ct.abi]}
+            for name, ct in (dependency.contract_types or {}).items():
+                interfaces[f"{key}/{name}.json"] = {"abi": [x.dict() for x in ct.abi]}
 
         return interfaces
 

@@ -11,5 +11,5 @@ vyper:
   evm_version: constantinople
 
   # Allows importing dependencies.
-  dependency_imports:
-    exampledep: ExampleDependency
+  import_remapping:
+    - "exampledep=ExampleDependency"
