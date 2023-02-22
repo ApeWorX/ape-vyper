@@ -121,7 +121,7 @@ def test_compile_parse_dev_messages(compiler):
     """
     path = PASSING_BASE / "contract_with_dev_messages.vy"
 
-    result = compiler.compile([path])
+    result = compiler.compile([path], base_path=PASSING_BASE)
 
     assert len(result) == 1
 

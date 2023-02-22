@@ -7,9 +7,9 @@ from typing import Dict, List, Optional, Set, Union, cast
 import vvm  # type: ignore
 from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
-from ape.logging import logger
 from ape.types import ContractType
 from ape.utils import cached_property, get_relative_path
+from ethpm_types.contract_type import SourceMap
 from semantic_version import NpmSpec, Version  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
@@ -227,27 +227,22 @@ class VyperCompiler(CompilerAPI):
                 raise VyperCompileError(err) from err
 
             for source_id, output_items in result.items():
-                try:
-                    # Requires `compile_source()` to get `pcmap` because it is not part
-                    # of standard output JSON.
-                    src_compile_res = vvm.compile_source(
-                        (base_path / source_id).read_text(),
-                        base_path=base_path,
-                        evm_version=self.evm_version,
-                        vyper_binary=vyper_binary,
-                        vyper_version=vyper_version,
-                    )["<stdin>"]
-                    pc_map = src_compile_res["source_map"]["pc_pos_map"]
-                except VyperError:
-                    logger.warning(
-                        f"Unable to get PCMap for '{source_id}' "
-                        "Reason: PCMap is not present on Standard JSON output"
-                        "and dependency-interfaces are not allowed for `compile_source()`. "
-                        "Some trace-related features may not work."
-                    )
-                    pc_map = {}
-
                 for name, output in output_items.items():
+                    # De-compress source map to get PC POS map.
+                    compressed_src_map = SourceMap(
+                        __root__=output["evm"]["deployedBytecode"]["sourceMap"]
+                    )
+                    src_map = list(compressed_src_map.parse())
+                    pc_map = {}
+                    pc = 0
+
+                    while src_map:
+                        src = src_map.pop(0)
+
+                        # TODO: Column start + stop.
+                        pc_map[str(pc)] = [src.start, None, src.length, None]
+                        pc += 1
+
                     # Find dev messages.
                     dev_messages = {}
                     if pc_map:
