@@ -2,7 +2,7 @@ import os
 import re
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, List, Optional, Set, Union, cast
 
 import vvm  # type: ignore
 from ape.api import PluginConfig
@@ -40,7 +40,9 @@ def _install_vyper(version: Version):
     try:
         vvm.install_vyper(version, show_progress=True)
     except Exception as err:
-        raise VyperInstallError(f"Unable to install Vyper version: '{version}'.") from err
+        raise VyperInstallError(
+            f"Unable to install Vyper version: '{version}'.\nReason: {err}"
+        ) from err
 
 
 def get_pragma_spec(source: str) -> Optional[NpmSpec]:
@@ -70,13 +72,7 @@ def get_pragma_spec(source: str) -> Optional[NpmSpec]:
 class VyperCompiler(CompilerAPI):
     @property
     def config(self) -> VyperConfig:
-        config = self.config_manager.get_config("vyper")
-
-        # TODO: remove when fixed https://github.com/ApeWorX/ape/issues/787
-        if not isinstance(config, VyperConfig):
-            return VyperConfig()
-
-        return config
+        return cast(VyperConfig, self.config_manager.get_config("vyper"))
 
     @property
     def name(self) -> str:
