@@ -241,7 +241,7 @@ class VyperCompiler(CompilerAPI):
 
                     while src_map:
                         src = src_map.pop(0)
-                        if src.start is not None:
+                        if src.start is not None and src.length is not None:
                             pc_map[str(pc)] = [
                                 *line_nos.offset_to_line(src.start),
                                 *line_nos.offset_to_line(src.start + src.length),
