@@ -230,9 +230,8 @@ class VyperCompiler(CompilerAPI):
             for source_id, output_items in result.items():
                 for name, output in output_items.items():
                     # De-compress source map to get PC POS map.
-                    compressed_src_map = SourceMap(
-                        __root__=output["evm"]["deployedBytecode"]["sourceMap"]
-                    )
+                    bytecode = output["evm"]["deployedBytecode"]
+                    compressed_src_map = SourceMap(__root__=bytecode["sourceMap"])
                     src_map = list(compressed_src_map.parse())
                     pc_map = {}
                     pc = 0
@@ -243,7 +242,7 @@ class VyperCompiler(CompilerAPI):
                         src = src_map.pop(0)
 
                         # TODO: Can restrict to `length` once Ape supports ethpm-types >= 0.4.
-                        length = getattr(src, "stop", getattr(src, "length"))
+                        length = src.stop if hasattr(src, "stop") else getattr(src, "length")
                         if src.start is not None and length is not None:
                             pc_map[str(pc)] = [
                                 *line_nos.offset_to_line(src.start),
@@ -262,7 +261,7 @@ class VyperCompiler(CompilerAPI):
                         contractName=name,
                         sourceId=source_id,
                         deploymentBytecode={"bytecode": output["evm"]["bytecode"]["object"]},
-                        runtimeBytecode={"bytecode": output["evm"]["deployedBytecode"]["object"]},
+                        runtimeBytecode={"bytecode": bytecode["object"]},
                         abi=output["abi"],
                         sourcemap=compressed_src_map,
                         pcmap=pc_map,
