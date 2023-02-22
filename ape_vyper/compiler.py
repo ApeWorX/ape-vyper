@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Union, cast
 
+import asttokens
 import vvm  # type: ignore
 from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
@@ -235,20 +236,22 @@ class VyperCompiler(CompilerAPI):
                     src_map = list(compressed_src_map.parse())
                     pc_map = {}
                     pc = 0
+                    content = (base_path / source_id).read_text()
+                    line_nos = asttokens.LineNumbers(content)
 
                     while src_map:
                         src = src_map.pop(0)
-
-                        # TODO: Column start + stop.
-                        pc_map[str(pc)] = [src.start, None, src.length, None]
-                        pc += 1
+                        if src.start is not None:
+                            pc_map[str(pc)] = [
+                                *line_nos.offset_to_line(src.start),
+                                *line_nos.offset_to_line(src.start + src.length),
+                            ]
+                            pc += 1
 
                     # Find dev messages.
                     dev_messages = {}
                     if pc_map:
-                        for line_index, line in enumerate(
-                            (base_path / source_id).read_text().splitlines()
-                        ):
+                        for line_index, line in enumerate(content.splitlines()):
                             if match := re.search(DEV_MSG_PATTERN, line):
                                 dev_messages[line_index + 1] = match.group(1).strip()
 
@@ -258,7 +261,7 @@ class VyperCompiler(CompilerAPI):
                         deploymentBytecode={"bytecode": output["evm"]["bytecode"]["object"]},
                         runtimeBytecode={"bytecode": output["evm"]["deployedBytecode"]["object"]},
                         abi=output["abi"],
-                        sourcemap=output["evm"]["deployedBytecode"]["sourceMap"],
+                        sourcemap=compressed_src_map,
                         pcmap=pc_map,
                         userdoc=output["userdoc"],
                         devdoc=output["devdoc"],
