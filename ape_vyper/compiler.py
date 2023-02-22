@@ -241,10 +241,13 @@ class VyperCompiler(CompilerAPI):
 
                     while src_map:
                         src = src_map.pop(0)
-                        if src.start is not None and src.length is not None:
+
+                        # TODO: Can restrict to `length` once Ape supports ethpm-types >= 0.4.
+                        length = getattr(src, "stop", getattr(src, "length"))
+                        if src.start is not None and length is not None:
                             pc_map[str(pc)] = [
                                 *line_nos.offset_to_line(src.start),
-                                *line_nos.offset_to_line(src.start + src.length),
+                                *line_nos.offset_to_line(src.start + length),
                             ]
                             pc += 1
 
