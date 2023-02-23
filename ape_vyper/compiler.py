@@ -253,7 +253,6 @@ class VyperCompiler(CompilerAPI):
 
                         pc += 1
                         if src.start is not None and length is not None:
-                            # pc += length
                             pc_map[str(pc)] = [
                                 *line_nos.offset_to_line(src.start),
                                 *line_nos.offset_to_line(src.start + length),
