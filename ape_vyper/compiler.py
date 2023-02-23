@@ -10,6 +10,7 @@ from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
 from ape.types import ContractType
 from ape.utils import cached_property, get_relative_path
+from eth_utils import is_0x_prefixed
 from ethpm_types.contract_type import SourceMap
 from semantic_version import NpmSpec, Version  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
@@ -231,24 +232,32 @@ class VyperCompiler(CompilerAPI):
                 for name, output in output_items.items():
                     # De-compress source map to get PC POS map.
                     bytecode = output["evm"]["deployedBytecode"]
+                    opcodes = bytecode["opcodes"].split(" ")
                     compressed_src_map = SourceMap(__root__=bytecode["sourceMap"])
-                    src_map = list(compressed_src_map.parse())
-                    pc_map = {}
+                    src_map = list(compressed_src_map.parse())[1:]
                     pc = 0
+                    pc_map = {}
                     content = (base_path / source_id).read_text()
                     line_nos = asttokens.LineNumbers(content)
 
-                    while src_map:
+                    while src_map and opcodes:
                         src = src_map.pop(0)
+                        op = opcodes.pop(0)
 
                         # TODO: Can restrict to `length` once Ape supports ethpm-types >= 0.4.
                         length = src.stop if hasattr(src, "stop") else getattr(src, "length")
+
+                        if opcodes and is_0x_prefixed(opcodes[0]):
+                            opcodes.pop(0)  # Value
+                            pc += int(op[4:])
+
+                        pc += 1
                         if src.start is not None and length is not None:
+                            # pc += length
                             pc_map[str(pc)] = [
                                 *line_nos.offset_to_line(src.start),
                                 *line_nos.offset_to_line(src.start + length),
                             ]
-                            pc += 1
 
                     # Find dev messages.
                     dev_messages = {}

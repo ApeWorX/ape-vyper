@@ -3,6 +3,7 @@ from typing import List
 
 import pytest
 from semantic_version import Version  # type: ignore
+from vvm import compile_source  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper.exceptions import VyperCompileError, VyperInstallError
@@ -14,6 +15,11 @@ FAILING_BASE = BASE_CONTRACTS_PATH / "failing_contracts"
 # Currently, this is the only version specified from a pragma spec
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.8")
 VERSION_FROM_PRAGMA = Version("0.3.7")
+
+
+@pytest.fixture
+def dev_revert_source():
+    return PASSING_BASE / "contract_with_dev_messages.vy"
 
 
 def contract_test_cases(passing: bool) -> List[str]:
@@ -112,16 +118,14 @@ def test_compiler_data_in_manifest(project):
         assert compiler.settings["optimize"] is True
 
 
-def test_compile_parse_dev_messages(compiler):
+def test_compile_parse_dev_messages(compiler, dev_revert_source):
     """
     Test parsing of dev messages in a contract. These follow the form of "#dev: ...".
 
     The compiler will output a map that maps dev messages to line numbers.
     See contract_with_dev_messages.vy for more information.
     """
-    path = PASSING_BASE / "contract_with_dev_messages.vy"
-
-    result = compiler.compile([path], base_path=PASSING_BASE)
+    result = compiler.compile([dev_revert_source], base_path=PASSING_BASE)
 
     assert len(result) == 1
 
@@ -152,3 +156,17 @@ def test_get_imports(compiler, project):
     assert set(actual["use_iface.vy"]) == {local_import, local_from_import, dependency_import}
     assert len(actual["use_iface2.vy"]) == 1
     assert set(actual["use_iface2.vy"]) == {local_import}
+
+
+def test_pc_map(compiler, project, dev_revert_source):
+    """
+    Ensure we de-compress the source map correctly by comparing to the results
+    from `compile_src()` which includes the uncompressed source map data.
+    """
+
+    result = compiler.compile([dev_revert_source], base_path=PASSING_BASE)[0]
+    actual = result.pcmap.__root__
+    code = dev_revert_source.read_text()
+    src_map = compile_source(code)["<stdin>"]["source_map"]
+    expected = src_map["pc_pos_map"]
+    assert actual == expected
