@@ -11,6 +11,7 @@ from ape.api.compiler import CompilerAPI
 from ape.types import ContractType
 from ape.utils import cached_property, get_relative_path
 from eth_utils import is_0x_prefixed
+from ethpm_types import PackageManifest
 from ethpm_types.contract_type import SourceMap
 from semantic_version import NpmSpec, Version  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
@@ -171,25 +172,33 @@ class VyperCompiler(CompilerAPI):
         """
 
         interfaces = {}
+        dependencies: Dict[str, PackageManifest] = {}
+
         for remapping in self.config.import_remapping:
             key, value = remapping.split("=")
-            parts = value.split("@")
-            dep_name = parts[0]
-            dependency_versions = self.project_manager.dependencies[dep_name]
-            if not dependency_versions:
-                raise VyperCompileError(f"Missing dependency '{dep_name}'.")
 
-            elif len(parts) == 1 and len(dependency_versions) < 2:
-                # Use only version.
-                version = list(dependency_versions.keys())[0]
-
-            elif parts[1] not in dependency_versions:
-                raise VyperCompileError(f"Missing dependency '{dep_name}'.")
-
+            if remapping in dependencies:
+                dependency = dependencies[remapping]
             else:
-                version = parts[1]
+                parts = value.split("@")
+                dep_name = parts[0]
+                dependency_versions = self.project_manager.dependencies[dep_name]
+                if not dependency_versions:
+                    raise VyperCompileError(f"Missing dependency '{dep_name}'.")
 
-            dependency = dependency_versions[version].compile()
+                elif len(parts) == 1 and len(dependency_versions) < 2:
+                    # Use only version.
+                    version = list(dependency_versions.keys())[0]
+
+                elif parts[1] not in dependency_versions:
+                    raise VyperCompileError(f"Missing dependency '{dep_name}'.")
+
+                else:
+                    version = parts[1]
+
+                dependency = dependency_versions[version].compile()
+                dependencies[remapping] = dependency
+
             for name, ct in (dependency.contract_types or {}).items():
                 interfaces[f"{key}/{name}.json"] = {"abi": [x.dict() for x in ct.abi]}
 
