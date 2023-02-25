@@ -3,15 +3,23 @@ from typing import List
 
 import pytest
 from semantic_version import Version  # type: ignore
+from vvm import compile_source  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper.exceptions import VyperCompileError, VyperInstallError
 
 BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
+PASSING_BASE = BASE_CONTRACTS_PATH / "passing_contracts"
+FAILING_BASE = BASE_CONTRACTS_PATH / "failing_contracts"
 
 # Currently, this is the only version specified from a pragma spec
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.8")
 VERSION_FROM_PRAGMA = Version("0.3.7")
+
+
+@pytest.fixture
+def dev_revert_source():
+    return PASSING_BASE / "contract_with_dev_messages.vy"
 
 
 def contract_test_cases(passing: bool) -> List[str]:
@@ -32,9 +40,7 @@ EXPECTED_FAIL_MESSAGES = {
 
 def test_compile_project(project):
     contracts = project.load_contracts()
-    assert len(contracts) == len(
-        [p.name for p in (BASE_CONTRACTS_PATH / "passing_contracts").glob("*.vy") if p.is_file()]
-    )
+    assert len(contracts) == len([p.name for p in PASSING_BASE.glob("*.vy") if p.is_file()])
     assert contracts["contract"].source_id == "contract.vy"
     assert contracts["contract_no_pragma"].source_id == "contract_no_pragma.vy"
     assert contracts["older_version"].source_id == "older_version.vy"
@@ -42,7 +48,7 @@ def test_compile_project(project):
 
 @pytest.mark.parametrize("contract_name", PASSING_CONTRACT_NAMES)
 def test_compile_individual_contracts(contract_name, compiler):
-    path = BASE_CONTRACTS_PATH / "passing_contracts" / contract_name
+    path = PASSING_BASE / contract_name
     assert compiler.compile([path])
 
 
@@ -50,15 +56,15 @@ def test_compile_individual_contracts(contract_name, compiler):
     "contract_name", [n for n in FAILING_CONTRACT_NAMES if n != "contract_unknown_pragma.vy"]
 )
 def test_compile_failures(contract_name, compiler):
-    path = BASE_CONTRACTS_PATH / "failing_contracts" / contract_name
+    path = FAILING_BASE / contract_name
     with pytest.raises(VyperCompileError, match=EXPECTED_FAIL_MESSAGES[path.stem]) as err:
-        compiler.compile([path])
+        compiler.compile([path], base_path=FAILING_BASE)
 
     assert isinstance(err.value.base_err, VyperError)
 
 
 def test_install_failure(compiler):
-    path = BASE_CONTRACTS_PATH / "failing_contracts" / "contract_unknown_pragma.vy"
+    path = FAILING_BASE / "contract_unknown_pragma.vy"
     with pytest.raises(VyperInstallError, match="No available version to install."):
         compiler.compile([path])
 
@@ -112,16 +118,14 @@ def test_compiler_data_in_manifest(project):
         assert compiler.settings["optimize"] is True
 
 
-def test_compile_parse_dev_messages(compiler):
+def test_compile_parse_dev_messages(compiler, dev_revert_source):
     """
     Test parsing of dev messages in a contract. These follow the form of "#dev: ...".
 
     The compiler will output a map that maps dev messages to line numbers.
     See contract_with_dev_messages.vy for more information.
     """
-    path = BASE_CONTRACTS_PATH / "passing_contracts" / "contract_with_dev_messages.vy"
-
-    result = compiler.compile([path])
+    result = compiler.compile([dev_revert_source], base_path=PASSING_BASE)
 
     assert len(result) == 1
 
@@ -141,5 +145,28 @@ def test_get_imports(compiler, project):
         x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
     ]
     actual = compiler.get_imports(vyper_files)
-    assert actual["use_iface.vy"] == ["interfaces/IFace.vy"]
-    assert actual["use_iface2.vy"] == ["interfaces/IFace.vy"]
+    builtin_import = "vyper/interfaces/ERC20.json"
+    local_import = "interfaces/IFace.vy"
+    local_from_import = "interfaces/IFace2.vy"
+    dependency_import = "exampledep/Dependency.json"
+
+    assert len(actual["contract.vy"]) == 1
+    assert set(actual["contract.vy"]) == {builtin_import}
+    assert len(actual["use_iface.vy"]) == 3
+    assert set(actual["use_iface.vy"]) == {local_import, local_from_import, dependency_import}
+    assert len(actual["use_iface2.vy"]) == 1
+    assert set(actual["use_iface2.vy"]) == {local_import}
+
+
+def test_pc_map(compiler, project, dev_revert_source):
+    """
+    Ensure we de-compress the source map correctly by comparing to the results
+    from `compile_src()` which includes the uncompressed source map data.
+    """
+
+    result = compiler.compile([dev_revert_source], base_path=PASSING_BASE)[0]
+    actual = result.pcmap.__root__
+    code = dev_revert_source.read_text()
+    src_map = compile_source(code)["<stdin>"]["source_map"]
+    expected = src_map["pc_pos_map"]
+    assert actual == expected
