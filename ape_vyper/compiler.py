@@ -258,11 +258,7 @@ class VyperCompiler(CompilerAPI):
 
                         pc += 1
                         if src.start is not None and src.length is not None:
-                            stmt = [
-                                s
-                                for s in ast.statements
-                                if src.start == s.src.start and src.length == s.src.length
-                            ][0]
+                            stmt = ast.get_statement(src)
                             pc_map[str(pc)] = list(stmt.pcmap)
 
                     # Find dev messages.
