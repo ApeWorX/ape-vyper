@@ -258,9 +258,9 @@ class VyperCompiler(CompilerAPI):
 
                         pc += 1
                         if src.start is not None and src.length is not None:
-                            stmt = ast.get_statement(src)
+                            stmt = ast.get_node(src)
                             if stmt:
-                                pc_map[str(pc)] = list(stmt.pcmap)
+                                pc_map[str(pc)] = list(stmt.line_numbers)
 
                     # Find dev messages.
                     dev_messages = {}
