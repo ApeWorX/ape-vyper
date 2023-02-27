@@ -4,14 +4,13 @@ import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Union, cast
 
-import asttokens
 import vvm  # type: ignore
 from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
 from ape.types import ContractType
 from ape.utils import cached_property, get_relative_path
 from eth_utils import is_0x_prefixed
-from ethpm_types import PackageManifest
+from ethpm_types import ASTNode, PackageManifest
 from ethpm_types.contract_type import SourceMap
 from semantic_version import NpmSpec, Version  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
@@ -233,13 +232,14 @@ class VyperCompiler(CompilerAPI):
                     base_path=base_path,
                     vyper_version=vyper_version,
                     vyper_binary=vyper_binary,
-                )["contracts"]
+                )
             except VyperError as err:
                 raise VyperCompileError(err) from err
 
-            for source_id, output_items in result.items():
+            for source_id, output_items in result["contracts"].items():
                 for name, output in output_items.items():
                     # De-compress source map to get PC POS map.
+                    ast = ASTNode.parse_obj(result["sources"][source_id]["ast"])
                     bytecode = output["evm"]["deployedBytecode"]
                     opcodes = bytecode["opcodes"].split(" ")
                     compressed_src_map = SourceMap(__root__=bytecode["sourceMap"])
@@ -247,25 +247,23 @@ class VyperCompiler(CompilerAPI):
                     pc = 0
                     pc_map = {}
                     content = (base_path / source_id).read_text()
-                    line_nos = asttokens.LineNumbers(content)
 
                     while src_map and opcodes:
                         src = src_map.pop(0)
                         op = opcodes.pop(0)
-
-                        # TODO: Can restrict to `length` once Ape supports ethpm-types >= 0.4.
-                        length = src.stop if hasattr(src, "stop") else getattr(src, "length")
 
                         if opcodes and is_0x_prefixed(opcodes[0]):
                             opcodes.pop(0)  # Value
                             pc += int(op[4:])
 
                         pc += 1
-                        if src.start is not None and length is not None:
-                            pc_map[str(pc)] = [
-                                *line_nos.offset_to_line(src.start),
-                                *line_nos.offset_to_line(src.start + length),
-                            ]
+                        if src.start is not None and src.length is not None:
+                            stmt = [
+                                s
+                                for s in ast.statements
+                                if src.start == s.src.start and src.length == s.src.length
+                            ][0]
+                            pc_map[str(pc)] = list(stmt.pcmap)
 
                     # Find dev messages.
                     dev_messages = {}
@@ -275,6 +273,7 @@ class VyperCompiler(CompilerAPI):
                                 dev_messages[line_index + 1] = match.group(1).strip()
 
                     contract_type = ContractType(
+                        ast=ast,
                         contractName=name,
                         sourceId=source_id,
                         deploymentBytecode={"bytecode": output["evm"]["bytecode"]["object"]},

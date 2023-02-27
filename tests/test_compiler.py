@@ -158,15 +158,16 @@ def test_get_imports(compiler, project):
     assert set(actual["use_iface2.vy"]) == {local_import}
 
 
-def test_pc_map(compiler, project, dev_revert_source):
+def test_pc_map(compiler, project):
     """
     Ensure we de-compress the source map correctly by comparing to the results
     from `compile_src()` which includes the uncompressed source map data.
     """
 
-    result = compiler.compile([dev_revert_source], base_path=PASSING_BASE)[0]
+    path = PASSING_BASE / "contract.vy"
+    result = compiler.compile([path], base_path=PASSING_BASE)[0]
     actual = result.pcmap.__root__
-    code = dev_revert_source.read_text()
+    code = path.read_text()
     src_map = compile_source(code)["<stdin>"]["source_map"]
     expected = src_map["pc_pos_map"]
     assert actual == expected

@@ -3,5 +3,5 @@
 from vyper.interfaces import ERC20
 
 @external
-def foo1() -> bool:
-    return True
+def setNumber(num: uint256):
+    assert num != 5  # dev: 7 8 9
