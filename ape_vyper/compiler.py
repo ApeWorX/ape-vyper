@@ -251,10 +251,6 @@ class VyperCompiler(CompilerAPI):
             def classify_ast(node: ASTNode):
                 if node.ast_type in _FUNCTION_AST_TYPES:
                     node.classification = ASTClassification.FUNCTION_DEF
-                    if node.ast_type == "FunctionDef":
-                        for child in node.children:
-                            if child.ast_type not in _FUNCTION_AST_TYPES:
-                                child.classification = ASTClassification.CONTENT
 
                 for child in node.children:
                     classify_ast(child)
