@@ -13,6 +13,7 @@ from ape.types.trace import ContractSource
 from ape.utils import cached_property, get_relative_path
 from eth_utils import is_0x_prefixed
 from ethpm_types import ASTNode, HexBytes, PackageManifest, PCMap
+from ethpm_types.ast import ASTClassification
 from ethpm_types.contract_type import SourceMap
 from evm_trace.enums import CALL_OPCODES
 from semantic_version import NpmSpec, Version  # type: ignore
@@ -28,6 +29,7 @@ from ape_vyper.exceptions import (
 DEV_MSG_PATTERN = re.compile(r"#\s*(dev:.+)")
 _RETURN_OPCODES = ("RETURN", "REVERT", "STOP")
 _CALL_OPCODES = tuple([x.value for x in CALL_OPCODES])
+_FUNCTION_AST_TYPES = ("FunctionDef", "Name", "arguments")
 
 
 class VyperConfig(PluginConfig):
@@ -246,6 +248,17 @@ class VyperCompiler(CompilerAPI):
             except VyperError as err:
                 raise VyperCompileError(err) from err
 
+            def classify_ast(node: ASTNode):
+                if node.ast_type in _FUNCTION_AST_TYPES:
+                    node.classification = ASTClassification.FUNCTION_DEF
+                    if node.ast_type == "FunctionDef":
+                        for child in node.children:
+                            if child.ast_type not in _FUNCTION_AST_TYPES:
+                                child.classification = ASTClassification.CONTENT
+
+                for child in node.children:
+                    classify_ast(child)
+
             for source_id, output_items in result["contracts"].items():
                 content = {
                     i + 1: ln
@@ -254,6 +267,7 @@ class VyperCompiler(CompilerAPI):
                 for name, output in output_items.items():
                     # De-compress source map to get PC POS map.
                     ast = ASTNode.parse_obj(result["sources"][source_id]["ast"])
+                    classify_ast(ast)
 
                     # Track function offsets.
                     function_offsets = []
@@ -510,24 +524,26 @@ class VyperCompiler(CompilerAPI):
         for frame in trace:
             if frame.op in _CALL_OPCODES:
                 called_contract, sub_calldata = self._create_contract_from_call(frame)
-                ext = Path(called_contract.source_id).suffix
-                if not ext.endswith(".vy"):
-                    # Not a Vyper contract!
-                    compiler = self.compiler_manager.registered_compilers[ext]
-                    try:
-                        sub_trace = compiler.trace_source(
-                            called_contract.contract_type, trace, sub_calldata
-                        )
-                        traceback.extend(sub_trace)
-                    except NotImplementedError:
-                        # Compiler not supported. Fast forward out of this call.
-                        for fr in trace:
-                            if fr.op == "RETURN":
-                                break
+                if called_contract:
+                    ext = Path(called_contract.source_id).suffix
+                    if not ext.endswith(".vy"):
+                        # Not a Vyper contract!
+                        compiler = self.compiler_manager.registered_compilers[ext]
+                        try:
+                            sub_trace = compiler.trace_source(
+                                called_contract.contract_type, trace, sub_calldata
+                            )
+                            traceback.extend(sub_trace)
+                        except NotImplementedError:
+                            # Compiler not supported. Fast forward out of this call.
+                            for fr in trace:
+                                if fr.op == "RETURN":
+                                    break
 
-                elif called_contract:
-                    sub_trace = self._get_traceback(called_contract, trace, sub_calldata)
-                    traceback.extend(sub_trace)
+                    else:
+                        sub_trace = self._get_traceback(called_contract, trace, sub_calldata)
+                        traceback.extend(sub_trace)
+
                 else:
                     # Contract not found. Fast forward out of this call.
                     for fr in trace:
