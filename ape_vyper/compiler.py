@@ -510,12 +510,29 @@ class VyperCompiler(CompilerAPI):
         for frame in trace:
             if frame.op in _CALL_OPCODES:
                 called_contract, sub_calldata = self._create_contract_from_call(frame)
-                if called_contract:
+                ext = Path(called_contract.source_id).suffix
+                if not ext.endswith(".vy"):
+                    # Not a Vyper contract!
+                    compiler = self.compiler_manager.registered_compilers[ext]
+                    try:
+                        sub_trace = compiler.trace_source(
+                            called_contract.contract_type, trace, sub_calldata
+                        )
+                        traceback.extend(sub_trace)
+                    except NotImplementedError:
+                        # Compiler not supported. Fast forward out of this call.
+                        for fr in trace:
+                            if fr.op == "RETURN":
+                                break
+
+                elif called_contract:
                     sub_trace = self._get_traceback(called_contract, trace, sub_calldata)
                     traceback.extend(sub_trace)
                 else:
                     # Contract not found. Fast forward out of this call.
-                    return traceback
+                    for fr in trace:
+                        if fr.op == "RETURN":
+                            break
 
             elif frame.op in _RETURN_OPCODES:
                 if frame.op == "RETURN" and function:
