@@ -276,3 +276,59 @@ def test_pc_map(compiler, project):
 def test_enrich_error(contract_logic_error, compiler):
     actual = compiler.enrich_error(contract_logic_error)
     assert isinstance(actual, NonPayableError)
+
+
+def test_trace_source(account, geth_provider, project):
+    registry = account.deploy(project.registry)
+    contract = account.deploy(project.traceback_contract, registry)
+    receipt = contract.addBalance(123, sender=account)
+    actual = receipt.traceback
+    base_folder = project.contracts_folder
+    expected = rf"""
+Traceback (most recent call last)
+  File {base_folder}/traceback_contract.vy, in addBalance(uint256 num) -> uint256
+       27     # Comments in the middle (is a test)
+       28
+       29     for i in [1, 2, 3, 4, 5]:
+       30         if i != num:
+       31             continue
+       32
+  -->  33     return self._balance
+""".strip()
+    assert str(actual) == expected
+
+
+def test_trace_err_source(account, geth_provider, project):
+    registry_deployed = account.deploy(project.registry)
+    contract = account.deploy(project.traceback_contract, registry_deployed)
+    txn = contract.addBalance_f.as_transaction(123)
+
+    try:
+        account.call(txn)
+    except ContractLogicError:
+        pass
+
+    receipt = geth_provider.get_receipt(txn.txn_hash.hex())
+    actual = receipt.traceback
+    base_folder = project.contracts_folder
+    expected = rf"""
+Traceback (most recent call last)
+  File {base_folder}/traceback_contract.vy, in addBalance_f(uint256 num) -> uint256
+       44     # Run some loops.
+       45     for i in [1, 2, 3, 4, 5]:
+       46         if i == num:
+       47             break
+       48
+       49     # Fail in the middle (is test)
+       50     # Fails because was already set above.
+  -->  51     self.registry.register_f(msg.sender)
+       52
+       53     for i in [1, 2, 3, 4, 5]:
+       54         if i != num:
+       55             continue
+
+  File {base_folder}/registry.vy, in register_f(address addr)
+  -->  12     assert self.addr != addr, "doubling."
+       13     self.addr = addr
+    """.strip()
+    assert str(actual) == expected

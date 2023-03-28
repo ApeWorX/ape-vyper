@@ -2,17 +2,19 @@ import os
 import re
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, cast
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union, cast
 
 import vvm  # type: ignore
 from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
 from ape.exceptions import ContractLogicError
-from ape.types import ContractType
+from ape.types import ContractType, SourceTraceback, TraceFrame
+from ape.types.trace import ContractSource
 from ape.utils import cached_property, get_relative_path
 from eth_utils import is_0x_prefixed
-from ethpm_types import ASTNode, PackageManifest, PCMap
+from ethpm_types import ASTNode, HexBytes, PackageManifest, PCMap
 from ethpm_types.contract_type import SourceMap
+from evm_trace.enums import CALL_OPCODES
 from semantic_version import NpmSpec, Version  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
@@ -24,6 +26,8 @@ from ape_vyper.exceptions import (
 )
 
 DEV_MSG_PATTERN = re.compile(r"#\s*(dev:.+)")
+_RETURN_OPCODES = ("RETURN", "REVERT", "STOP")
+_CALL_OPCODES = tuple([x.value for x in CALL_OPCODES])
 
 
 class VyperConfig(PluginConfig):
@@ -487,6 +491,80 @@ class VyperCompiler(CompilerAPI):
         else:
             # Not a builtin compiler error; cannot enrich.
             return err
+
+    def trace_source(
+        self, contract_type: ContractType, trace: Iterator[TraceFrame], calldata: HexBytes
+    ) -> SourceTraceback:
+        source_contract_type = self.project_manager._create_contract_source(contract_type)
+        if not source_contract_type:
+            return SourceTraceback.parse_obj([])
+
+        return self._get_traceback(source_contract_type, trace, calldata)
+
+    def _get_traceback(
+        self, contract_src: ContractSource, trace: Iterator[TraceFrame], calldata: HexBytes
+    ) -> SourceTraceback:
+        traceback = SourceTraceback.parse_obj([])
+        function = None
+
+        for frame in trace:
+            if frame.op in _CALL_OPCODES:
+                called_contract, sub_calldata = self._create_contract_from_call(frame)
+                if called_contract:
+                    sub_trace = self._get_traceback(called_contract, trace, sub_calldata)
+                    traceback.extend(sub_trace)
+                else:
+                    # Contract not found. Fast forward out of this call.
+                    return traceback
+
+            elif frame.op in _RETURN_OPCODES:
+                if frame.op == "RETURN" and function:
+                    return_ast_result = [x for x in function.ast.children if x.ast_type == "Return"]
+                    if return_ast_result:
+                        # Ensure return statement added.
+                        # Sometimes it is missing from the PCMap otherwise.
+                        return_ast = return_ast_result[-1]
+                        location = return_ast.line_numbers
+                        start = traceback.last.end_lineno + 1
+                        traceback.last.extend(location, ws_start=start)
+
+                # Completed!
+                return traceback
+
+            if "PUSH" in frame.op and frame.pc in contract_src.pcmap:
+                # Check if next op is SSTORE to properly use AST from push op.
+                next_frame = next(trace, None)
+                if next_frame and next_frame.op == "SSTORE":
+                    push_location = tuple(contract_src.pcmap[frame.pc])  # type: ignore
+                    pcmap = PCMap.parse_obj({next_frame.pc: push_location})
+                else:
+                    pcmap = contract_src.pcmap
+
+                if next_frame:
+                    frame = next_frame
+
+            else:
+                pcmap = contract_src.pcmap
+
+            if frame.pc not in pcmap:
+                continue
+
+            location = cast(Tuple[int, int, int, int], tuple(pcmap[frame.pc] or []))
+            function = contract_src.lookup_function(location, method_id=HexBytes(calldata[:4]))
+            if not function:
+                continue
+
+            if not traceback.last or not traceback.last.function.signature == function.signature:
+                depth = (
+                    frame.depth + 1
+                    if traceback.last and traceback.last.depth == frame.depth
+                    else frame.depth
+                )
+                traceback.add_jump(location, function, contract_src.source_path, depth)
+            else:
+                traceback.extend_last(location)
+
+        return traceback
 
 
 def _safe_append(data: Dict, version: Union[Version, NpmSpec], paths: Union[Path, Set]):
