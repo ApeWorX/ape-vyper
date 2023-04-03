@@ -245,29 +245,32 @@ class VyperCompiler(CompilerAPI):
                     compressed_src_map = SourceMap(__root__=bytecode["sourceMap"])
                     src_map = list(compressed_src_map.parse())[1:]
                     pc = 0
-                    pc_map = {}
-                    content = (base_path / source_id).read_text()
+                    pc_map: Dict = {}
+                    content = {
+                        i + 1: ln
+                        for i, ln in enumerate((base_path / source_id).read_text().splitlines())
+                    }
+                    dev_messages: Dict = {}
 
                     while src_map and opcodes:
                         src = src_map.pop(0)
                         op = opcodes.pop(0)
-
+                        pc += 1
                         if opcodes and is_0x_prefixed(opcodes[0]):
                             opcodes.pop(0)  # Value
                             pc += int(op[4:])
 
-                        pc += 1
+                        # Add content PC item.
                         if src.start is not None and src.length is not None:
                             stmt = ast.get_node(src)
                             if stmt:
-                                pc_map[pc] = list(stmt.line_numbers)
-
-                    # Find dev messages.
-                    dev_messages = {}
-                    if pc_map:
-                        for line_index, line in enumerate(content.splitlines()):
-                            if match := re.search(DEV_MSG_PATTERN, line):
-                                dev_messages[line_index + 1] = match.group(1).strip()
+                                pc_map[pc] = {"location": list(stmt.line_numbers)}
+                                line = content[stmt.begin_lineno]
+                                if match := re.search(DEV_MSG_PATTERN, line):
+                                    dev_msg = str(match.group(1)).strip()
+                                    if dev_msg:
+                                        pc_map[pc]["dev_message"] = dev_msg
+                                        dev_messages[stmt.begin_lineno] = dev_msg
 
                     contract_type = ContractType(
                         ast=ast,
@@ -390,3 +393,7 @@ def _safe_append(data: Dict, version: Union[Version, NpmSpec], paths: Union[Path
         data[version] = data[version].union(paths)
     else:
         data[version] = paths
+
+
+def _is_revert_jump(pc_list: List, revert_pc: int) -> bool:
+    return pc_list[-1]["op"] == "JUMPI" and int(pc_list[-2].get("value", "0"), 16) == revert_pc
