@@ -2,7 +2,7 @@ import os
 import re
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Union, cast
+from typing import Any, Dict, List, Optional, Set, Tuple, Union, cast
 
 import vvm  # type: ignore
 from ape.api import PluginConfig
@@ -10,7 +10,7 @@ from ape.api.compiler import CompilerAPI
 from ape.types import ContractType
 from ape.utils import cached_property, get_relative_path
 from eth_utils import is_0x_prefixed
-from ethpm_types import ASTNode, PackageManifest
+from ethpm_types import ASTNode, PackageManifest, PCMap
 from ethpm_types.contract_type import SourceMap
 from semantic_version import NpmSpec, Version  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
@@ -245,32 +245,64 @@ class VyperCompiler(CompilerAPI):
                     compressed_src_map = SourceMap(__root__=bytecode["sourceMap"])
                     src_map = list(compressed_src_map.parse())[1:]
                     pc = 0
-                    pc_map: Dict = {}
+                    pc_map_list: List[Tuple[int, Dict[str, Optional[Any]]]] = []
                     content = {
                         i + 1: ln
                         for i, ln in enumerate((base_path / source_id).read_text().splitlines())
                     }
-                    dev_messages: Dict = {}
+                    last_value = None
+                    revert_pc = -1
+                    # TODO: Brownie shows -5 and -1 for these indices for some reason.
+                    if len(opcodes) > 12 and opcodes[-13] == "JUMPDEST" and opcodes[-9] == "REVERT":
+                        # Starting in vyper 0.2.14, reverts without a reason string are optimized
+                        # with a jump to the end of the bytecode.
+                        revert_pc = (
+                            len(opcodes)
+                            + sum(int(i[4:]) - 1 for i in opcodes if i.startswith("PUSH"))
+                            - 18
+                        )
 
+                    processed_opcodes = []
                     while src_map and opcodes:
                         src = src_map.pop(0)
                         op = opcodes.pop(0)
+                        processed_opcodes.append(op)
                         pc += 1
                         if opcodes and is_0x_prefixed(opcodes[0]):
-                            opcodes.pop(0)  # Value
+                            last_value = int(opcodes.pop(0), 16)  # Value
                             pc += int(op[4:])
+
+                        # Check for special Payable case.
+                        if src.start is None:
+                            if (
+                                op == "REVERT"
+                                and len(processed_opcodes) > 6
+                                and processed_opcodes[-7] == "CALLVALUE"
+                            ) or (
+                                op == "JUMPI"
+                                and last_value is not None
+                                and last_value == revert_pc
+                                and len(processed_opcodes) > 2
+                                and processed_opcodes[-3] == "CALLVALUE"
+                            ):
+                                dev = "Cannot send ether to non-payable function"
+                                pc_map_item = {"location": None, "dev": dev}
+                                pc_map_list.append((revert_pc, pc_map_item))
+
+                            continue
 
                         # Add content PC item.
                         if src.start is not None and src.length is not None:
                             stmt = ast.get_node(src)
                             if stmt:
-                                pc_map[pc] = {"location": list(stmt.line_numbers)}
-                                line = content[stmt.begin_lineno]
-                                if match := re.search(DEV_MSG_PATTERN, line):
-                                    dev_msg = str(match.group(1)).strip()
-                                    if dev_msg:
-                                        pc_map[pc]["dev_message"] = dev_msg
-                                        dev_messages[stmt.begin_lineno] = dev_msg
+                                pc_map_list.append((pc, {"location": list(stmt.line_numbers)}))
+
+                    # Find dev messages.
+                    # TODO: Remove these and only support dev messages from PCMap.
+                    dev_messages = {}
+                    for line_no, line in content.items():
+                        if match := re.search(DEV_MSG_PATTERN, line):
+                            dev_messages[line_no] = match.group(1).strip()
 
                     contract_type = ContractType(
                         ast=ast,
@@ -280,7 +312,7 @@ class VyperCompiler(CompilerAPI):
                         runtimeBytecode={"bytecode": bytecode["object"]},
                         abi=output["abi"],
                         sourcemap=compressed_src_map,
-                        pcmap=pc_map,
+                        pcmap=PCMap.parse_obj(dict(pc_map_list)),
                         userdoc=output["userdoc"],
                         devdoc=output["devdoc"],
                         dev_messages=dev_messages,
@@ -393,7 +425,3 @@ def _safe_append(data: Dict, version: Union[Version, NpmSpec], paths: Union[Path
         data[version] = data[version].union(paths)
     else:
         data[version] = paths
-
-
-def _is_revert_jump(pc_list: List, revert_pc: int) -> bool:
-    return pc_list[-1]["op"] == "JUMPI" and int(pc_list[-2].get("value", "0"), 16) == revert_pc
