@@ -252,10 +252,13 @@ class VyperCompiler(CompilerAPI):
                     }
                     last_value = None
                     revert_pc = -1
-                    # TODO: Brownie shows -5 and -1 for these indices for some reason.
-                    if len(opcodes) > 12 and opcodes[-13] == "JUMPDEST" and opcodes[-9] == "REVERT":
+                    if (
+                        len(opcodes) > 12 and opcodes[-13] == "JUMPDEST" and opcodes[-9] == "REVERT"
+                    ) or (
+                        len(opcodes) > 4 and opcodes[-5] == "JUMPDEST" and opcodes[-1] == "REVERT"
+                    ):
                         # Starting in vyper 0.2.14, reverts without a reason string are optimized
-                        # with a jump to the end of the bytecode.
+                        # with a jump to the "end" of the bytecode.
                         revert_pc = (
                             len(opcodes)
                             + sum(int(i[4:]) - 1 for i in opcodes if i.startswith("PUSH"))
@@ -297,8 +300,7 @@ class VyperCompiler(CompilerAPI):
                             if stmt:
                                 pc_map_list.append((pc, {"location": list(stmt.line_numbers)}))
 
-                    # Find dev messages.
-                    # TODO: Remove these and only support dev messages from PCMap.
+                    # Find content-specified dev messages.
                     dev_messages = {}
                     for line_no, line in content.items():
                         if match := re.search(DEV_MSG_PATTERN, line):
