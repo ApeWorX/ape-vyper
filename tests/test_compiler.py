@@ -170,5 +170,5 @@ def test_pc_map(compiler, project):
     code = path.read_text()
     src_map = compile_source(code)["<stdin>"]["source_map"]
     expected = {pc: {"location": ln} for pc, ln in src_map["pc_pos_map"].items()}
-    expected["24"] = {"dev": "Cannot send ether to non-payable function", "location": None}
+    expected["62"] = {"dev": "Cannot send ether to non-payable function", "location": None}
     assert actual == expected
