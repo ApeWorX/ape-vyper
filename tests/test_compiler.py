@@ -172,7 +172,7 @@ def test_pc_map(compiler, project):
     src_map = compile_source(code)["<stdin>"]["source_map"]
     expected = {pc: {"location": ln} for pc, ln in src_map["pc_pos_map"].items()}
     expected["23"] = {"dev": DevMessages.NONPAYABLE_CHECK, "location": None}
-    expected["62"] = {"dev": DevMessages.NONPAYABLE_CHECK, "location": None}
+    expected["52"] = {"dev": DevMessages.NONPAYABLE_CHECK, "location": None}
     expected["73"] = {"dev": DevMessages.NONPAYABLE_CHECK, "location": None}
     expected["94"] = {"dev": DevMessages.INTEGER_OVERFLOW, "location": [12, 12, 12, 20]}
     expected["151"] = {"dev": DevMessages.NONPAYABLE_CHECK, "location": None}
