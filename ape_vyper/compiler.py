@@ -291,7 +291,7 @@ class VyperCompiler(CompilerAPI):
                         start_pc = pc
                         pc += 1
                         if opcodes and is_0x_prefixed(opcodes[0]):
-                            last_value = int(opcodes.pop(0), 16)  # Value
+                            last_value = int(opcodes.pop(0), 16)
                             pc += int(op[4:])
 
                         # Check for special Payable case.
