@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union, cast
 
@@ -20,7 +21,7 @@ from .exceptions import VyperCompileError, VyperInstallError
 DEV_MSG_PATTERN = re.compile(r"#\s*(dev:.+)")
 
 
-class DevMessages:
+class DevMessage(Enum):
     NONPAYABLE_CHECK = "Cannot send ether to non-payable function"
     INDEX_OUT_OF_RANGE = "Index out of range"
     INTEGER_OVERFLOW = "Integer overflow"
@@ -29,7 +30,7 @@ class DevMessages:
     MODULO_BY_ZERO = "Modulo by zero"
 
     @classmethod
-    def from_op(cls, operator: str) -> Optional[str]:
+    def from_operator(cls, operator: str) -> Optional["DevMessage"]:
         if operator == "Add":
             return cls.INTEGER_OVERFLOW
         elif operator == "Sub":
@@ -303,7 +304,7 @@ class VyperCompiler(CompilerAPI):
                             ) or _is_revert_jump(op, last_value, revert_pc, processed_opcodes):
                                 pc_map_item = {
                                     "location": None,
-                                    "dev": DevMessages.NONPAYABLE_CHECK,
+                                    "dev": DevMessage.NONPAYABLE_CHECK.value,
                                 }
                                 pc_map_list.append((start_pc, pc_map_item))
 
@@ -318,17 +319,22 @@ class VyperCompiler(CompilerAPI):
                                     op, last_value, revert_pc, processed_opcodes
                                 )
                                 if op == "REVERT" or is_revert_jump:
+                                    dev = None
                                     if stmt.ast_type in ("AugAssign", "BinOp"):
                                         # SafeMath
                                         for node in stmt.children:
-                                            dev = DevMessages.from_op(node.ast_type)
+                                            dev = DevMessage.from_operator(node.ast_type)
                                             if dev:
-                                                if is_revert_jump:
-                                                    pc_map_list[-1][1]["dev"] = dev
-                                                else:
-                                                    item["dev"] = dev
-
                                                 break
+
+                                    elif stmt.ast_type == "Subscript":
+                                        dev = DevMessage.INDEX_OUT_OF_RANGE
+
+                                    if dev:
+                                        if is_revert_jump:
+                                            pc_map_list[-1][1]["dev"] = dev.value
+                                        else:
+                                            item["dev"] = dev.value
 
                                 pc_map_list.append((pc, item))
 

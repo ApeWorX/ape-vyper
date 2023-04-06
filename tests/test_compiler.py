@@ -6,7 +6,7 @@ from semantic_version import Version  # type: ignore
 from vvm import compile_source  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
-from ape_vyper.compiler import DevMessages
+from ape_vyper.compiler import DevMessage
 from ape_vyper.exceptions import VyperCompileError, VyperInstallError
 
 BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
@@ -171,14 +171,14 @@ def test_pc_map(compiler, project):
     code = path.read_text()
     src_map = compile_source(code)["<stdin>"]["source_map"]
     expected = {pc: {"location": ln} for pc, ln in src_map["pc_pos_map"].items()}
-    expected["23"] = {"dev": DevMessages.NONPAYABLE_CHECK, "location": None}
-    expected["52"] = {"dev": DevMessages.NONPAYABLE_CHECK, "location": None}
-    expected["73"] = {"dev": DevMessages.NONPAYABLE_CHECK, "location": None}
-    expected["94"] = {"dev": DevMessages.INTEGER_OVERFLOW, "location": [12, 12, 12, 20]}
-    expected["151"] = {"dev": DevMessages.NONPAYABLE_CHECK, "location": None}
-    expected["188"] = {"dev": DevMessages.INTEGER_UNDERFLOW, "location": [17, 11, 17, 25]}
-    expected["229"] = {"dev": DevMessages.NONPAYABLE_CHECK, "location": None}
-    expected["249"] = {"dev": DevMessages.DIVISION_BY_ZERO, "location": [22, 11, 22, 16]}
-    expected["288"] = {"dev": DevMessages.NONPAYABLE_CHECK, "location": None}
-    expected["308"] = {"dev": DevMessages.MODULO_BY_ZERO, "location": [27, 11, 27, 16]}
+    expected["23"] = {"dev": DevMessage.NONPAYABLE_CHECK, "location": None}
+    expected["52"] = {"dev": DevMessage.NONPAYABLE_CHECK, "location": None}
+    expected["73"] = {"dev": DevMessage.NONPAYABLE_CHECK, "location": None}
+    expected["94"] = {"dev": DevMessage.INTEGER_OVERFLOW, "location": [12, 12, 12, 20]}
+    expected["151"] = {"dev": DevMessage.NONPAYABLE_CHECK, "location": None}
+    expected["188"] = {"dev": DevMessage.INTEGER_UNDERFLOW, "location": [17, 11, 17, 25]}
+    expected["229"] = {"dev": DevMessage.NONPAYABLE_CHECK, "location": None}
+    expected["249"] = {"dev": DevMessage.DIVISION_BY_ZERO, "location": [22, 11, 22, 16]}
+    expected["288"] = {"dev": DevMessage.NONPAYABLE_CHECK, "location": None}
+    expected["308"] = {"dev": DevMessage.MODULO_BY_ZERO, "location": [27, 11, 27, 16]}
     assert actual == expected
