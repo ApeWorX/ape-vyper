@@ -28,6 +28,19 @@ class DevMessages:
     DIVISION_BY_ZERO = "Division by zero"
     MODULO_BY_ZERO = "Modulo by zero"
 
+    @classmethod
+    def from_op(cls, operator: str) -> Optional[str]:
+        if operator == "Add":
+            return cls.INTEGER_OVERFLOW
+        elif operator == "Sub":
+            return cls.INTEGER_UNDERFLOW
+        elif operator == "Div":
+            return cls.DIVISION_BY_ZERO
+        elif operator == "Mod":
+            return cls.MODULO_BY_ZERO
+
+        return None
+
 
 class VyperConfig(PluginConfig):
     evm_version: Optional[str] = None
@@ -299,7 +312,19 @@ class VyperCompiler(CompilerAPI):
                         if src.start is not None and src.length is not None:
                             stmt = ast.get_node(src)
                             if stmt:
-                                pc_map_list.append((pc, {"location": list(stmt.line_numbers)}))
+                                item: Dict = {"location": list(stmt.line_numbers)}
+                                if op == "REVERT" or _is_revert_jump(
+                                    op, last_value, revert_pc, processed_opcodes
+                                ):
+                                    if stmt.ast_type in ("AugAssign", "BinOp"):
+                                        # SafeMath
+                                        for node in stmt.children:
+                                            dev = DevMessages.from_op(node.ast_type)
+                                            if dev:
+                                                item["dev"] = dev
+                                                break
+
+                                pc_map_list.append((pc, item))
 
                     # Find content-specified dev messages.
                     dev_messages = {}
