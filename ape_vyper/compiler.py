@@ -564,8 +564,8 @@ class VyperCompiler(CompilerAPI):
                 # Check if next op is SSTORE to properly use AST from push op.
                 next_frame = next(trace, None)
                 if next_frame and next_frame.op == "SSTORE":
-                    push_location = tuple(contract_src.pcmap[frame.pc])  # type: ignore
-                    pcmap = PCMap.parse_obj({next_frame.pc: push_location})
+                    push_location = tuple(contract_src.pcmap[frame.pc]["location"])  # type: ignore
+                    pcmap = PCMap.parse_obj({next_frame.pc: {"location": push_location}})
                 else:
                     pcmap = contract_src.pcmap
 
@@ -578,7 +578,7 @@ class VyperCompiler(CompilerAPI):
             if frame.pc not in pcmap:
                 continue
 
-            location = cast(Tuple[int, int, int, int], tuple(pcmap[frame.pc] or []))
+            location = cast(Tuple[int, int, int, int], tuple(pcmap[frame.pc]["location"] or []))
             function = contract_src.lookup_function(location, method_id=HexBytes(calldata[:4]))
             if not function:
                 continue
