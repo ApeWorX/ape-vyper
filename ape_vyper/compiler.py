@@ -261,11 +261,7 @@ class VyperCompiler(CompilerAPI):
                     }
                     last_value = None
                     revert_pc = -1
-                    if (
-                        len(opcodes) > 12 and opcodes[-13] == "JUMPDEST" and opcodes[-9] == "REVERT"
-                    ) or (
-                        len(opcodes) > 4 and opcodes[-5] == "JUMPDEST" and opcodes[-1] == "REVERT"
-                    ):
+                    if _is_nonpayable_check(opcodes):
                         # Starting in vyper 0.2.14, reverts without a reason string are optimized
                         # with a jump to the "end" of the bytecode.
                         revert_pc = (
@@ -438,3 +434,9 @@ def _safe_append(data: Dict, version: Union[Version, NpmSpec], paths: Union[Path
         data[version] = data[version].union(paths)
     else:
         data[version] = paths
+
+
+def _is_nonpayable_check(opcodes: List[str]) -> bool:
+    return (len(opcodes) > 12 and opcodes[-13] == "JUMPDEST" and opcodes[-9] == "REVERT") or (
+        len(opcodes) > 4 and opcodes[-5] == "JUMPDEST" and opcodes[-1] == "REVERT"
+    )
