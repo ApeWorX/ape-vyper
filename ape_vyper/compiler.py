@@ -314,15 +314,20 @@ class VyperCompiler(CompilerAPI):
                             stmt = ast.get_node(src)
                             if stmt:
                                 item: Dict = {"location": list(stmt.line_numbers)}
-                                if op == "REVERT" or _is_revert_jump(
+                                is_revert_jump = _is_revert_jump(
                                     op, last_value, revert_pc, processed_opcodes
-                                ):
+                                )
+                                if op == "REVERT" or is_revert_jump:
                                     if stmt.ast_type in ("AugAssign", "BinOp"):
                                         # SafeMath
                                         for node in stmt.children:
                                             dev = DevMessages.from_op(node.ast_type)
                                             if dev:
-                                                item["dev"] = dev
+                                                if is_revert_jump:
+                                                    pc_map_list[-1][1]["dev"] = dev
+                                                else:
+                                                    item["dev"] = dev
+
                                                 break
 
                                 pc_map_list.append((pc, item))
