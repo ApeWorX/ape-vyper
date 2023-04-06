@@ -288,6 +288,7 @@ class VyperCompiler(CompilerAPI):
                         src = src_map.pop(0)
                         op = opcodes.pop(0)
                         processed_opcodes.append(op)
+                        start_pc = pc
                         pc += 1
                         if opcodes and is_0x_prefixed(opcodes[0]):
                             last_value = int(opcodes.pop(0), 16)  # Value
@@ -304,7 +305,7 @@ class VyperCompiler(CompilerAPI):
                                     "location": None,
                                     "dev": DevMessages.NONPAYABLE_CHECK,
                                 }
-                                pc_map_list.append((revert_pc, pc_map_item))
+                                pc_map_list.append((start_pc, pc_map_item))
 
                             continue
 
