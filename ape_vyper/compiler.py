@@ -286,13 +286,7 @@ class VyperCompiler(CompilerAPI):
                                 op == "REVERT"
                                 and len(processed_opcodes) > 6
                                 and processed_opcodes[-7] == "CALLVALUE"
-                            ) or (
-                                op == "JUMPI"
-                                and last_value is not None
-                                and last_value == revert_pc
-                                and len(processed_opcodes) > 2
-                                and processed_opcodes[-3] == "CALLVALUE"
-                            ):
+                            ) or _is_revert_jump(op, last_value, revert_pc, processed_opcodes):
                                 pc_map_item = {
                                     "location": None,
                                     "dev": DevMessages.NONPAYABLE_CHECK,
@@ -434,6 +428,12 @@ def _safe_append(data: Dict, version: Union[Version, NpmSpec], paths: Union[Path
         data[version] = data[version].union(paths)
     else:
         data[version] = paths
+
+
+def _is_revert_jump(
+    op: str, value: Optional[int], revert_pc: int, processed_opcodes: List[str]
+) -> bool:
+    return op == "JUMPI" and value is not None and value == revert_pc and len(processed_opcodes) > 2
 
 
 def _is_nonpayable_check(opcodes: List[str]) -> bool:
