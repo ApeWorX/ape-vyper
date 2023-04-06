@@ -2,6 +2,8 @@
 
 from vyper.interfaces import ERC20
 
+dynArray: public(DynArray[uint256, 1024])
+
 @external
 def setNumber(num: uint256):
     assert num != 5  # dev: 7 8 9
@@ -25,3 +27,9 @@ def div_zero(i: int128) -> int128:
 @external
 def mod_zero(i: int128) -> int128:
     return 4 % i
+
+
+@external
+def gimme(idx: uint256) -> uint256:
+    return self.dynArray[idx]
+

@@ -170,15 +170,22 @@ def test_pc_map(compiler, project):
     actual = result.pcmap.__root__
     code = path.read_text()
     src_map = compile_source(code)["<stdin>"]["source_map"]
+
+    def item(dev: DevMessage, location=None):
+        return {"dev": dev.value, "location": location}
+
     expected = {pc: {"location": ln} for pc, ln in src_map["pc_pos_map"].items()}
-    expected["23"] = {"dev": DevMessage.NONPAYABLE_CHECK, "location": None}
-    expected["52"] = {"dev": DevMessage.NONPAYABLE_CHECK, "location": None}
-    expected["73"] = {"dev": DevMessage.NONPAYABLE_CHECK, "location": None}
-    expected["94"] = {"dev": DevMessage.INTEGER_OVERFLOW, "location": [12, 12, 12, 20]}
-    expected["151"] = {"dev": DevMessage.NONPAYABLE_CHECK, "location": None}
-    expected["188"] = {"dev": DevMessage.INTEGER_UNDERFLOW, "location": [17, 11, 17, 25]}
-    expected["229"] = {"dev": DevMessage.NONPAYABLE_CHECK, "location": None}
-    expected["249"] = {"dev": DevMessage.DIVISION_BY_ZERO, "location": [22, 11, 22, 16]}
-    expected["288"] = {"dev": DevMessage.NONPAYABLE_CHECK, "location": None}
-    expected["308"] = {"dev": DevMessage.MODULO_BY_ZERO, "location": [27, 11, 27, 16]}
+    expected["23"] = item(DevMessage.NONPAYABLE_CHECK)
+    expected["52"] = item(DevMessage.NONPAYABLE_CHECK)
+    expected["73"] = item(DevMessage.NONPAYABLE_CHECK)
+    expected["94"] = item(DevMessage.INTEGER_OVERFLOW, [14, 12, 14, 20])
+    expected["151"] = item(DevMessage.NONPAYABLE_CHECK)
+    expected["188"] = item(DevMessage.INTEGER_UNDERFLOW, [19, 11, 19, 25])
+    expected["229"] = item(DevMessage.NONPAYABLE_CHECK)
+    expected["249"] = item(DevMessage.DIVISION_BY_ZERO, [24, 11, 24, 16])
+    expected["288"] = item(DevMessage.NONPAYABLE_CHECK)
+    expected["308"] = item(DevMessage.MODULO_BY_ZERO, [29, 11, 29, 16])
+    expected["351"] = item(DevMessage.INDEX_OUT_OF_RANGE, [34, 11, 34, 24])
+    expected["392"] = item(DevMessage.NONPAYABLE_CHECK)
+    expected["405"] = item(DevMessage.NONPAYABLE_CHECK)
     assert actual == expected

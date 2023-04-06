@@ -306,7 +306,9 @@ class VyperCompiler(CompilerAPI):
                                     "location": None,
                                     "dev": DevMessage.NONPAYABLE_CHECK.value,
                                 }
-                                pc_map_list.append((start_pc, pc_map_item))
+                                pc_map_list.append(
+                                    (pc if op == "REVERT" else start_pc, pc_map_item)
+                                )
 
                             continue
 
