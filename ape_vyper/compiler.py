@@ -135,12 +135,12 @@ class VyperCompiler(CompilerAPI):
         try:
             import vyper  # type: ignore
 
-            # Strip off parts from source-installation
-            version = Version.coerce(vyper.__version__)
-            return Version(major=version.major, minor=version.minor, patch=version.patch)
-
         except ImportError:
             return None
+
+        # Strip off parts from source-installation
+        version = Version.coerce(vyper.__version__)
+        return Version(major=version.major, minor=version.minor, patch=version.patch)
 
     @cached_property
     def available_versions(self) -> List[Version]:
