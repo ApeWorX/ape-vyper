@@ -20,6 +20,15 @@ from .exceptions import VyperCompileError, VyperInstallError
 DEV_MSG_PATTERN = re.compile(r"#\s*(dev:.+)")
 
 
+class DevMessages:
+    NONPAYABLE_CHECK = "Cannot send ether to non-payable function"
+    INDEX_OUT_OF_RANGE = "Index out of range"
+    INTEGER_OVERFLOW = "Integer overflow"
+    INTEGER_UNDERFLOW = "Integer underflow"
+    DIVISION_BY_ZERO = "Division by zero"
+    MODULO_BY_ZERO = "Modulo by zero"
+
+
 class VyperConfig(PluginConfig):
     evm_version: Optional[str] = None
 
@@ -288,8 +297,10 @@ class VyperCompiler(CompilerAPI):
                                 and len(processed_opcodes) > 2
                                 and processed_opcodes[-3] == "CALLVALUE"
                             ):
-                                dev = "Cannot send ether to non-payable function"
-                                pc_map_item = {"location": None, "dev": dev}
+                                pc_map_item = {
+                                    "location": None,
+                                    "dev": DevMessages.NONPAYABLE_CHECK,
+                                }
                                 pc_map_list.append((revert_pc, pc_map_item))
 
                             continue
