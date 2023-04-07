@@ -313,6 +313,8 @@ class VyperCompiler(CompilerAPI):
                             continue
 
                         # Add content PC item.
+                        # Also check for compiler runtime error handling.
+                        # Runtime error locations are marked in the PCMap for further analysis.
                         if src.start is not None and src.length is not None:
                             stmt = ast.get_node(src)
                             if stmt:
