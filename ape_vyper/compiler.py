@@ -304,7 +304,7 @@ class VyperCompiler(CompilerAPI):
                             ) or _is_revert_jump(op, last_value, revert_pc, processed_opcodes):
                                 pc_map_item = {
                                     "location": None,
-                                    "dev": DevMessage.NONPAYABLE_CHECK.value,
+                                    "dev": f"dev: {DevMessage.NONPAYABLE_CHECK.value}",
                                 }
                                 pc_map_list.append(
                                     (pc if op == "REVERT" else start_pc, pc_map_item)
