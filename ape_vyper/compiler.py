@@ -1,7 +1,6 @@
 import os
 import re
 import shutil
-from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union, cast
 
@@ -16,31 +15,9 @@ from ethpm_types.contract_type import SourceMap
 from semantic_version import NpmSpec, Version  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
-from .exceptions import VyperCompileError, VyperInstallError
+from ape_vyper.exceptions import RuntimeErrorType, VyperCompileError, VyperInstallError
 
 DEV_MSG_PATTERN = re.compile(r"#\s*(dev:.+)")
-
-
-class RuntimeError(Enum):
-    NONPAYABLE_CHECK = "Cannot send ether to non-payable function"
-    INDEX_OUT_OF_RANGE = "Index out of range"
-    INTEGER_OVERFLOW = "Integer overflow"
-    INTEGER_UNDERFLOW = "Integer underflow"
-    DIVISION_BY_ZERO = "Division by zero"
-    MODULO_BY_ZERO = "Modulo by zero"
-
-    @classmethod
-    def from_operator(cls, operator: str) -> Optional["RuntimeError"]:
-        if operator == "Add":
-            return cls.INTEGER_OVERFLOW
-        elif operator == "Sub":
-            return cls.INTEGER_UNDERFLOW
-        elif operator == "Div":
-            return cls.DIVISION_BY_ZERO
-        elif operator == "Mod":
-            return cls.MODULO_BY_ZERO
-
-        return None
 
 
 class VyperConfig(PluginConfig):
@@ -304,7 +281,7 @@ class VyperCompiler(CompilerAPI):
                             ) or _is_revert_jump(op, last_value, revert_pc, processed_opcodes):
                                 pc_map_item = {
                                     "location": None,
-                                    "dev": f"dev: {RuntimeError.NONPAYABLE_CHECK.value}",
+                                    "dev": f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}",
                                 }
                                 pc_map_list.append(
                                     (pc if op == "REVERT" else start_pc, pc_map_item)
@@ -327,12 +304,12 @@ class VyperCompiler(CompilerAPI):
                                     if stmt.ast_type in ("AugAssign", "BinOp"):
                                         # SafeMath
                                         for node in stmt.children:
-                                            dev = RuntimeError.from_operator(node.ast_type)
+                                            dev = RuntimeErrorType.from_operator(node.ast_type)
                                             if dev:
                                                 break
 
                                     elif stmt.ast_type == "Subscript":
-                                        dev = RuntimeError.INDEX_OUT_OF_RANGE
+                                        dev = RuntimeErrorType.INDEX_OUT_OF_RANGE
 
                                     if dev:
                                         val = f"dev: {dev.value}"
