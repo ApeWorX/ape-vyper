@@ -333,10 +333,11 @@ class VyperCompiler(CompilerAPI):
                                         dev = DevMessage.INDEX_OUT_OF_RANGE
 
                                     if dev:
+                                        val = f"dev: {dev.value}"
                                         if is_revert_jump:
-                                            pc_map_list[-1][1]["dev"] = dev.value
+                                            pc_map_list[-1][1]["dev"] = val
                                         else:
-                                            item["dev"] = dev.value
+                                            item["dev"] = val
 
                                 pc_map_list.append((pc, item))
 
