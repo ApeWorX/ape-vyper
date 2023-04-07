@@ -172,7 +172,7 @@ def test_pc_map(compiler, project):
     src_map = compile_source(code)["<stdin>"]["source_map"]
 
     def item(dev: DevMessage, location=None):
-        return {"dev": dev.value, "location": location}
+        return {"dev": f"dev: {dev.value}", "location": location}
 
     expected = {pc: {"location": ln} for pc, ln in src_map["pc_pos_map"].items()}
     expected["23"] = item(DevMessage.NONPAYABLE_CHECK)
