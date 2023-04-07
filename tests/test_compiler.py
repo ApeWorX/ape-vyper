@@ -6,7 +6,7 @@ from semantic_version import Version  # type: ignore
 from vvm import compile_source  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
-from ape_vyper.compiler import DevMessage
+from ape_vyper.compiler import RuntimeError
 from ape_vyper.exceptions import VyperCompileError, VyperInstallError
 
 BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
@@ -171,21 +171,21 @@ def test_pc_map(compiler, project):
     code = path.read_text()
     src_map = compile_source(code)["<stdin>"]["source_map"]
 
-    def item(dev: DevMessage, location=None):
+    def item(dev: RuntimeError, location=None):
         return {"dev": f"dev: {dev.value}", "location": location}
 
     expected = {pc: {"location": ln} for pc, ln in src_map["pc_pos_map"].items()}
-    expected["23"] = item(DevMessage.NONPAYABLE_CHECK)
-    expected["52"] = item(DevMessage.NONPAYABLE_CHECK)
-    expected["73"] = item(DevMessage.NONPAYABLE_CHECK)
-    expected["94"] = item(DevMessage.INTEGER_OVERFLOW, [14, 12, 14, 20])
-    expected["151"] = item(DevMessage.NONPAYABLE_CHECK)
-    expected["188"] = item(DevMessage.INTEGER_UNDERFLOW, [19, 11, 19, 25])
-    expected["229"] = item(DevMessage.NONPAYABLE_CHECK)
-    expected["249"] = item(DevMessage.DIVISION_BY_ZERO, [24, 11, 24, 16])
-    expected["288"] = item(DevMessage.NONPAYABLE_CHECK)
-    expected["308"] = item(DevMessage.MODULO_BY_ZERO, [29, 11, 29, 16])
-    expected["351"] = item(DevMessage.INDEX_OUT_OF_RANGE, [34, 11, 34, 24])
-    expected["392"] = item(DevMessage.NONPAYABLE_CHECK)
-    expected["405"] = item(DevMessage.NONPAYABLE_CHECK)
+    expected["23"] = item(RuntimeError.NONPAYABLE_CHECK)
+    expected["52"] = item(RuntimeError.NONPAYABLE_CHECK)
+    expected["73"] = item(RuntimeError.NONPAYABLE_CHECK)
+    expected["94"] = item(RuntimeError.INTEGER_OVERFLOW, [14, 12, 14, 20])
+    expected["151"] = item(RuntimeError.NONPAYABLE_CHECK)
+    expected["188"] = item(RuntimeError.INTEGER_UNDERFLOW, [19, 11, 19, 25])
+    expected["229"] = item(RuntimeError.NONPAYABLE_CHECK)
+    expected["249"] = item(RuntimeError.DIVISION_BY_ZERO, [24, 11, 24, 16])
+    expected["288"] = item(RuntimeError.NONPAYABLE_CHECK)
+    expected["308"] = item(RuntimeError.MODULO_BY_ZERO, [29, 11, 29, 16])
+    expected["351"] = item(RuntimeError.INDEX_OUT_OF_RANGE, [34, 11, 34, 24])
+    expected["392"] = item(RuntimeError.NONPAYABLE_CHECK)
+    expected["405"] = item(RuntimeError.NONPAYABLE_CHECK)
     assert actual == expected
