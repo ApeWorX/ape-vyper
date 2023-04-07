@@ -58,7 +58,7 @@ setup(
     include_package_data=True,
     install_requires=[
         "eth-ape>=0.6.7,<0.7",
-        "ethpm-types>=0.4.2",  # Use same version as eth-ape
+        "ethpm-types>=0.4.3",  # Use same version as eth-ape
         "tqdm",  # Use same version as eth-ape
         "vvm>=0.1.0,<0.2",
     ],
