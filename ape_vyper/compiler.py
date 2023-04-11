@@ -2,7 +2,7 @@ import os
 import re
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Union, cast
+from typing import Any, Dict, List, Optional, Set, Tuple, Union, cast
 
 import vvm  # type: ignore
 from ape.api import PluginConfig
@@ -10,12 +10,12 @@ from ape.api.compiler import CompilerAPI
 from ape.types import ContractType
 from ape.utils import cached_property, get_relative_path
 from eth_utils import is_0x_prefixed
-from ethpm_types import ASTNode, PackageManifest
+from ethpm_types import ASTNode, PackageManifest, PCMap
 from ethpm_types.contract_type import SourceMap
 from semantic_version import NpmSpec, Version  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
-from .exceptions import VyperCompileError, VyperInstallError
+from ape_vyper.exceptions import RuntimeErrorType, VyperCompileError, VyperInstallError
 
 DEV_MSG_PATTERN = re.compile(r"#\s*(dev:.+)")
 
@@ -135,12 +135,12 @@ class VyperCompiler(CompilerAPI):
         try:
             import vyper  # type: ignore
 
-            # Strip off parts from source-installation
-            version = Version.coerce(vyper.__version__)
-            return Version(major=version.major, minor=version.minor, patch=version.patch)
-
         except ImportError:
             return None
+
+        # Strip off parts from source-installation
+        version = Version.coerce(vyper.__version__)
+        return Version(major=version.major, minor=version.minor, patch=version.patch)
 
     @cached_property
     def available_versions(self) -> List[Version]:
@@ -245,29 +245,86 @@ class VyperCompiler(CompilerAPI):
                     compressed_src_map = SourceMap(__root__=bytecode["sourceMap"])
                     src_map = list(compressed_src_map.parse())[1:]
                     pc = 0
-                    pc_map = {}
-                    content = (base_path / source_id).read_text()
+                    pc_map_list: List[Tuple[int, Dict[str, Optional[Any]]]] = []
+                    content = {
+                        i + 1: ln
+                        for i, ln in enumerate((base_path / source_id).read_text().splitlines())
+                    }
+                    last_value = None
+                    revert_pc = -1
+                    if _is_nonpayable_check(opcodes):
+                        # Starting in vyper 0.2.14, reverts without a reason string are optimized
+                        # with a jump to the "end" of the bytecode.
+                        revert_pc = (
+                            len(opcodes)
+                            + sum(int(i[4:]) - 1 for i in opcodes if i.startswith("PUSH"))
+                            - 18
+                        )
 
+                    processed_opcodes = []
                     while src_map and opcodes:
                         src = src_map.pop(0)
                         op = opcodes.pop(0)
-
+                        processed_opcodes.append(op)
+                        start_pc = pc
+                        pc += 1
                         if opcodes and is_0x_prefixed(opcodes[0]):
-                            opcodes.pop(0)  # Value
+                            last_value = int(opcodes.pop(0), 16)
                             pc += int(op[4:])
 
-                        pc += 1
+                        # Check for special Payable case.
+                        if src.start is None:
+                            if (
+                                op == "REVERT"
+                                and len(processed_opcodes) > 6
+                                and processed_opcodes[-7] == "CALLVALUE"
+                            ) or _is_revert_jump(op, last_value, revert_pc, processed_opcodes):
+                                pc_map_item = {
+                                    "location": None,
+                                    "dev": f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}",
+                                }
+                                pc_map_list.append(
+                                    (pc if op == "REVERT" else start_pc, pc_map_item)
+                                )
+
+                            continue
+
+                        # Add content PC item.
+                        # Also check for compiler runtime error handling.
+                        # Runtime error locations are marked in the PCMap for further analysis.
                         if src.start is not None and src.length is not None:
                             stmt = ast.get_node(src)
                             if stmt:
-                                pc_map[pc] = list(stmt.line_numbers)
+                                item: Dict = {"location": list(stmt.line_numbers)}
+                                is_revert_jump = _is_revert_jump(
+                                    op, last_value, revert_pc, processed_opcodes
+                                )
+                                if op == "REVERT" or is_revert_jump:
+                                    dev = None
+                                    if stmt.ast_type in ("AugAssign", "BinOp"):
+                                        # SafeMath
+                                        for node in stmt.children:
+                                            dev = RuntimeErrorType.from_operator(node.ast_type)
+                                            if dev:
+                                                break
 
-                    # Find dev messages.
+                                    elif stmt.ast_type == "Subscript":
+                                        dev = RuntimeErrorType.INDEX_OUT_OF_RANGE
+
+                                    if dev:
+                                        val = f"dev: {dev.value}"
+                                        if is_revert_jump:
+                                            pc_map_list[-1][1]["dev"] = val
+                                        else:
+                                            item["dev"] = val
+
+                                pc_map_list.append((pc, item))
+
+                    # Find content-specified dev messages.
                     dev_messages = {}
-                    if pc_map:
-                        for line_index, line in enumerate(content.splitlines()):
-                            if match := re.search(DEV_MSG_PATTERN, line):
-                                dev_messages[line_index + 1] = match.group(1).strip()
+                    for line_no, line in content.items():
+                        if match := re.search(DEV_MSG_PATTERN, line):
+                            dev_messages[line_no] = match.group(1).strip()
 
                     contract_type = ContractType(
                         ast=ast,
@@ -277,7 +334,7 @@ class VyperCompiler(CompilerAPI):
                         runtimeBytecode={"bytecode": bytecode["object"]},
                         abi=output["abi"],
                         sourcemap=compressed_src_map,
-                        pcmap=pc_map,
+                        pcmap=PCMap.parse_obj(dict(pc_map_list)),
                         userdoc=output["userdoc"],
                         devdoc=output["devdoc"],
                         dev_messages=dev_messages,
@@ -390,3 +447,15 @@ def _safe_append(data: Dict, version: Union[Version, NpmSpec], paths: Union[Path
         data[version] = data[version].union(paths)
     else:
         data[version] = paths
+
+
+def _is_revert_jump(
+    op: str, value: Optional[int], revert_pc: int, processed_opcodes: List[str]
+) -> bool:
+    return op == "JUMPI" and value is not None and value == revert_pc and len(processed_opcodes) > 2
+
+
+def _is_nonpayable_check(opcodes: List[str]) -> bool:
+    return (len(opcodes) > 12 and opcodes[-13] == "JUMPDEST" and opcodes[-9] == "REVERT") or (
+        len(opcodes) > 4 and opcodes[-5] == "JUMPDEST" and opcodes[-1] == "REVERT"
+    )
