@@ -579,6 +579,10 @@ class VyperCompiler(CompilerAPI):
                 continue
 
             location = cast(Tuple[int, int, int, int], tuple(pcmap[frame.pc]["location"] or []))
+            if not location:
+                # Is builtin PC marker.
+                continue
+
             function = contract_src.lookup_function(location, method_id=HexBytes(calldata[:4]))
             if not function:
                 continue
