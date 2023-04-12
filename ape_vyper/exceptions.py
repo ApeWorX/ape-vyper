@@ -1,7 +1,7 @@
 from enum import Enum
-from typing import Optional
+from typing import Dict, Optional, Type
 
-from ape.exceptions import CompilerError
+from ape.exceptions import CompilerError, ContractLogicError
 from vvm.exceptions import VyperError  # type: ignore
 
 
@@ -50,3 +50,78 @@ class RuntimeErrorType(Enum):
             return cls.MODULO_BY_ZERO
 
         return None
+
+
+class VyperRuntimeError(ContractLogicError):
+    """
+    An error raised when running EVM code, such as a index or math error.
+    It is a type of ``ContractLogicError`` where the code came from the
+    compiler and not directly from the source.
+    """
+
+    def __init__(self, error_type: RuntimeErrorType, **kwargs):
+        super().__init__(error_type.value, **kwargs)
+
+
+class NonPayableError(VyperRuntimeError):
+    """
+    Raised when sending ether to a non-payable function.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(RuntimeErrorType.NONPAYABLE_CHECK, **kwargs)
+
+
+class IndexOutOfRangeError(VyperRuntimeError, IndexError):
+    """
+    Raised when accessing an array using an out-of-range index.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(RuntimeErrorType.INDEX_OUT_OF_RANGE, **kwargs)
+
+
+class IntegerOverflowError(VyperRuntimeError):
+    """
+    Raised when addition results in an integer exceeding its max size.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(RuntimeErrorType.INTEGER_OVERFLOW, **kwargs)
+
+
+class IntegerUnderflowError(VyperRuntimeError):
+    """
+    Raised when addition results in an integer exceeding its max size.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(RuntimeErrorType.INTEGER_UNDERFLOW, **kwargs)
+
+
+class DivisionByZeroError(VyperRuntimeError, ZeroDivisionError):
+    """
+    Raised when dividing by zero.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(RuntimeErrorType.DIVISION_BY_ZERO, **kwargs)
+
+
+class ModuloByZeroError(VyperRuntimeError, ZeroDivisionError):
+    """
+    Raised when modding by zero.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(RuntimeErrorType.MODULO_BY_ZERO, **kwargs)
+
+
+RUNTIME_ERROR_MAP: Dict[RuntimeErrorType, Type[ContractLogicError]] = {
+    RuntimeErrorType.NONPAYABLE_CHECK: NonPayableError,
+    RuntimeErrorType.INDEX_OUT_OF_RANGE: IndexOutOfRangeError,
+    RuntimeErrorType.INTEGER_OVERFLOW: IntegerOverflowError,
+    RuntimeErrorType.INTEGER_UNDERFLOW: IntegerUnderflowError,
+    RuntimeErrorType.DIVISION_BY_ZERO: DivisionByZeroError,
+    RuntimeErrorType.MODULO_BY_ZERO: ModuloByZeroError,
+}
