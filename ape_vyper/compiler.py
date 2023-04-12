@@ -452,6 +452,9 @@ class VyperCompiler(CompilerAPI):
             # Not available.
             return err
 
+        if not dev_message:
+            return err
+
         # Check if a builtin compiler error.
         if dev_message in [m.value for m in RuntimeErrorType]:
             runtime_error_type = RuntimeErrorType(dev_message)
