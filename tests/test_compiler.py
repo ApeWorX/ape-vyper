@@ -189,3 +189,7 @@ def test_pc_map(compiler, project):
     expected["392"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
     expected["405"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
     assert actual == expected
+
+
+def test_enrich_error():
+    pass

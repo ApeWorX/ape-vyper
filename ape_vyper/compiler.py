@@ -455,16 +455,18 @@ class VyperCompiler(CompilerAPI):
         if not dev_message:
             return err
 
-        # Check if a builtin compiler error.
-        if dev_message in [m.value for m in RuntimeErrorType]:
-            runtime_error_type = RuntimeErrorType(dev_message)
+        err_str = dev_message.replace("dev: ", "")
+
+        if err_str in [m.value for m in RuntimeErrorType]:
+            # Is a builtin compiler error.
+            runtime_error_type = RuntimeErrorType(err_str)
             runtime_error_cls = RUNTIME_ERROR_MAP[runtime_error_type]
             return runtime_error_cls(
                 txn=err.txn, trace=err.trace, contract_address=err.contract_address
             )
 
         else:
-            # Is not a builtin compiler error; cannot enrich.
+            # Not a builtin compiler error; cannot enrich.
             return err
 
 
