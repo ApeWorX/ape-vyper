@@ -2,12 +2,13 @@ from pathlib import Path
 from typing import List
 
 import pytest
+from ape.exceptions import ContractLogicError
 from semantic_version import Version  # type: ignore
 from vvm import compile_source  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper.compiler import RuntimeErrorType
-from ape_vyper.exceptions import VyperCompileError, VyperInstallError
+from ape_vyper.exceptions import NonPayableError, VyperCompileError, VyperInstallError
 
 BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
 PASSING_BASE = BASE_CONTRACTS_PATH / "passing_contracts"
@@ -21,6 +22,16 @@ VERSION_FROM_PRAGMA = Version("0.3.7")
 @pytest.fixture
 def dev_revert_source():
     return PASSING_BASE / "contract_with_dev_messages.vy"
+
+
+@pytest.fixture
+def contract_logic_error():
+    err = ContractLogicError()
+
+    # Inject cached PC message so no need to have tracing provider.
+    err.__dict__["dev_message"] = f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}"
+
+    return err
 
 
 def contract_test_cases(passing: bool) -> List[str]:
@@ -189,3 +200,8 @@ def test_pc_map(compiler, project):
     expected["392"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
     expected["405"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
     assert actual == expected
+
+
+def test_enrich_error(contract_logic_error, compiler):
+    actual = compiler.enrich_error(contract_logic_error)
+    assert isinstance(actual, NonPayableError)

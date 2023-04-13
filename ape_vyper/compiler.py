@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union, cast
 import vvm  # type: ignore
 from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
+from ape.exceptions import ContractLogicError
 from ape.types import ContractType
 from ape.utils import cached_property, get_relative_path
 from eth_utils import is_0x_prefixed
@@ -15,7 +16,12 @@ from ethpm_types.contract_type import SourceMap
 from semantic_version import NpmSpec, Version  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
-from ape_vyper.exceptions import RuntimeErrorType, VyperCompileError, VyperInstallError
+from ape_vyper.exceptions import (
+    RUNTIME_ERROR_MAP,
+    RuntimeErrorType,
+    VyperCompileError,
+    VyperInstallError,
+)
 
 DEV_MSG_PATTERN = re.compile(r"#\s*(dev:.+)")
 
@@ -438,6 +444,30 @@ class VyperCompiler(CompilerAPI):
 
     def _get_vyper_bin(self, vyper_version: Version):
         return shutil.which("vyper") if vyper_version is self.package_version else None
+
+    def enrich_error(self, err: ContractLogicError) -> ContractLogicError:
+        try:
+            dev_message = err.dev_message
+        except ValueError:
+            # Not available.
+            return err
+
+        if not dev_message:
+            return err
+
+        err_str = dev_message.replace("dev: ", "")
+
+        if err_str in [m.value for m in RuntimeErrorType]:
+            # Is a builtin compiler error.
+            runtime_error_type = RuntimeErrorType(err_str)
+            runtime_error_cls = RUNTIME_ERROR_MAP[runtime_error_type]
+            return runtime_error_cls(
+                txn=err.txn, trace=err.trace, contract_address=err.contract_address
+            )
+
+        else:
+            # Not a builtin compiler error; cannot enrich.
+            return err
 
 
 def _safe_append(data: Dict, version: Union[Version, NpmSpec], paths: Union[Path, Set]):
