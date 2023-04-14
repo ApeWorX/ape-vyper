@@ -286,11 +286,8 @@ Traceback (most recent call last)
     assert str(actual) == expected
 
 
-def test_trace_err_source(account, geth_provider, project):
-    registry_deployed = account.deploy(project.registry)
-    contract = account.deploy(project.traceback_contract, registry_deployed)
+def test_trace_err_source(account, geth_provider, project, contract):
     txn = contract.addBalance_f.as_transaction(123)
-
     try:
         account.call(txn)
     except ContractLogicError:
@@ -319,4 +316,25 @@ Traceback (most recent call last)
   -->  12     assert self.addr != addr, "doubling."
        13     self.addr = addr
     """.strip()
+    assert str(actual) == expected
+
+
+def test_builtin_trace_err_source(account, geth_provider, project):
+    registry_deployed = account.deploy(project.registry)
+    contract = account.deploy(project.traceback_contract, registry_deployed)
+    txn = contract.addBalance.as_transaction(123, value=1)
+
+    try:
+        account.call(txn)
+    except ContractLogicError:
+        pass
+
+    receipt = geth_provider.get_receipt(txn.txn_hash.hex())
+    actual = receipt.source_traceback
+    base_folder = project.contracts_folder
+    expected = rf"""
+Traceback (most recent call last)
+  File {base_folder}/traceback_contract.vy, in addBalance
+  """
+    raise ValueError(str(actual))
     assert str(actual) == expected

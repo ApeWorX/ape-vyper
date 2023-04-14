@@ -578,7 +578,7 @@ class VyperCompiler(CompilerAPI):
             if frame.pc not in pcmap:
                 continue
 
-            location = cast(Tuple[int, int, int, int], tuple(pcmap[frame.pc]["location"] or []))
+            location = cast(Tuple[int, int, int, int], tuple(pcmap[frame.pc].get("location") or []))
             if not location:
                 # Is builtin PC marker.
                 continue
