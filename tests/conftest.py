@@ -105,3 +105,13 @@ def geth_provider():
 @pytest.fixture
 def account():
     return ape.accounts.test_accounts[0]
+
+
+@pytest.fixture
+def registry(geth_provider, account, project):
+    return account.deploy(project.registry)
+
+
+@pytest.fixture
+def contract(registry, account, project):
+    return account.deploy(project.traceback_contract, registry)

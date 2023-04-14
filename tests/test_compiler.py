@@ -24,16 +24,6 @@ def dev_revert_source():
     return PASSING_BASE / "contract_with_dev_messages.vy"
 
 
-@pytest.fixture
-def contract_logic_error():
-    err = ContractLogicError()
-
-    # Inject cached PC message so no need to have tracing provider.
-    err.__dict__["dev_message"] = f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}"
-
-    return err
-
-
 def contract_test_cases(passing: bool) -> List[str]:
     """
     Returns test-case names for outputting nicely with pytest.
@@ -273,14 +263,12 @@ def test_pc_map(compiler, project):
     assert range_checks[0]["location"] == [range_no, 11, range_no, 24]
 
 
-def test_enrich_error(contract_logic_error, compiler):
-    actual = compiler.enrich_error(contract_logic_error)
-    assert isinstance(actual, NonPayableError)
+def test_enrich_error(compiler, geth_provider, contract, account):
+    with pytest.raises(NonPayableError):
+        contract.addBalance(4, sender=account, value=1)
 
 
-def test_trace_source(account, geth_provider, project):
-    registry = account.deploy(project.registry)
-    contract = account.deploy(project.traceback_contract, registry)
+def test_trace_source(account, geth_provider, project, contract):
     receipt = contract.addBalance(123, sender=account)
     actual = receipt.traceback
     base_folder = project.contracts_folder
