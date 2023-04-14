@@ -270,11 +270,11 @@ def test_enrich_error(compiler, geth_provider, contract, account):
 
 def test_trace_source(account, geth_provider, project, contract):
     receipt = contract.addBalance(123, sender=account)
-    actual = receipt.traceback
+    actual = receipt.source_traceback
     base_folder = project.contracts_folder
     expected = rf"""
 Traceback (most recent call last)
-  File {base_folder}/traceback_contract.vy, in addBalance(uint256 num) -> uint256
+  File {base_folder}/traceback_contract.vy, in addBalance
        27     # Comments in the middle (is a test)
        28
        29     for i in [1, 2, 3, 4, 5]:
@@ -297,11 +297,11 @@ def test_trace_err_source(account, geth_provider, project):
         pass
 
     receipt = geth_provider.get_receipt(txn.txn_hash.hex())
-    actual = receipt.traceback
+    actual = receipt.source_traceback
     base_folder = project.contracts_folder
     expected = rf"""
 Traceback (most recent call last)
-  File {base_folder}/traceback_contract.vy, in addBalance_f(uint256 num) -> uint256
+  File {base_folder}/traceback_contract.vy, in addBalance_f
        44     # Run some loops.
        45     for i in [1, 2, 3, 4, 5]:
        46         if i == num:
@@ -315,7 +315,7 @@ Traceback (most recent call last)
        54         if i != num:
        55             continue
 
-  File {base_folder}/registry.vy, in register_f(address addr)
+  File {base_folder}/registry.vy, in register_f
   -->  12     assert self.addr != addr, "doubling."
        13     self.addr = addr
     """.strip()
