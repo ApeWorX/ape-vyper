@@ -8,8 +8,8 @@ import vvm  # type: ignore
 from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
 from ape.exceptions import ContractLogicError
-from ape.types import ContractType, SourceTraceback, TraceFrame
-from ape.types.trace import ContractSource
+from ape.types import Closure, ContractType, SourceTraceback, TraceFrame
+from ape.types.trace import ContractSource, ControlFlow
 from ape.utils import cached_property, get_relative_path
 from eth_utils import is_0x_prefixed
 from ethpm_types import ASTNode, HexBytes, PackageManifest, PCMap
@@ -29,7 +29,8 @@ from ape_vyper.exceptions import (
 DEV_MSG_PATTERN = re.compile(r"#\s*(dev:.+)")
 _RETURN_OPCODES = ("RETURN", "REVERT", "STOP")
 _CALL_OPCODES = tuple([x.value for x in CALL_OPCODES])
-_FUNCTION_AST_TYPES = ("FunctionDef", "Name", "arguments")
+_FUNCTION_DEF = "FunctionDef"
+_FUNCTION_AST_TYPES = (_FUNCTION_DEF, "Name", "arguments")
 
 
 class VyperConfig(PluginConfig):
@@ -578,16 +579,44 @@ class VyperCompiler(CompilerAPI):
             if frame.pc not in pcmap:
                 continue
 
+            method_id = HexBytes(calldata[:4])
             location = cast(Tuple[int, int, int, int], tuple(pcmap[frame.pc].get("location") or []))
-            if not location:
-                # Is builtin PC marker.
+            dev = str(pcmap[frame.pc].get("dev", "")).replace("dev: ", "")
+            if not location and dev in [m.value for m in RuntimeErrorType]:
+                # Is a Vyper builtin error handler.
+                error_type = RuntimeErrorType(dev)
+                name = f"__{error_type.name.lower()}__"
+
+                if (
+                    error_type == RuntimeErrorType.NONPAYABLE_CHECK
+                    and traceback.last
+                    and traceback.last.closure.name == name
+                ):
+                    # Prevent weird duplicate non-payable check
+                    # TODO: Find a better way.
+                    continue
+
+                # Empty source (is builtin)
+                closure = Closure(name=name)
+                depth = traceback.last.depth - 1 if traceback.last else 0
+                flow = ControlFlow(
+                    statements=[],
+                    closure=closure,
+                    source_path=Path("<internal>") / "vyper",
+                    depth=depth,
+                )
+                traceback.append(flow)
                 continue
 
-            function = contract_src.lookup_function(location, method_id=HexBytes(calldata[:4]))
+            elif not location:
+                # Unknown.
+                continue
+
+            function = contract_src.lookup_function(location, method_id=method_id)
             if not function:
                 continue
 
-            if not traceback.last or not traceback.last.function.signature == function.signature:
+            if not traceback.last or not traceback.last.closure.name == function.name:
                 depth = (
                     frame.depth + 1
                     if traceback.last and traceback.last.depth == frame.depth
