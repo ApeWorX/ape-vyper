@@ -9,7 +9,7 @@ from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
 from ape.exceptions import ContractLogicError
 from ape.types import Closure, ContractType, SourceTraceback, TraceFrame
-from ape.types.trace import ContractSource, ControlFlow
+from ape.types.trace import ContractSource, ControlFlow, SourceFunction, Statement
 from ape.utils import cached_property, get_relative_path
 from eth_utils import is_0x_prefixed
 from ethpm_types import ASTNode, HexBytes, PackageManifest, PCMap
@@ -583,24 +583,36 @@ class VyperCompiler(CompilerAPI):
             location = cast(Tuple[int, int, int, int], tuple(pcmap[frame.pc].get("location") or []))
             dev = str(pcmap[frame.pc].get("dev", "")).replace("dev: ", "")
             if not location and dev in [m.value for m in RuntimeErrorType]:
-                # Is a Vyper builtin error handler.
                 error_type = RuntimeErrorType(dev)
-                name = f"__{error_type.name.lower()}__"
+                if error_type != RuntimeErrorType.NONPAYABLE_CHECK and traceback.last is not None:
+                    # If the error type is not the non-payable check,
+                    # it happened in the last method.
+                    name = traceback.last.name
+
+                elif method_id in contract_src.contract_type.methods:
+                    # For non-payable checks, they should hit here.
+                    method_checked = contract_src.contract_type.methods[method_id]
+                    name = method_checked.name
+
+                else:
+                    # Not sure if possible to get here.
+                    name = error_type.name.lower()
 
                 if (
                     error_type == RuntimeErrorType.NONPAYABLE_CHECK
-                    and traceback.last
+                    and traceback.last is not None
                     and traceback.last.closure.name == name
                 ):
-                    # Prevent weird duplicate non-payable check
-                    # TODO: Find a better way.
+                    # Prevent weird duplicate non-payable check..
+                    # TODO: Find a better way to do this at compile time.
                     continue
 
                 # Empty source (is builtin)
                 closure = Closure(name=name)
                 depth = traceback.last.depth - 1 if traceback.last else 0
+                statement = Statement(type=error_type.name)
                 flow = ControlFlow(
-                    statements=[],
+                    statements=[statement],
                     closure=closure,
                     source_path=Path("<internal>") / "vyper",
                     depth=depth,
@@ -616,7 +628,11 @@ class VyperCompiler(CompilerAPI):
             if not function:
                 continue
 
-            if not traceback.last or not traceback.last.closure.name == function.name:
+            if (
+                not traceback.last
+                or traceback.last.closure.name != function.name
+                or not isinstance(traceback.last.closure, SourceFunction)
+            ):
                 depth = (
                     frame.depth + 1
                     if traceback.last and traceback.last.depth == frame.depth
@@ -626,6 +642,8 @@ class VyperCompiler(CompilerAPI):
             else:
                 traceback.extend_last(location)
 
+        # Never actually hits this return.
+        # See `Completed!` comment above.
         return traceback
 
 
