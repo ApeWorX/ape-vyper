@@ -320,7 +320,15 @@ class VyperCompiler(CompilerAPI):
                                     if dev:
                                         val = f"dev: {dev.value}"
                                         if is_revert_jump:
-                                            pc_map_list[-1][1]["dev"] = val
+                                            if len(pc_map_list) >= 1:
+                                                pc_map_list[-1][1]["dev"] = val
+                                            else:
+                                                raise VyperCompileError(
+                                                    ".build folder corrupted for unknown reasons. "
+                                                    "Please try deleting your project's `.build` "
+                                                    "folder and re-running."
+                                                )
+
                                         else:
                                             item["dev"] = val
 
