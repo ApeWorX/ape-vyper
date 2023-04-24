@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, Optional, Type
+from typing import Dict, Optional, Type, Union
 
 from ape.exceptions import CompilerError, ContractLogicError
 from vvm.exceptions import VyperError  # type: ignore
@@ -22,11 +22,16 @@ class VyperCompileError(VyperCompilerPluginError):
     A compiler-specific error in Vyper.
     """
 
-    def __init__(self, err: VyperError):
-        self.base_err = err  # For debugging purposes.
-        message = "\n\n".join(
-            f"{e['sourceLocation']['file']}\n{e['type']}:{e['message']}" for e in err.error_dict
-        )
+    def __init__(self, err: Union[VyperError, str]):
+        if isinstance(err, VyperError):
+            self.base_err = err
+            message = "\n\n".join(
+                f"{e['sourceLocation']['file']}\n{e['type']}:{e['message']}" for e in err.error_dict
+            )
+        else:
+            self.base_err = None
+            message = str(err)
+
         super().__init__(message)
 
 
