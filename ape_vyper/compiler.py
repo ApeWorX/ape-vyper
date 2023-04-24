@@ -323,8 +323,12 @@ class VyperCompiler(CompilerAPI):
                                             if len(pc_map_list) >= 1:
                                                 pc_map_list[-1][1]["dev"] = val
                                             else:
-                                                # Not sure when or why it gets here.
-                                                pc_map_list.append((start_pc, {"dev": val}))
+                                                raise VyperCompileError(
+                                                    ".build folder corrupted for unknown reasons. "
+                                                    "Please try deleting your project's `.build` "
+                                                    "folder and re-running."
+                                                )
+
                                         else:
                                             item["dev"] = val
 
