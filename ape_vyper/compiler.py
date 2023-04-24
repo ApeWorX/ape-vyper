@@ -320,7 +320,11 @@ class VyperCompiler(CompilerAPI):
                                     if dev:
                                         val = f"dev: {dev.value}"
                                         if is_revert_jump:
-                                            pc_map_list[-1][1]["dev"] = val
+                                            if len(pc_map_list) >= 1:
+                                                pc_map_list[-1][1]["dev"] = val
+                                            else:
+                                                # Not sure when or why it gets here.
+                                                pc_map_list.append((start_pc, {"dev": val}))
                                         else:
                                             item["dev"] = val
 
