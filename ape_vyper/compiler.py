@@ -249,11 +249,11 @@ class VyperCompiler(CompilerAPI):
             except VyperError as err:
                 raise VyperCompileError(err) from err
 
-            def classify_ast(node: ASTNode):
-                if node.ast_type in _FUNCTION_AST_TYPES:
-                    node.classification = ASTClassification.FUNCTION
+            def classify_ast(_node: ASTNode):
+                if _node.ast_type in _FUNCTION_AST_TYPES:
+                    _node.classification = ASTClassification.FUNCTION
 
-                for child in node.children:
+                for child in _node.children:
                     classify_ast(child)
 
             for source_id, output_items in result["contracts"].items():
@@ -610,7 +610,7 @@ class VyperCompiler(CompilerAPI):
                 # Empty source (is builtin)
                 closure = Closure(name=name)
                 depth = traceback.last.depth - 1 if traceback.last else 0
-                statement = Statement(type=error_type.name)
+                statement = Statement(type=f"dev: {error_type.value}")
                 flow = ControlFlow(
                     statements=[statement],
                     closure=closure,
