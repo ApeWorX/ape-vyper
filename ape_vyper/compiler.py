@@ -28,7 +28,6 @@ from ape_vyper.exceptions import (
 
 DEV_MSG_PATTERN = re.compile(r"#\s*(dev:.+)")
 _RETURN_OPCODES = ("RETURN", "REVERT", "STOP")
-_CALL_OPCODES = tuple([x.value for x in CALL_OPCODES])
 _FUNCTION_DEF = "FunctionDef"
 _FUNCTION_AST_TYPES = (_FUNCTION_DEF, "Name", "arguments")
 
@@ -519,7 +518,7 @@ class VyperCompiler(CompilerAPI):
         function = None
 
         for frame in trace:
-            if frame.op in _CALL_OPCODES:
+            if frame.op in CALL_OPCODES:
                 called_contract, sub_calldata = self._create_contract_from_call(frame)
                 if called_contract:
                     ext = Path(called_contract.source_id).suffix
