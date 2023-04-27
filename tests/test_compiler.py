@@ -186,15 +186,34 @@ def test_pc_map(compiler, project):
 
     # Use the old-fashioned way of gathering PCMap to ensure our creative way works
     expected = {pc: {"location": ln} for pc, ln in src_map["pc_pos_map"].items()}
+    missing_pcs = []
+    empty_locs = []
+    wrong_locs = []
     for expected_pc, item_dict in expected.items():
         expected_loc = item_dict["location"]
-        assert (
-            expected_pc in actual
-        ), f"{expected_pc} not in PCMap! Expected location '{expected_loc}'."
-        assert (
-            actual[expected_pc]["location"] is not None
-        ), f"Missing source in PCMap for pc={expected_pc}!"
-        assert actual[expected_pc]["location"] == expected_loc, "Differing sources!"
+        if expected_pc not in actual:
+            missing_pcs.append((expected_pc, expected_loc))
+            continue
+
+        if actual[expected_pc]["location"] is None:
+            empty_locs.append((expected_pc, expected_loc))
+            continue
+
+        if actual[expected_pc]["location"] != expected_loc:
+            wrong_locs.append((expected_pc, expected_loc))
+
+    def make_failure(title, ls):
+        return f"{title}: {','.join([f'PC={m}, Expected={e}' for m, e in ls])}"
+
+    failures = []
+    if len(missing_pcs) != 0:
+        failures.append(make_failure("Missing PCs", missing_pcs))
+    if len(empty_locs) != 0:
+        failures.append(make_failure("Empty locations", empty_locs))
+    if len(wrong_locs) != 0:
+        failures.append(make_failure("Wrong locations", wrong_locs))
+
+    assert len(failures) == 0, "\n".join(failures)
 
     # Test helper methods.
     def _all(check):
