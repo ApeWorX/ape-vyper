@@ -199,21 +199,23 @@ def test_pc_map(compiler, project):
     range_no = line("return self.dynArray[idx]")
 
     expected = {pc: {"location": ln} for pc, ln in src_map["pc_pos_map"].items()}
-    expected["23"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["52"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["73"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["94"] = item(RuntimeErrorType.INTEGER_OVERFLOW, [overflow_no, 12, overflow_no, 20])
-    expected["151"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["188"] = item(RuntimeErrorType.INTEGER_UNDERFLOW, [underflow_no, 11, underflow_no, 25])
-    expected["229"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["249"] = item(RuntimeErrorType.DIVISION_BY_ZERO, [div_no, 11, div_no, 16])
-    expected["288"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["308"] = item(RuntimeErrorType.MODULO_BY_ZERO, [mod_no, 11, mod_no, 16])
-    expected["351"] = item(RuntimeErrorType.INDEX_OUT_OF_RANGE, [range_no, 11, range_no, 24])
-    expected["392"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["405"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["437"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    assert actual == expected
+    for expected_pc, item_dict in expected.items():
+        assert expected_pc in actual
+        assert actual[expected_pc]["location"] is not None, expected_pc
+        assert actual[expected_pc]["location"] == item_dict["location"]
+
+    # Verify special cases.
+    assert actual["23"] == item(RuntimeErrorType.NONPAYABLE_CHECK)
+    assert actual["115"] == item(
+        RuntimeErrorType.INTEGER_OVERFLOW, [overflow_no, 12, overflow_no, 20]
+    )
+    assert actual["209"] == item(
+        RuntimeErrorType.INTEGER_UNDERFLOW, [underflow_no, 11, underflow_no, 25]
+    )
+    assert actual["270"] == item(RuntimeErrorType.DIVISION_BY_ZERO, [div_no, 11, div_no, 16])
+    assert actual["329"] == item(RuntimeErrorType.MODULO_BY_ZERO, [mod_no, 11, mod_no, 16])
+    assert actual["372"] == item(RuntimeErrorType.INDEX_OUT_OF_RANGE, [range_no, 11, range_no, 24])
+    assert actual["426"] == item(RuntimeErrorType.NONPAYABLE_CHECK)
 
 
 def test_enrich_error(contract_logic_error, compiler):

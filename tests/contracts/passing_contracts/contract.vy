@@ -33,7 +33,9 @@ def __init__(_token: address):
 
 @external
 def setNumber(num: uint256):
-    assert num != 5  # dev: 7 8 9
+    # NOTE: This `and` statement `assert` purposely tests something
+    #  we had an issue where this causes the PCMap calculation to get thrown off.
+    assert num != 5 and num != 5556  # dev: 7 8 9
 
 
 @external

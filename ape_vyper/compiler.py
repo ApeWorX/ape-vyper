@@ -289,9 +289,10 @@ class VyperCompiler(CompilerAPI):
                                     "location": None,
                                     "dev": f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}",
                                 }
-                                pc_map_list.append(
-                                    (pc if op == "REVERT" else start_pc, pc_map_item)
-                                )
+                                pc_key = pc if op == "REVERT" else start_pc
+                                if pc_key not in [x[0] for x in pc_map_list]:
+                                    # Shouldn't have an actual source pointer.
+                                    pc_map_list.append((pc_key, pc_map_item))
 
                             continue
 
