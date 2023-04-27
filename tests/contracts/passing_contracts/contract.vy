@@ -4,6 +4,8 @@ from vyper.interfaces import ERC20
 
 dynArray: public(DynArray[uint256, 1024])
 
+MASK: constant(uint256) = 2**96 - 1
+
 @external
 def setNumber(num: uint256):
     assert num != 5  # dev: 7 8 9

@@ -186,18 +186,30 @@ def test_pc_map(compiler, project):
     def item(dev: RuntimeErrorType, location=None):
         return {"dev": f"dev: {dev.value}", "location": location}
 
+    lines = code.splitlines()
+
+    def line(cont: str) -> int:
+        # A helper for getting expected line numbers
+        return [i + 1 for i, x in enumerate(lines) if cont in x][0]
+
+    overflow_no = line("return (2**127-1) + i")
+    underflow_no = line("return i - (2**127-1)")
+    div_no = line("return 4 / i")
+    mod_no = line("return 4 % i")
+    range_no = line("return self.dynArray[idx]")
+
     expected = {pc: {"location": ln} for pc, ln in src_map["pc_pos_map"].items()}
     expected["23"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
     expected["52"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
     expected["73"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["94"] = item(RuntimeErrorType.INTEGER_OVERFLOW, [14, 12, 14, 20])
+    expected["94"] = item(RuntimeErrorType.INTEGER_OVERFLOW, [overflow_no, 12, overflow_no, 20])
     expected["151"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["188"] = item(RuntimeErrorType.INTEGER_UNDERFLOW, [19, 11, 19, 25])
+    expected["188"] = item(RuntimeErrorType.INTEGER_UNDERFLOW, [underflow_no, 11, underflow_no, 25])
     expected["229"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["249"] = item(RuntimeErrorType.DIVISION_BY_ZERO, [24, 11, 24, 16])
+    expected["249"] = item(RuntimeErrorType.DIVISION_BY_ZERO, [div_no, 11, div_no, 16])
     expected["288"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["308"] = item(RuntimeErrorType.MODULO_BY_ZERO, [29, 11, 29, 16])
-    expected["351"] = item(RuntimeErrorType.INDEX_OUT_OF_RANGE, [34, 11, 34, 24])
+    expected["308"] = item(RuntimeErrorType.MODULO_BY_ZERO, [mod_no, 11, mod_no, 16])
+    expected["351"] = item(RuntimeErrorType.INDEX_OUT_OF_RANGE, [range_no, 11, range_no, 24])
     expected["392"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
     expected["405"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
     assert actual == expected
