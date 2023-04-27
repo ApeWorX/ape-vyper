@@ -182,40 +182,61 @@ def test_pc_map(compiler, project):
     actual = result.pcmap.__root__
     code = path.read_text()
     src_map = compile_source(code)["<stdin>"]["source_map"]
-
-    def item(dev: RuntimeErrorType, location=None):
-        return {"dev": f"dev: {dev.value}", "location": location}
-
     lines = code.splitlines()
+
+    # Use the old-fashioned way of gathering PCMap to ensure our creative way works
+    expected = {pc: {"location": ln} for pc, ln in src_map["pc_pos_map"].items()}
+    for expected_pc, item_dict in expected.items():
+        expected_loc = item_dict["location"]
+        assert (
+            expected_pc in actual
+        ), f"{expected_pc} not in PCMap! Expected location '{expected_loc}'."
+        assert (
+            actual[expected_pc]["location"] is not None
+        ), f"Missing source in PCMap for pc={expected_pc}!"
+        assert actual[expected_pc]["location"] == expected_loc, "Differing sources!"
+
+    # Test helper methods.
+    def _all(check):
+        return [x for x in actual.values() if x.get("dev") == f"dev: {check.value}"]
 
     def line(cont: str) -> int:
         # A helper for getting expected line numbers
         return [i + 1 for i, x in enumerate(lines) if cont in x][0]
 
+    # Verify non-payable checks.
+    nonpayable_checks = _all(RuntimeErrorType.NONPAYABLE_CHECK)
+    assert len(nonpayable_checks) == 8
+
+    # Verify integer overflow checks
+    overflows = _all(RuntimeErrorType.INTEGER_OVERFLOW)
     overflow_no = line("return (2**127-1) + i")
+    assert len(overflows) == 1
+    assert overflows[0]["location"] == [overflow_no, 12, overflow_no, 20]
+
+    # Verify integer underflow checks
+    underflows = _all(RuntimeErrorType.INTEGER_UNDERFLOW)
     underflow_no = line("return i - (2**127-1)")
+    assert len(underflows) == 1
+    assert underflows[0]["location"] == [underflow_no, 11, underflow_no, 25]
+
+    # Verify division by zero checks
+    div_zeros = _all(RuntimeErrorType.DIVISION_BY_ZERO)
     div_no = line("return 4 / i")
+    assert len(div_zeros) == 1
+    assert div_zeros[0]["location"] == [div_no, 11, div_no, 16]
+
+    # Verify modulo by zero checks
+    mod_zeros = _all(RuntimeErrorType.MODULO_BY_ZERO)
     mod_no = line("return 4 % i")
+    assert len(mod_zeros) == 1
+    assert mod_zeros[0]["location"] == [mod_no, 11, mod_no, 16]
+
+    # Verify index out of range checks
+    range_checks = _all(RuntimeErrorType.INDEX_OUT_OF_RANGE)
     range_no = line("return self.dynArray[idx]")
-
-    expected = {pc: {"location": ln} for pc, ln in src_map["pc_pos_map"].items()}
-    for expected_pc, item_dict in expected.items():
-        assert expected_pc in actual
-        assert actual[expected_pc]["location"] is not None, expected_pc
-        assert actual[expected_pc]["location"] == item_dict["location"]
-
-    # Verify special cases.
-    assert actual["23"] == item(RuntimeErrorType.NONPAYABLE_CHECK)
-    assert actual["115"] == item(
-        RuntimeErrorType.INTEGER_OVERFLOW, [overflow_no, 12, overflow_no, 20]
-    )
-    assert actual["209"] == item(
-        RuntimeErrorType.INTEGER_UNDERFLOW, [underflow_no, 11, underflow_no, 25]
-    )
-    assert actual["270"] == item(RuntimeErrorType.DIVISION_BY_ZERO, [div_no, 11, div_no, 16])
-    assert actual["329"] == item(RuntimeErrorType.MODULO_BY_ZERO, [mod_no, 11, mod_no, 16])
-    assert actual["372"] == item(RuntimeErrorType.INDEX_OUT_OF_RANGE, [range_no, 11, range_no, 24])
-    assert actual["426"] == item(RuntimeErrorType.NONPAYABLE_CHECK)
+    assert len(range_checks) == 1
+    assert range_checks[0]["location"] == [range_no, 11, range_no, 24]
 
 
 def test_enrich_error(contract_logic_error, compiler):

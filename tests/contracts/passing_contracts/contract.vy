@@ -36,6 +36,8 @@ def setNumber(num: uint256):
     # NOTE: This `and` statement `assert` purposely tests something
     #  we had an issue where this causes the PCMap calculation to get thrown off.
     assert num != 5 and num != 5556  # dev: 7 8 9
+    # Show that PCMap can handle log statements.
+    log Swap(msg.sender, msg.sender, 1, 2, 3, 4)
 
 
 @external
