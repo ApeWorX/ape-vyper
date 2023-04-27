@@ -36,8 +36,13 @@ def setNumber(num: uint256):
     # NOTE: This `and` statement `assert` purposely tests something
     #  we had an issue where this causes the PCMap calculation to get thrown off.
     assert num != 5 and num != 5556  # dev: 7 8 9
+
     # Show that PCMap can handle log statements.
     log Swap(msg.sender, msg.sender, 1, 2, 3, 4)
+
+    # WARN: This part is really important.
+    # We had a bug where doing this caused PC calculation to be off.
+    ERC20Ext(token).decimals()
 
 
 @external
