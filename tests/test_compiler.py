@@ -212,6 +212,7 @@ def test_pc_map(compiler, project):
     expected["351"] = item(RuntimeErrorType.INDEX_OUT_OF_RANGE, [range_no, 11, range_no, 24])
     expected["392"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
     expected["405"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
+    expected["437"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
     assert actual == expected
 
 

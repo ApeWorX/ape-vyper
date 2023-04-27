@@ -2,9 +2,34 @@
 
 from vyper.interfaces import ERC20
 
-dynArray: public(DynArray[uint256, 1024])
+interface ERC20Ext:
+    def decimals() -> uint8: view
 
+dynArray: public(DynArray[uint256, 1024])
+token: public(immutable(address))
+
+# NOTE: Keep constant as test for proving it doesn't fudge up PCMap.
 MASK: constant(uint256) = 2**96 - 1
+
+
+# NOTE: Keep event as test for proving it doesn't fudge up PCMap.
+event Swap:
+    account: indexed(address)
+    receiver: indexed(address)
+    asset_in: uint256
+    asset_out: uint256
+    amount_in: uint256
+    amount_out: uint256
+
+
+@external
+def __init__(_token: address):
+    """
+    @notice Constructor
+    @param _token Include docs to prove it doesn't fudge with PCMap.
+    """
+    token = _token
+
 
 @external
 def setNumber(num: uint256):
