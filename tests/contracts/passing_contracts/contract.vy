@@ -6,7 +6,8 @@ interface ERC20Ext:
     def decimals() -> uint8: view
 
 dynArray: public(DynArray[uint256, 1024])
-token: public(immutable(address))
+token: public(address)
+start_token: public(immutable(address))
 
 # NOTE: Keep constant as test for proving it doesn't fudge up PCMap.
 MASK: constant(uint256) = 2**96 - 1
@@ -28,7 +29,8 @@ def __init__(_token: address):
     @notice Constructor
     @param _token Include docs to prove it doesn't fudge with PCMap.
     """
-    token = _token
+    self.token = _token
+    start_token = _token
 
 
 @external
@@ -40,9 +42,13 @@ def setNumber(num: uint256):
     # Show that PCMap can handle log statements.
     log Swap(msg.sender, msg.sender, 1, 2, 3, 4)
 
+    # Test that we can access state variables and PCMap still works.
+    ERC20Ext(self.token).decimals()
+
     # WARN: This part is really important.
-    # We had a bug where doing this caused PC calculation to be off.
-    ERC20Ext(token).decimals()
+    # Specifically, the call to the immutable member start_token tests something.
+    # This is because immutable variables are code offsets and not storage slots.
+    ERC20Ext(self.start_token).decimals()
 
 
 @external

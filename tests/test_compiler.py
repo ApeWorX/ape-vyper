@@ -225,7 +225,7 @@ def test_pc_map(compiler, project):
 
     # Verify non-payable checks.
     nonpayable_checks = _all(RuntimeErrorType.NONPAYABLE_CHECK)
-    assert len(nonpayable_checks) == 8
+    assert len(nonpayable_checks) == 10
 
     # Verify integer overflow checks
     overflows = _all(RuntimeErrorType.INTEGER_OVERFLOW)
