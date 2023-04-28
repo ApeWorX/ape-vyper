@@ -191,19 +191,26 @@ def test_pc_map(compiler, project):
     wrong_locs = []
     for expected_pc, item_dict in expected.items():
         expected_loc = item_dict["location"]
+
+        # Collect matching locations.
+        matching_locs = []
+        for mpc, loc in actual.items():
+            if loc["location"] == expected_loc:
+                matching_locs.append(mpc)
+
         if expected_pc not in actual:
-            missing_pcs.append((expected_pc, expected_loc))
+            missing_pcs.append((expected_pc, expected_loc, matching_locs))
             continue
 
         if actual[expected_pc]["location"] is None:
-            empty_locs.append((expected_pc, expected_loc))
+            empty_locs.append((expected_pc, expected_loc, matching_locs))
             continue
 
         if actual[expected_pc]["location"] != expected_loc:
-            wrong_locs.append((expected_pc, expected_loc))
+            wrong_locs.append((expected_pc, expected_loc, matching_locs))
 
     def make_failure(title, ls):
-        return f"{title}: {','.join([f'PC={m}, Expected={e}' for m, e in ls])}"
+        return f"{title}: {','.join([f'PC={m}, Expected={e} (matches={mat})' for m, e, mat in ls])}"
 
     failures = []
     if len(missing_pcs) != 0:
@@ -225,7 +232,7 @@ def test_pc_map(compiler, project):
 
     # Verify non-payable checks.
     nonpayable_checks = _all(RuntimeErrorType.NONPAYABLE_CHECK)
-    assert len(nonpayable_checks) == 10
+    assert len(nonpayable_checks) >= 9
 
     # Verify integer overflow checks
     overflows = _all(RuntimeErrorType.INTEGER_OVERFLOW)

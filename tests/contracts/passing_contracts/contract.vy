@@ -74,4 +74,3 @@ def mod_zero(i: int128) -> int128:
 @external
 def gimme(idx: uint256) -> uint256:
     return self.dynArray[idx]
-
