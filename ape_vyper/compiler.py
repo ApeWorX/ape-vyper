@@ -275,12 +275,11 @@ class VyperCompiler(CompilerAPI):
                         start_pc = pc
                         pc += 1
 
-                        if len(opcodes) > 5 and opcodes[5] == "CODECOPY":
-                            # Detect immutable state member load.
-                            # If this is the case, ignore increasing pc by push size.
-                            pass
+                        # Detect immutable state member load.
+                        # If this is the case, ignore increasing pc by push size.
+                        is_code_copy = len(opcodes) > 5 and opcodes[5] == "CODECOPY"
 
-                        elif opcodes and is_0x_prefixed(opcodes[0]):
+                        if not is_code_copy and opcodes and is_0x_prefixed(opcodes[0]):
                             last_value = int(opcodes.pop(0), 16)
                             # Add the push number, e.g. PUSH1 adds `1`.
                             pc += int(op[4:])
