@@ -243,6 +243,10 @@ class VyperCompiler(CompilerAPI):
                 raise VyperCompileError(err) from err
 
             for source_id, output_items in result["contracts"].items():
+                content = {
+                    i + 1: ln
+                    for i, ln in enumerate((base_path / source_id).read_text().splitlines())
+                }
                 for name, output in output_items.items():
                     # De-compress source map to get PC POS map.
                     ast = ASTNode.parse_obj(result["sources"][source_id]["ast"])
@@ -252,10 +256,6 @@ class VyperCompiler(CompilerAPI):
                     src_map = list(compressed_src_map.parse())[1:]
                     pc = 0
                     pc_map_list: List[Tuple[int, Dict[str, Optional[Any]]]] = []
-                    content = {
-                        i + 1: ln
-                        for i, ln in enumerate((base_path / source_id).read_text().splitlines())
-                    }
                     last_value = None
                     revert_pc = -1
                     if _is_nonpayable_check(opcodes):
@@ -274,6 +274,7 @@ class VyperCompiler(CompilerAPI):
                         processed_opcodes.append(op)
                         start_pc = pc
                         pc += 1
+
                         if opcodes and is_0x_prefixed(opcodes[0]):
                             last_value = int(opcodes.pop(0), 16)
                             pc += int(op[4:])

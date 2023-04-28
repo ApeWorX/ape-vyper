@@ -48,7 +48,7 @@ def setNumber(num: uint256):
     # WARN: This part is really important.
     # Specifically, the call to the immutable member start_token tests something.
     # This is because immutable variables are code offsets and not storage slots.
-    ERC20Ext(self.start_token).decimals()
+    ERC20Ext(start_token).decimals()
 
 
 @external
