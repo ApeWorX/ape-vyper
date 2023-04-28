@@ -209,18 +209,23 @@ def test_pc_map(compiler, project):
         if actual[expected_pc]["location"] != expected_loc:
             wrong_locs.append((expected_pc, expected_loc, matching_locs))
 
+    limit = 10  # Only show first ten failures of each category.
+
     def make_failure(title, ls):
         fail_format = "PC={pc}, Expected={ex} (ones in actual with thus={match})"
-        suffix = ", ".join([fail_format.format(pc=m, ex=e, match=mat) for m, e, mat in ls])
+        suffix = ", ".join([fail_format.format(pc=m, ex=e, match=mat) for m, e, mat in ls[:limit]])
         return f"{title}: {suffix}"
 
     failures = []
     if len(missing_pcs) != 0:
-        failures.append(make_failure("Missing PCs", missing_pcs))
+        failures.append((missing_pcs[0][0], make_failure("Missing PCs", missing_pcs)))
     if len(empty_locs) != 0:
-        failures.append(make_failure("Empty locations", empty_locs))
+        failures.append((empty_locs[0][0], make_failure("Empty locations", empty_locs)))
     if len(wrong_locs) != 0:
-        failures.append(make_failure("Wrong locations", wrong_locs))
+        failures.append((wrong_locs[0][0], make_failure("Wrong locations", wrong_locs)))
+
+    # Show first failures to occur first.
+    failures.sort(key=lambda x: x[0])
 
     assert len(failures) == 0, "\n".join(failures)
 
