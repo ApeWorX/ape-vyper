@@ -5,12 +5,19 @@ from vyper.interfaces import ERC20
 interface ERC20Ext:
     def decimals() -> uint8: view
 
+# Public storage (PCMap testing)
 dynArray: public(DynArray[uint256, 1024])
 token: public(address)
 start_token: public(immutable(address))
 
-# NOTE: Keep constant as test for proving it doesn't fudge up PCMap.
+# Constants (PCMap testing)
 MASK: constant(uint256) = 2**96 - 1
+FIVE: constant(uint256) = 5
+POS_FIVE: constant(int128) = 5
+FIVES: constant(uint256) = 555
+
+# Internal storage (PCMap testing)
+array_test: uint256[FIVE]
 
 
 # NOTE: Keep event as test for proving it doesn't fudge up PCMap.
@@ -23,6 +30,10 @@ event Swap:
     amount_out: uint256
 
 
+# Testing empty events in how it affects PCMap generation.
+event Hollow: pass
+
+
 @external
 def __init__(_token: address):
     """
@@ -32,12 +43,18 @@ def __init__(_token: address):
     self.token = _token
     start_token = _token
 
+    # Part of testing how internal arrays behave in PCMap locations.
+    for asset in range(FIVE):
+        self.array_test[asset] = asset * 7
 
+
+# NOTE: `@nonreentrant` just to test that it doesn't affect PCMap generation.
 @external
-def setNumber(num: uint256):
+@nonreentrant('lock')
+def setNumber(num: uint256) -> uint256:
     # NOTE: This `and` statement `assert` purposely tests something
     #  we had an issue where this causes the PCMap calculation to get thrown off.
-    assert num != 5 and num != 5556  # dev: 7 8 9
+    assert num != FIVE and num != FIVES  # dev: 7 8 9
 
     # Show that PCMap can handle log statements.
     log Swap(msg.sender, msg.sender, 1, 2, 3, 4)
@@ -49,6 +66,10 @@ def setNumber(num: uint256):
     # Specifically, the call to the immutable member start_token tests something.
     # This is because immutable variables are code offsets and not storage slots.
     ERC20Ext(start_token).decimals()
+
+    res: uint256 = self.helper(num) * self.array_test[1]
+    log Hollow()
+    return res
 
 
 @external
@@ -74,3 +95,26 @@ def mod_zero(i: int128) -> int128:
 @external
 def gimme(idx: uint256) -> uint256:
     return self.dynArray[idx]
+
+
+@view
+@external
+def a_view_method(a: address) -> (uint256, uint256, uint256):
+    assert a != msg.sender  # dev: msg sender check
+    assert a != start_token  # dev: immut. token check
+    assert a != self.token  # dev: mut. token check
+    return (FIVE, FIVES, MASK)
+
+
+@pure
+@internal
+def helper(a: uint256) -> uint256:
+    assert a + 1 != FIVES or a - 1 != FIVES
+    res: uint256 = unsafe_mul(a & MASK, FIVE) | FIVE | shift(a, POS_FIVE)
+    if res * FIVE < FIVES:
+        return res
+
+    # NOTE: Empty raise statement in Vyper are different than Python.
+    # This should be the same as an assert with no message.
+    # This is intentionally here for testing PCMap generation.
+    raise  # dev: empty raise stmts

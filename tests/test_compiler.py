@@ -210,7 +210,9 @@ def test_pc_map(compiler, project):
             wrong_locs.append((expected_pc, expected_loc, matching_locs))
 
     def make_failure(title, ls):
-        return f"{title}: {','.join([f'PC={m}, Expected={e} (matches={mat})' for m, e, mat in ls])}"
+        fail_format = "PC={pc}, Expected={ex} (ones in actual with thus={match})"
+        suffix = ", ".join([fail_format.format(pc=m, ex=e, match=mat) for m, e, mat in ls])
+        return f"{title}: {suffix}"
 
     failures = []
     if len(missing_pcs) != 0:
@@ -237,13 +239,13 @@ def test_pc_map(compiler, project):
     # Verify integer overflow checks
     overflows = _all(RuntimeErrorType.INTEGER_OVERFLOW)
     overflow_no = line("return (2**127-1) + i")
-    assert len(overflows) == 1
+    assert len(overflows) == 2
     assert overflows[0]["location"] == [overflow_no, 12, overflow_no, 20]
 
     # Verify integer underflow checks
     underflows = _all(RuntimeErrorType.INTEGER_UNDERFLOW)
     underflow_no = line("return i - (2**127-1)")
-    assert len(underflows) == 1
+    assert len(underflows) == 2
     assert underflows[0]["location"] == [underflow_no, 11, underflow_no, 25]
 
     # Verify division by zero checks
