@@ -212,7 +212,7 @@ def test_pc_map(compiler, project):
     limit = 10  # Only show first ten failures of each category.
 
     def make_failure(title, ls):
-        fail_format = "PC={pc}, Expected={ex} (ones in actual with thus={match})"
+        fail_format = "PC={pc}, Expected={ex} (actual matches={match})"
         suffix = ", ".join([fail_format.format(pc=m, ex=e, match=mat) for m, e, mat in ls[:limit]])
         return f"{title}: {suffix}"
 
@@ -227,7 +227,7 @@ def test_pc_map(compiler, project):
     # Show first failures to occur first.
     failures.sort(key=lambda x: x[0])
 
-    assert len(failures) == 0, "\n".join(failures)
+    assert len(failures) == 0, "\n".join([x[1] for x in failures])
 
     # Test helper methods.
     def _all(check):

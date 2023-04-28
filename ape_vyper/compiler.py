@@ -258,13 +258,14 @@ class VyperCompiler(CompilerAPI):
                     pc_map_list: List[Tuple[int, Dict[str, Optional[Any]]]] = []
                     last_value = None
                     revert_pc = -1
+                    revert_pc_offset = 18
                     if _is_nonpayable_check(opcodes):
                         # Starting in vyper 0.2.14, reverts without a reason string are optimized
                         # with a jump to the "end" of the bytecode.
                         revert_pc = (
                             len(opcodes)
                             + sum(int(i[4:]) - 1 for i in opcodes if i.startswith("PUSH"))
-                            - 18
+                            - revert_pc_offset
                         )
 
                     processed_opcodes = []
@@ -282,15 +283,23 @@ class VyperCompiler(CompilerAPI):
                         if not is_code_copy and opcodes and is_0x_prefixed(opcodes[0]):
                             last_value = int(opcodes.pop(0), 16)
                             # Add the push number, e.g. PUSH1 adds `1`.
-                            pc += int(op[4:])
+                            num_pushed = int(op[4:])
+                            pc += num_pushed
 
                         # Check for special Payable case.
+                        last_was_non_payable = len(pc_map_list) >= 1 and (
+                            pc_map_list[-1][1].get("dev") or ""
+                        ).endswith(RuntimeErrorType.NONPAYABLE_CHECK.value)
+
                         if src.start is None:
                             if (
                                 op == "REVERT"
                                 and len(processed_opcodes) > 6
                                 and processed_opcodes[-7] == "CALLVALUE"
                             ) or _is_revert_jump(op, last_value, revert_pc, processed_opcodes):
+                                if last_was_non_payable:
+                                    continue
+
                                 pc_map_item = {
                                     "location": None,
                                     "dev": f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}",
