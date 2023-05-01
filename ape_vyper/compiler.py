@@ -255,6 +255,8 @@ class VyperCompiler(CompilerAPI):
                     function_offsets = []
                     for node in ast.children:
                         lineno = node.lineno
+
+                        # NOTE: Constructor is handled elsewhere.
                         if node.ast_type == "FunctionDef" and "__init__" not in content.get(
                             lineno, ""
                         ):
