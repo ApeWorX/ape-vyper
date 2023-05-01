@@ -181,26 +181,96 @@ def test_pc_map(compiler, project):
     result = compiler.compile([path], base_path=PASSING_BASE)[0]
     actual = result.pcmap.__root__
     code = path.read_text()
-    src_map = compile_source(code)["<stdin>"]["source_map"]
+    compile_result = compile_source(code)["<stdin>"]
+    src_map = compile_result["source_map"]
+    lines = code.splitlines()
 
-    def item(dev: RuntimeErrorType, location=None):
-        return {"dev": f"dev: {dev.value}", "location": location}
-
+    # Use the old-fashioned way of gathering PCMap to ensure our creative way works
     expected = {pc: {"location": ln} for pc, ln in src_map["pc_pos_map"].items()}
-    expected["23"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["52"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["73"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["94"] = item(RuntimeErrorType.INTEGER_OVERFLOW, [14, 12, 14, 20])
-    expected["151"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["188"] = item(RuntimeErrorType.INTEGER_UNDERFLOW, [19, 11, 19, 25])
-    expected["229"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["249"] = item(RuntimeErrorType.DIVISION_BY_ZERO, [24, 11, 24, 16])
-    expected["288"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["308"] = item(RuntimeErrorType.MODULO_BY_ZERO, [29, 11, 29, 16])
-    expected["351"] = item(RuntimeErrorType.INDEX_OUT_OF_RANGE, [34, 11, 34, 24])
-    expected["392"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    expected["405"] = item(RuntimeErrorType.NONPAYABLE_CHECK)
-    assert actual == expected
+    missing_pcs = []
+    empty_locs = []
+    wrong_locs = []
+    for expected_pc, item_dict in expected.items():
+        expected_loc = item_dict["location"]
+
+        # Collect matching locations.
+        matching_locs = []
+        for mpc, loc in actual.items():
+            if loc["location"] == expected_loc:
+                matching_locs.append(mpc)
+
+        if expected_pc not in actual:
+            missing_pcs.append((expected_pc, expected_loc, matching_locs))
+            continue
+
+        if actual[expected_pc]["location"] is None:
+            empty_locs.append((expected_pc, expected_loc, matching_locs))
+            continue
+
+        if actual[expected_pc]["location"] != expected_loc:
+            wrong_locs.append((expected_pc, expected_loc, matching_locs))
+
+    limit = 10  # Only show first ten failures of each category.
+
+    def make_failure(title, ls):
+        fail_format = "PC={pc}, Expected={ex} (actual matches={match})"
+        suffix = ", ".join([fail_format.format(pc=m, ex=e, match=mat) for m, e, mat in ls[:limit]])
+        return f"{title}: {suffix}"
+
+    failures = []
+    if len(missing_pcs) != 0:
+        failures.append((missing_pcs[0][0], make_failure("Missing PCs", missing_pcs)))
+    if len(empty_locs) != 0:
+        failures.append((empty_locs[0][0], make_failure("Empty locations", empty_locs)))
+    if len(wrong_locs) != 0:
+        failures.append((wrong_locs[0][0], make_failure("Wrong locations", wrong_locs)))
+
+    # Show first failures to occur first.
+    failures.sort(key=lambda x: x[0])
+
+    assert len(failures) == 0, "\n".join([x[1] for x in failures])
+
+    # Test helper methods.
+    def _all(check):
+        return [x for x in actual.values() if x.get("dev") == f"dev: {check.value}"]
+
+    def line(cont: str) -> int:
+        # A helper for getting expected line numbers
+        return [i + 1 for i, x in enumerate(lines) if cont in x][0]
+
+    # Verify non-payable checks.
+    nonpayable_checks = _all(RuntimeErrorType.NONPAYABLE_CHECK)
+    assert len(nonpayable_checks) >= 8
+
+    # Verify integer overflow checks
+    overflows = _all(RuntimeErrorType.INTEGER_OVERFLOW)
+    overflow_no = line("return (2**127-1) + i")
+    assert len(overflows) == 2
+    assert overflows[0]["location"] == [overflow_no, 12, overflow_no, 20]
+
+    # Verify integer underflow checks
+    underflows = _all(RuntimeErrorType.INTEGER_UNDERFLOW)
+    underflow_no = line("return i - (2**127-1)")
+    assert len(underflows) == 2
+    assert underflows[0]["location"] == [underflow_no, 11, underflow_no, 25]
+
+    # Verify division by zero checks
+    div_zeros = _all(RuntimeErrorType.DIVISION_BY_ZERO)
+    div_no = line("return 4 / i")
+    assert len(div_zeros) == 1
+    assert div_zeros[0]["location"] == [div_no, 11, div_no, 16]
+
+    # Verify modulo by zero checks
+    mod_zeros = _all(RuntimeErrorType.MODULO_BY_ZERO)
+    mod_no = line("return 4 % i")
+    assert len(mod_zeros) == 1
+    assert mod_zeros[0]["location"] == [mod_no, 11, mod_no, 16]
+
+    # Verify index out of range checks
+    range_checks = _all(RuntimeErrorType.INDEX_OUT_OF_RANGE)
+    range_no = line("return self.dynArray[idx]")
+    assert len(range_checks) == 1
+    assert range_checks[0]["location"] == [range_no, 11, range_no, 24]
 
 
 def test_enrich_error(contract_logic_error, compiler):

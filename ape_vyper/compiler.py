@@ -243,57 +243,66 @@ class VyperCompiler(CompilerAPI):
                 raise VyperCompileError(err) from err
 
             for source_id, output_items in result["contracts"].items():
+                content = {
+                    i + 1: ln
+                    for i, ln in enumerate((base_path / source_id).read_text().splitlines())
+                }
                 for name, output in output_items.items():
                     # De-compress source map to get PC POS map.
                     ast = ASTNode.parse_obj(result["sources"][source_id]["ast"])
+
+                    # Track function offsets.
+                    function_offsets = []
+                    for node in ast.children:
+                        lineno = node.lineno
+
+                        # NOTE: Constructor is handled elsewhere.
+                        if node.ast_type == "FunctionDef" and "__init__" not in content.get(
+                            lineno, ""
+                        ):
+                            function_offsets.append((node.lineno, node.end_lineno))
+
                     bytecode = output["evm"]["deployedBytecode"]
                     opcodes = bytecode["opcodes"].split(" ")
                     compressed_src_map = SourceMap(__root__=bytecode["sourceMap"])
                     src_map = list(compressed_src_map.parse())[1:]
                     pc = 0
                     pc_map_list: List[Tuple[int, Dict[str, Optional[Any]]]] = []
-                    content = {
-                        i + 1: ln
-                        for i, ln in enumerate((base_path / source_id).read_text().splitlines())
-                    }
                     last_value = None
                     revert_pc = -1
+                    revert_pc_offset = 18
                     if _is_nonpayable_check(opcodes):
                         # Starting in vyper 0.2.14, reverts without a reason string are optimized
                         # with a jump to the "end" of the bytecode.
                         revert_pc = (
                             len(opcodes)
                             + sum(int(i[4:]) - 1 for i in opcodes if i.startswith("PUSH"))
-                            - 18
+                            - revert_pc_offset
                         )
 
                     processed_opcodes = []
+                    last_pc = None
+                    non_payable_str = f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}"
+
                     while src_map and opcodes:
                         src = src_map.pop(0)
                         op = opcodes.pop(0)
                         processed_opcodes.append(op)
-                        start_pc = pc
+                        if pc not in [x[0] for x in pc_map_list]:
+                            # Track the last unused PC location.
+                            last_pc = pc
+
                         pc += 1
-                        if opcodes and is_0x_prefixed(opcodes[0]):
+
+                        # Detect immutable state member load.
+                        # If this is the case, ignore increasing pc by push size.
+                        is_code_copy = len(opcodes) > 5 and opcodes[5] == "CODECOPY"
+
+                        if not is_code_copy and opcodes and is_0x_prefixed(opcodes[0]):
                             last_value = int(opcodes.pop(0), 16)
-                            pc += int(op[4:])
-
-                        # Check for special Payable case.
-                        if src.start is None:
-                            if (
-                                op == "REVERT"
-                                and len(processed_opcodes) > 6
-                                and processed_opcodes[-7] == "CALLVALUE"
-                            ) or _is_revert_jump(op, last_value, revert_pc, processed_opcodes):
-                                pc_map_item = {
-                                    "location": None,
-                                    "dev": f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}",
-                                }
-                                pc_map_list.append(
-                                    (pc if op == "REVERT" else start_pc, pc_map_item)
-                                )
-
-                            continue
+                            # Add the push number, e.g. PUSH1 adds `1`.
+                            num_pushed = int(op[4:])
+                            pc += num_pushed
 
                         # Add content PC item.
                         # Also check for compiler runtime error handling.
@@ -301,7 +310,17 @@ class VyperCompiler(CompilerAPI):
                         if src.start is not None and src.length is not None:
                             stmt = ast.get_node(src)
                             if stmt:
-                                item: Dict = {"location": list(stmt.line_numbers)}
+                                line_nos = list(stmt.line_numbers)
+                                # Add next non-payable check.
+                                if last_pc is not None and len(function_offsets) > 0:
+                                    next_fn = function_offsets[0]
+                                    if line_nos[0] >= next_fn[0] and line_nos[2] <= next_fn[1]:
+                                        np_check = {"location": None, "dev": non_payable_str}
+                                        pc_map_list.append((last_pc, np_check))
+                                        function_offsets.pop(0)
+
+                                # Add located item.
+                                item: Dict = {"location": line_nos}
                                 is_revert_jump = _is_revert_jump(
                                     op, last_value, revert_pc, processed_opcodes
                                 )
