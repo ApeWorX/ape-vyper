@@ -250,6 +250,16 @@ class VyperCompiler(CompilerAPI):
                 for name, output in output_items.items():
                     # De-compress source map to get PC POS map.
                     ast = ASTNode.parse_obj(result["sources"][source_id]["ast"])
+
+                    # Track function offsets.
+                    function_offsets = []
+                    for node in ast.children:
+                        lineno = node.lineno
+                        if node.ast_type == "FunctionDef" and "__init__" not in content.get(
+                            lineno, ""
+                        ):
+                            function_offsets.append((node.lineno, node.end_lineno))
+
                     bytecode = output["evm"]["deployedBytecode"]
                     opcodes = bytecode["opcodes"].split(" ")
                     compressed_src_map = SourceMap(__root__=bytecode["sourceMap"])
@@ -269,11 +279,17 @@ class VyperCompiler(CompilerAPI):
                         )
 
                     processed_opcodes = []
+                    last_pc = None
+                    non_payable_str = f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}"
+
                     while src_map and opcodes:
                         src = src_map.pop(0)
                         op = opcodes.pop(0)
                         processed_opcodes.append(op)
-                        start_pc = pc
+                        if pc not in [x[0] for x in pc_map_list]:
+                            # Track the last unused PC location.
+                            last_pc = pc
+
                         pc += 1
 
                         # Detect immutable state member load.
@@ -286,38 +302,23 @@ class VyperCompiler(CompilerAPI):
                             num_pushed = int(op[4:])
                             pc += num_pushed
 
-                        # Check for special Payable case.
-                        last_was_non_payable = len(pc_map_list) >= 1 and (
-                            pc_map_list[-1][1].get("dev") or ""
-                        ).endswith(RuntimeErrorType.NONPAYABLE_CHECK.value)
-
-                        if src.start is None:
-                            if (
-                                op == "REVERT"
-                                and len(processed_opcodes) > 6
-                                and processed_opcodes[-7] == "CALLVALUE"
-                            ) or _is_revert_jump(op, last_value, revert_pc, processed_opcodes):
-                                if last_was_non_payable:
-                                    continue
-
-                                pc_map_item = {
-                                    "location": None,
-                                    "dev": f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}",
-                                }
-                                pc_key = pc if op == "REVERT" else start_pc
-                                if pc_key not in [x[0] for x in pc_map_list]:
-                                    # Shouldn't have an actual source pointer.
-                                    pc_map_list.append((pc_key, pc_map_item))
-
-                            continue
-
                         # Add content PC item.
                         # Also check for compiler runtime error handling.
                         # Runtime error locations are marked in the PCMap for further analysis.
                         if src.start is not None and src.length is not None:
                             stmt = ast.get_node(src)
                             if stmt:
-                                item: Dict = {"location": list(stmt.line_numbers)}
+                                line_nos = list(stmt.line_numbers)
+                                # Add next non-payable check.
+                                if last_pc is not None and len(function_offsets) > 0:
+                                    next_fn = function_offsets[0]
+                                    if line_nos[0] >= next_fn[0] and line_nos[2] <= next_fn[1]:
+                                        np_check = {"location": None, "dev": non_payable_str}
+                                        pc_map_list.append((last_pc, np_check))
+                                        function_offsets.pop(0)
+
+                                # Add located item.
+                                item: Dict = {"location": line_nos}
                                 is_revert_jump = _is_revert_jump(
                                     op, last_value, revert_pc, processed_opcodes
                                 )

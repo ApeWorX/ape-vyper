@@ -181,7 +181,8 @@ def test_pc_map(compiler, project):
     result = compiler.compile([path], base_path=PASSING_BASE)[0]
     actual = result.pcmap.__root__
     code = path.read_text()
-    src_map = compile_source(code)["<stdin>"]["source_map"]
+    compile_result = compile_source(code)["<stdin>"]
+    src_map = compile_result["source_map"]
     lines = code.splitlines()
 
     # Use the old-fashioned way of gathering PCMap to ensure our creative way works
@@ -239,7 +240,7 @@ def test_pc_map(compiler, project):
 
     # Verify non-payable checks.
     nonpayable_checks = _all(RuntimeErrorType.NONPAYABLE_CHECK)
-    assert len(nonpayable_checks) >= 9
+    assert len(nonpayable_checks) >= 8
 
     # Verify integer overflow checks
     overflows = _all(RuntimeErrorType.INTEGER_OVERFLOW)
