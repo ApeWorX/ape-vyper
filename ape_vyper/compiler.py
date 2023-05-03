@@ -8,13 +8,13 @@ import vvm  # type: ignore
 from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
 from ape.exceptions import ContractLogicError
-from ape.types import Closure, ContractType, SourceTraceback, TraceFrame
-from ape.types.trace import ContractSource, ControlFlow, SourceFunction, Statement
+from ape.types import ContractType, SourceTraceback, TraceFrame
 from ape.utils import cached_property, get_relative_path
 from eth_utils import is_0x_prefixed
 from ethpm_types import ASTNode, HexBytes, PackageManifest, PCMap
 from ethpm_types.ast import ASTClassification
-from ethpm_types.contract_type import SourceMap
+from ethpm_types.contract_type import ContractSource, SourceMap
+from ethpm_types.source import Function
 from evm_trace.enums import CALL_OPCODES
 from semantic_version import NpmSpec, Version  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
@@ -607,16 +607,8 @@ class VyperCompiler(CompilerAPI):
                     continue
 
                 # Empty source (is builtin)
-                closure = Closure(name=name)
-                depth = traceback.last.depth - 1 if traceback.last else 0
-                statement = Statement(type=f"dev: {error_type.value}")
-                flow = ControlFlow(
-                    statements=[statement],
-                    closure=closure,
-                    source_path=Path("<internal>") / "vyper",
-                    depth=depth,
-                )
-                traceback.append(flow)
+                stmt_type = f"dev: {error_type.value}"
+                traceback.add_builtin_jump(name, stmt_type, self.name)
                 continue
 
             elif not location:
@@ -630,7 +622,7 @@ class VyperCompiler(CompilerAPI):
             if (
                 not traceback.last
                 or traceback.last.closure.name != function.name
-                or not isinstance(traceback.last.closure, SourceFunction)
+                or not isinstance(traceback.last.closure, Function)
             ):
                 depth = (
                     frame.depth + 1
