@@ -13,8 +13,8 @@ from ape.utils import cached_property, get_relative_path
 from eth_utils import is_0x_prefixed
 from ethpm_types import ASTNode, HexBytes, PackageManifest, PCMap
 from ethpm_types.ast import ASTClassification
-from ethpm_types.contract_type import ContractSource, SourceMap
-from ethpm_types.source import Function
+from ethpm_types.contract_type import SourceMap
+from ethpm_types.source import ContractSource, Function
 from evm_trace.enums import CALL_OPCODES
 from semantic_version import NpmSpec, Version  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
@@ -629,7 +629,12 @@ class VyperCompiler(CompilerAPI):
                     if traceback.last and traceback.last.depth == frame.depth
                     else frame.depth
                 )
-                traceback.add_jump(location, function, contract_src.source_path, depth)
+                traceback.add_jump(
+                    location,
+                    function,
+                    depth,
+                    source_path=contract_src.source_path,
+                )
             else:
                 traceback.extend_last(location)
 
