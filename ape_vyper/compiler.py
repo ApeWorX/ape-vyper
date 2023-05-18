@@ -2,17 +2,20 @@ import os
 import re
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, cast
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union, cast
 
 import vvm  # type: ignore
 from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
 from ape.exceptions import ContractLogicError
-from ape.types import ContractType
+from ape.types import ContractType, SourceTraceback, TraceFrame
 from ape.utils import cached_property, get_relative_path
 from eth_utils import is_0x_prefixed
-from ethpm_types import ASTNode, PackageManifest, PCMap
+from ethpm_types import ASTNode, HexBytes, PackageManifest, PCMap
+from ethpm_types.ast import ASTClassification
 from ethpm_types.contract_type import SourceMap
+from ethpm_types.source import ContractSource, Function
+from evm_trace.enums import CALL_OPCODES
 from semantic_version import NpmSpec, Version  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
@@ -24,6 +27,9 @@ from ape_vyper.exceptions import (
 )
 
 DEV_MSG_PATTERN = re.compile(r"#\s*(dev:.+)")
+_RETURN_OPCODES = ("RETURN", "REVERT", "STOP")
+_FUNCTION_DEF = "FunctionDef"
+_FUNCTION_AST_TYPES = (_FUNCTION_DEF, "Name", "arguments")
 
 
 class VyperConfig(PluginConfig):
@@ -242,6 +248,13 @@ class VyperCompiler(CompilerAPI):
             except VyperError as err:
                 raise VyperCompileError(err) from err
 
+            def classify_ast(_node: ASTNode):
+                if _node.ast_type in _FUNCTION_AST_TYPES:
+                    _node.classification = ASTClassification.FUNCTION
+
+                for child in _node.children:
+                    classify_ast(child)
+
             for source_id, output_items in result["contracts"].items():
                 content = {
                     i + 1: ln
@@ -250,6 +263,7 @@ class VyperCompiler(CompilerAPI):
                 for name, output in output_items.items():
                     # De-compress source map to get PC POS map.
                     ast = ASTNode.parse_obj(result["sources"][source_id]["ast"])
+                    classify_ast(ast)
 
                     # Track function offsets.
                     function_offsets = []
@@ -487,6 +501,146 @@ class VyperCompiler(CompilerAPI):
         else:
             # Not a builtin compiler error; cannot enrich.
             return err
+
+    def trace_source(
+        self, contract_type: ContractType, trace: Iterator[TraceFrame], calldata: HexBytes
+    ) -> SourceTraceback:
+        source_contract_type = self.project_manager._create_contract_source(contract_type)
+        if not source_contract_type:
+            return SourceTraceback.parse_obj([])
+
+        return self._get_traceback(source_contract_type, trace, calldata)
+
+    def _get_traceback(
+        self, contract_src: ContractSource, trace: Iterator[TraceFrame], calldata: HexBytes
+    ) -> SourceTraceback:
+        traceback = SourceTraceback.parse_obj([])
+        function = None
+
+        for frame in trace:
+            if frame.op in CALL_OPCODES:
+                called_contract, sub_calldata = self._create_contract_from_call(frame)
+                if called_contract:
+                    ext = Path(called_contract.source_id).suffix
+                    if not ext.endswith(".vy"):
+                        # Not a Vyper contract!
+                        compiler = self.compiler_manager.registered_compilers[ext]
+                        try:
+                            sub_trace = compiler.trace_source(
+                                called_contract.contract_type, trace, sub_calldata
+                            )
+                            traceback.extend(sub_trace)
+                        except NotImplementedError:
+                            # Compiler not supported. Fast forward out of this call.
+                            for fr in trace:
+                                if fr.op == "RETURN":
+                                    break
+
+                    else:
+                        sub_trace = self._get_traceback(called_contract, trace, sub_calldata)
+                        traceback.extend(sub_trace)
+
+                else:
+                    # Contract not found. Fast forward out of this call.
+                    for fr in trace:
+                        if fr.op == "RETURN":
+                            break
+
+            elif frame.op in _RETURN_OPCODES:
+                if frame.op == "RETURN" and function:
+                    return_ast_result = [x for x in function.ast.children if x.ast_type == "Return"]
+                    if return_ast_result:
+                        # Ensure return statement added.
+                        # Sometimes it is missing from the PCMap otherwise.
+                        return_ast = return_ast_result[-1]
+                        location = return_ast.line_numbers
+                        start = traceback.last.end_lineno + 1
+                        traceback.last.extend(location, ws_start=start)
+
+                # Completed!
+                return traceback
+
+            if "PUSH" in frame.op and frame.pc in contract_src.pcmap:
+                # Check if next op is SSTORE to properly use AST from push op.
+                next_frame = next(trace, None)
+                if next_frame and next_frame.op == "SSTORE":
+                    push_location = tuple(contract_src.pcmap[frame.pc]["location"])  # type: ignore
+                    pcmap = PCMap.parse_obj({next_frame.pc: {"location": push_location}})
+                else:
+                    pcmap = contract_src.pcmap
+
+                if next_frame:
+                    frame = next_frame
+
+            else:
+                pcmap = contract_src.pcmap
+
+            if frame.pc not in pcmap:
+                continue
+
+            method_id = HexBytes(calldata[:4])
+            location = cast(Tuple[int, int, int, int], tuple(pcmap[frame.pc].get("location") or []))
+            dev = str(pcmap[frame.pc].get("dev", "")).replace("dev: ", "")
+            if not location and dev in [m.value for m in RuntimeErrorType]:
+                error_type = RuntimeErrorType(dev)
+                if error_type != RuntimeErrorType.NONPAYABLE_CHECK and traceback.last is not None:
+                    # If the error type is not the non-payable check,
+                    # it happened in the last method.
+                    name = traceback.last.name
+
+                elif method_id in contract_src.contract_type.methods:
+                    # For non-payable checks, they should hit here.
+                    method_checked = contract_src.contract_type.methods[method_id]
+                    name = method_checked.name
+
+                else:
+                    # Not sure if possible to get here.
+                    name = error_type.name.lower()
+
+                if (
+                    error_type == RuntimeErrorType.NONPAYABLE_CHECK
+                    and traceback.last is not None
+                    and traceback.last.closure.name == name
+                ):
+                    # Prevent weird duplicate non-payable check..
+                    # TODO: Find a better way to do this at compile time.
+                    continue
+
+                # Empty source (is builtin)
+                stmt_type = f"dev: {error_type.value}"
+                traceback.add_builtin_jump(name, stmt_type, self.name)
+                continue
+
+            elif not location:
+                # Unknown.
+                continue
+
+            function = contract_src.lookup_function(location, method_id=method_id)
+            if not function:
+                continue
+
+            if (
+                not traceback.last
+                or traceback.last.closure.name != function.name
+                or not isinstance(traceback.last.closure, Function)
+            ):
+                depth = (
+                    frame.depth + 1
+                    if traceback.last and traceback.last.depth == frame.depth
+                    else frame.depth
+                )
+                traceback.add_jump(
+                    location,
+                    function,
+                    depth,
+                    source_path=contract_src.source_path,
+                )
+            else:
+                traceback.extend_last(location)
+
+        # Never actually hits this return.
+        # See `Completed!` comment above.
+        return traceback
 
 
 def _safe_append(data: Dict, version: Union[Version, NpmSpec], paths: Union[Path, Set]):

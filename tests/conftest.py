@@ -89,3 +89,29 @@ def project(config):
         yield project
         if project.local_project._cache_folder.is_dir():
             shutil.rmtree(project.local_project._cache_folder)
+
+
+@pytest.fixture
+def geth_provider():
+    if not ape.networks.active_provider or ape.networks.provider.name != "geth":
+        with ape.networks.ethereum.local.use_provider(
+            "geth", provider_settings={"uri": "http://127.0.0.1:5550"}
+        ) as provider:
+            yield provider
+    else:
+        yield ape.networks.provider
+
+
+@pytest.fixture
+def account():
+    return ape.accounts.test_accounts[0]
+
+
+@pytest.fixture
+def registry(geth_provider, account, project):
+    return account.deploy(project.registry)
+
+
+@pytest.fixture
+def contract(registry, account, project):
+    return account.deploy(project.traceback_contract, registry)
