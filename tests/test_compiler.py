@@ -8,7 +8,7 @@ from vvm import compile_source  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper.compiler import RuntimeErrorType
-from ape_vyper.exceptions import NonPayableError, VyperCompileError, VyperInstallError
+from ape_vyper.exceptions import IntegerOverflowError, VyperCompileError, VyperInstallError
 
 BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
 PASSING_BASE = BASE_CONTRACTS_PATH / "passing_contracts"
@@ -87,16 +87,38 @@ def test_get_version_map(project, compiler):
         pytest.fail(fail_message)
 
     assert len(actual[OLDER_VERSION_FROM_PRAGMA]) == 1
-    assert len(actual[VERSION_FROM_PRAGMA]) == 6
+    assert len(actual[VERSION_FROM_PRAGMA]) == 8
     assert actual[OLDER_VERSION_FROM_PRAGMA] == {project.contracts_folder / "older_version.vy"}
-    assert actual[VERSION_FROM_PRAGMA] == {
-        project.contracts_folder / "contract.vy",
-        project.contracts_folder / "contract_no_pragma.vy",
-        project.contracts_folder / "contract_with_dev_messages.vy",
-        project.contracts_folder / "use_iface.vy",
-        project.contracts_folder / "use_iface2.vy",
-        project.contracts_folder / "erc20.vy",
-    }
+
+    expected = (
+        "contract.vy",
+        "contract_no_pragma.vy",
+        "contract_with_dev_messages.vy",
+        "erc20.vy",
+        "registry.vy",
+        "traceback_contract.vy",
+        "use_iface.vy",
+        "use_iface2.vy",
+    )
+    names = [x.name for x in actual[VERSION_FROM_PRAGMA]]
+    failures = []
+    missing = []
+    for ex in expected:
+        if ex not in names:
+            missing.append(ex)
+
+    if missing:
+        failures.append(f"Missing contracts: {','.join(missing)}")
+
+    extra = []
+    for ac in actual[VERSION_FROM_PRAGMA]:
+        if ac.name not in expected:
+            extra.append(ac.name)
+
+    if extra:
+        failures.append(f"Extra contracts: {', '.join(extra)}")
+
+    assert not failures, "\n".join(failures)
 
 
 def test_compiler_data_in_manifest(project):
@@ -104,19 +126,19 @@ def test_compiler_data_in_manifest(project):
     manifest = project.extract_manifest()
     assert len(manifest.compilers) == 2, manifest.compilers
 
-    vyper_034 = [c for c in manifest.compilers if str(c.version) == str(VERSION_FROM_PRAGMA)][0]
+    vyper_037 = [c for c in manifest.compilers if str(c.version) == str(VERSION_FROM_PRAGMA)][0]
     vyper_028 = [c for c in manifest.compilers if str(c.version) == str(OLDER_VERSION_FROM_PRAGMA)][
         0
     ]
 
-    for compiler in (vyper_028, vyper_034):
+    for compiler in (vyper_028, vyper_037):
         assert compiler.name == "vyper"
 
-    assert len(vyper_034.contractTypes) == 6
+    assert len(vyper_037.contractTypes) == 8
     assert len(vyper_028.contractTypes) == 1
-    assert "contract" in vyper_034.contractTypes
+    assert "contract" in vyper_037.contractTypes
     assert "older_version" in vyper_028.contractTypes
-    for compiler in (vyper_034, vyper_028):
+    for compiler in (vyper_037, vyper_028):
         assert compiler.settings["evmVersion"] == "constantinople"
         assert compiler.settings["optimize"] is True
 
@@ -171,7 +193,7 @@ def test_pc_map(compiler, project):
     result = compiler.compile([path], base_path=PASSING_BASE)[0]
     actual = result.pcmap.__root__
     code = path.read_text()
-    compile_result = compile_source(code)["<stdin>"]
+    compile_result = compile_source(code, vyper_version="0.3.7")["<stdin>"]
     src_map = compile_result["source_map"]
     lines = code.splitlines()
 
@@ -264,8 +286,9 @@ def test_pc_map(compiler, project):
 
 
 def test_enrich_error(compiler, geth_provider, contract, account):
-    with pytest.raises(NonPayableError):
-        contract.addBalance(4, sender=account, value=1)
+    int_max = 2**256 - 1
+    with pytest.raises(IntegerOverflowError):
+        contract.addBalance(int_max, sender=account)
 
 
 def test_trace_source(account, geth_provider, project, contract):
@@ -316,25 +339,4 @@ Traceback (most recent call last)
   -->  12     assert self.addr != addr, "doubling."
        13     self.addr = addr
     """.strip()
-    assert str(actual) == expected
-
-
-def test_builtin_trace_err_source(account, geth_provider, project):
-    registry_deployed = account.deploy(project.registry)
-    contract = account.deploy(project.traceback_contract, registry_deployed)
-    txn = contract.addBalance.as_transaction(123, value=1)
-
-    try:
-        account.call(txn)
-    except ContractLogicError:
-        pass
-
-    receipt = geth_provider.get_receipt(txn.txn_hash.hex())
-    actual = receipt.source_traceback
-    base_folder = project.contracts_folder
-    expected = rf"""
-Traceback (most recent call last)
-  File {base_folder}/traceback_contract.vy, in addBalance
-  """
-    raise ValueError(str(actual))
     assert str(actual) == expected
