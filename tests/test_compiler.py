@@ -8,7 +8,12 @@ from vvm import compile_source  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper.compiler import RuntimeErrorType
-from ape_vyper.exceptions import IntegerOverflowError, VyperCompileError, VyperInstallError
+from ape_vyper.exceptions import (
+    IntegerOverflowError,
+    NonPayableError,
+    VyperCompileError,
+    VyperInstallError,
+)
 
 BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
 PASSING_BASE = BASE_CONTRACTS_PATH / "passing_contracts"
@@ -285,10 +290,15 @@ def test_pc_map(compiler, project):
     assert range_checks[0]["location"] == [range_no, 11, range_no, 24]
 
 
-def test_enrich_error(compiler, geth_provider, contract, account):
+def test_int_overflow(geth_provider, contract, account):
     int_max = 2**256 - 1
     with pytest.raises(IntegerOverflowError):
         contract.addBalance(int_max, sender=account)
+
+
+def test_non_payable_check(geth_provider, contract, account):
+    with pytest.raises(NonPayableError):
+        contract.addBalance(123, sender=account, value=1)
 
 
 def test_trace_source(account, geth_provider, project, contract):

@@ -30,6 +30,8 @@ DEV_MSG_PATTERN = re.compile(r"#\s*(dev:.+)")
 _RETURN_OPCODES = ("RETURN", "REVERT", "STOP")
 _FUNCTION_DEF = "FunctionDef"
 _FUNCTION_AST_TYPES = (_FUNCTION_DEF, "Name", "arguments")
+_EMPTY_REVERT_OFFSET = 18
+_NON_PAYABLE_STR = f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}"
 
 
 class VyperConfig(PluginConfig):
@@ -284,28 +286,24 @@ class VyperCompiler(CompilerAPI):
                     pc_map_list: List[Tuple[int, Dict[str, Optional[Any]]]] = []
                     last_value = None
                     revert_pc = -1
-                    revert_pc_offset = 18
-                    if _is_nonpayable_check(opcodes):
+                    if _has_empty_revert(opcodes):
                         # Starting in vyper 0.2.14, reverts without a reason string are optimized
                         # with a jump to the "end" of the bytecode.
                         revert_pc = (
                             len(opcodes)
                             + sum(int(i[4:]) - 1 for i in opcodes if i.startswith("PUSH"))
-                            - revert_pc_offset
+                            - _EMPTY_REVERT_OFFSET
                         )
 
                     processed_opcodes = []
-                    last_pc = None
-                    non_payable_str = f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}"
+
+                    # There is only 1 non-payable check and it happens early in the bytecode.
+                    non_payable_check_found = False
 
                     while src_map and opcodes:
                         src = src_map.pop(0)
                         op = opcodes.pop(0)
                         processed_opcodes.append(op)
-                        if pc not in [x[0] for x in pc_map_list]:
-                            # Track the last unused PC location.
-                            last_pc = pc
-
                         pc += 1
 
                         # Detect immutable state member load.
@@ -324,20 +322,10 @@ class VyperCompiler(CompilerAPI):
                         if src.start is not None and src.length is not None:
                             stmt = ast.get_node(src)
                             if stmt:
-                                line_nos = list(stmt.line_numbers)
-                                # Add next non-payable check.
-                                if last_pc is not None and len(function_offsets) > 0:
-                                    next_fn = function_offsets[0]
-                                    if line_nos[0] >= next_fn[0] and line_nos[2] <= next_fn[1]:
-                                        np_check = {"location": None, "dev": non_payable_str}
-                                        pc_map_list.append((last_pc, np_check))
-                                        function_offsets.pop(0)
-
                                 # Add located item.
+                                line_nos = list(stmt.line_numbers)
                                 item: Dict = {"location": line_nos}
-                                is_revert_jump = _is_revert_jump(
-                                    op, last_value, revert_pc, processed_opcodes
-                                )
+                                is_revert_jump = _is_revert_jump(op, last_value, revert_pc)
                                 if op == "REVERT" or is_revert_jump:
                                     dev = None
                                     if stmt.ast_type in ("AugAssign", "BinOp"):
@@ -358,6 +346,18 @@ class VyperCompiler(CompilerAPI):
                                             item["dev"] = val
 
                                 pc_map_list.append((pc, item))
+
+                        elif (
+                            not non_payable_check_found
+                            and len(opcodes) >= 3
+                            and op == "CALLVALUE"
+                            and "PUSH" in opcodes[0]
+                            and is_0x_prefixed(opcodes[1])
+                            and _is_revert_jump(opcodes[2], int(opcodes[1], 16), revert_pc)
+                        ):
+                            item = {"dev": _NON_PAYABLE_STR, "location": None}
+                            pc_map_list.append((pc, item))
+                            non_payable_check_found = True
 
                     # Find content-specified dev messages.
                     dev_messages = {}
@@ -495,7 +495,10 @@ class VyperCompiler(CompilerAPI):
             runtime_error_type = RuntimeErrorType(err_str)
             runtime_error_cls = RUNTIME_ERROR_MAP[runtime_error_type]
             return runtime_error_cls(
-                txn=err.txn, trace=err.trace, contract_address=err.contract_address
+                contract_address=err.contract_address,
+                source_traceback=err.source_traceback,
+                trace=err.trace,
+                txn=err.txn,
             )
 
         else:
@@ -516,6 +519,7 @@ class VyperCompiler(CompilerAPI):
     ) -> SourceTraceback:
         traceback = SourceTraceback.parse_obj([])
         function = None
+        last_pc = None
 
         for frame in trace:
             if frame.op in CALL_OPCODES:
@@ -555,7 +559,9 @@ class VyperCompiler(CompilerAPI):
                         return_ast = return_ast_result[-1]
                         location = return_ast.line_numbers
                         start = traceback.last.end_lineno + 1
-                        traceback.last.extend(location, ws_start=start)
+                        traceback.last.extend(
+                            location, {last_pc + 1} if last_pc else {}, ws_start=start
+                        )
 
                 # Completed!
                 return traceback
@@ -563,13 +569,16 @@ class VyperCompiler(CompilerAPI):
             if "PUSH" in frame.op and frame.pc in contract_src.pcmap:
                 # Check if next op is SSTORE to properly use AST from push op.
                 next_frame = next(trace, None)
+                is_non_payable_hit = False
                 if next_frame and next_frame.op == "SSTORE":
                     push_location = tuple(contract_src.pcmap[frame.pc]["location"])  # type: ignore
                     pcmap = PCMap.parse_obj({next_frame.pc: {"location": push_location}})
                 else:
                     pcmap = contract_src.pcmap
+                    dev_val = str((pcmap[frame.pc].get("dev") or "")).replace("dev: ", "")
+                    is_non_payable_hit = dev_val == RuntimeErrorType.NONPAYABLE_CHECK.value
 
-                if next_frame:
+                if not is_non_payable_hit and next_frame:
                     frame = next_frame
 
             else:
@@ -580,7 +589,8 @@ class VyperCompiler(CompilerAPI):
 
             method_id = HexBytes(calldata[:4])
             location = cast(Tuple[int, int, int, int], tuple(pcmap[frame.pc].get("location") or []))
-            dev = str(pcmap[frame.pc].get("dev", "")).replace("dev: ", "")
+            dev_item = pcmap[frame.pc].get("dev", "")
+            dev = str(dev_item).replace("dev: ", "")
             if not location and dev in [m.value for m in RuntimeErrorType]:
                 error_type = RuntimeErrorType(dev)
                 if error_type != RuntimeErrorType.NONPAYABLE_CHECK and traceback.last is not None:
@@ -597,18 +607,10 @@ class VyperCompiler(CompilerAPI):
                     # Not sure if possible to get here.
                     name = error_type.name.lower()
 
-                if (
-                    error_type == RuntimeErrorType.NONPAYABLE_CHECK
-                    and traceback.last is not None
-                    and traceback.last.closure.name == name
-                ):
-                    # Prevent weird duplicate non-payable check..
-                    # TODO: Find a better way to do this at compile time.
-                    continue
-
                 # Empty source (is builtin)
-                stmt_type = f"dev: {error_type.value}"
-                traceback.add_builtin_jump(name, stmt_type, self.name)
+                traceback.add_builtin_jump(
+                    name, {frame.pc}, dev_item, self.name, source_path=contract_src.source_path
+                )
                 continue
 
             elif not location:
@@ -632,11 +634,14 @@ class VyperCompiler(CompilerAPI):
                 traceback.add_jump(
                     location,
                     function,
+                    {frame.pc},
                     depth,
                     source_path=contract_src.source_path,
                 )
             else:
-                traceback.extend_last(location)
+                traceback.extend_last(location, {frame.pc})
+
+            last_pc = frame.pc
 
         # Never actually hits this return.
         # See `Completed!` comment above.
@@ -652,13 +657,11 @@ def _safe_append(data: Dict, version: Union[Version, NpmSpec], paths: Union[Path
         data[version] = paths
 
 
-def _is_revert_jump(
-    op: str, value: Optional[int], revert_pc: int, processed_opcodes: List[str]
-) -> bool:
-    return op == "JUMPI" and value is not None and value == revert_pc and len(processed_opcodes) > 2
+def _is_revert_jump(op: str, value: Optional[int], revert_pc: int) -> bool:
+    return op == "JUMPI" and value is not None and value == revert_pc
 
 
-def _is_nonpayable_check(opcodes: List[str]) -> bool:
+def _has_empty_revert(opcodes: List[str]) -> bool:
     return (len(opcodes) > 12 and opcodes[-13] == "JUMPDEST" and opcodes[-9] == "REVERT") or (
         len(opcodes) > 4 and opcodes[-5] == "JUMPDEST" and opcodes[-1] == "REVERT"
     )
