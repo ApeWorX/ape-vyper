@@ -558,7 +558,7 @@ class VyperCompiler(CompilerAPI):
                         # Sometimes it is missing from the PCMap otherwise.
                         return_ast = return_ast_result[-1]
                         location = return_ast.line_numbers
-                        start = traceback.last.end_lineno + 1
+                        start = (traceback.last.end_lineno or 0) + 1
                         traceback.last.extend(
                             location, {last_pc + 1} if last_pc else {}, ws_start=start
                         )
