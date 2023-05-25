@@ -559,8 +559,7 @@ class VyperCompiler(CompilerAPI):
                         return_ast = return_ast_result[-1]
                         location = return_ast.line_numbers
 
-                        # Find last lineno
-                        last_lineno = 0
+                        last_lineno = max(0, location[2] - 1)
                         for frameset in traceback.__root__[::-1]:
                             if frameset.end_lineno is not None:
                                 last_lineno = frameset.end_lineno
