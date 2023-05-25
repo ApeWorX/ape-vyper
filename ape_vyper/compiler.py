@@ -567,9 +567,8 @@ class VyperCompiler(CompilerAPI):
                                 break
 
                         start = last_lineno + 1
-                        traceback.last.extend(
-                            location, {last_pc + 1} if last_pc else {}, ws_start=start
-                        )
+                        last_pcs = {last_pc + 1} if last_pc else {}
+                        traceback.last.extend(location, pcs=last_pcs, ws_start=start)
 
                 # Completed!
                 return traceback
@@ -642,8 +641,8 @@ class VyperCompiler(CompilerAPI):
                 traceback.add_jump(
                     location,
                     function,
-                    {frame.pc},
                     depth,
+                    pcs={frame.pc},
                     source_path=contract_src.source_path,
                 )
             else:
