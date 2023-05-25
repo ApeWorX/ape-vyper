@@ -56,18 +56,18 @@ dependencies:
   - name: VyperVoting
     github: vyperlang/vyper
     contracts_folder: examples/voting/
-    version: v0.3.7
+    version: v0.3.8
 
 # Automatically allow importing voting contracts in your project.
 vyper:
   import_remapping:
-    - "voting=VyperVoting@v0.3.7"
+    - "voting=VyperVoting@v0.3.8"
 ```
 
 Import the voting contract types like this:
 
 ```python
-# @version 0.3.7
+# @version 0.3.8
 
 import voting.ballot as ballot
 ```

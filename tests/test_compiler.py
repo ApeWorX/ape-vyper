@@ -21,7 +21,8 @@ FAILING_BASE = BASE_CONTRACTS_PATH / "failing_contracts"
 
 # Currently, this is the only version specified from a pragma spec
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.8")
-VERSION_FROM_PRAGMA = Version("0.3.7")
+VERSION_37 = Version("0.3.7")
+VERSION_FROM_PRAGMA = Version("0.3.8")
 
 
 @pytest.fixture
@@ -81,7 +82,7 @@ def test_get_version_map(project, compiler):
         x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
     ]
     actual = compiler.get_version_map(vyper_files)
-    expected_versions = (OLDER_VERSION_FROM_PRAGMA, VERSION_FROM_PRAGMA)
+    expected_versions = (OLDER_VERSION_FROM_PRAGMA, VERSION_FROM_PRAGMA, VERSION_37)
 
     for version, sources in actual.items():
         if version in expected_versions:
@@ -129,21 +130,21 @@ def test_get_version_map(project, compiler):
 def test_compiler_data_in_manifest(project):
     _ = project.contracts
     manifest = project.extract_manifest()
-    assert len(manifest.compilers) == 2, manifest.compilers
+    assert len(manifest.compilers) == 3, manifest.compilers
 
-    vyper_037 = [c for c in manifest.compilers if str(c.version) == str(VERSION_FROM_PRAGMA)][0]
+    vyper_latest = [c for c in manifest.compilers if str(c.version) == str(VERSION_FROM_PRAGMA)][0]
     vyper_028 = [c for c in manifest.compilers if str(c.version) == str(OLDER_VERSION_FROM_PRAGMA)][
         0
     ]
 
-    for compiler in (vyper_028, vyper_037):
+    for compiler in (vyper_028, vyper_latest):
         assert compiler.name == "vyper"
 
-    assert len(vyper_037.contractTypes) == 8
+    assert len(vyper_latest.contractTypes) == 8
     assert len(vyper_028.contractTypes) == 1
-    assert "contract" in vyper_037.contractTypes
+    assert "contract" in vyper_latest.contractTypes
     assert "older_version" in vyper_028.contractTypes
-    for compiler in (vyper_037, vyper_028):
+    for compiler in (vyper_latest, vyper_028):
         assert compiler.settings["evmVersion"] == "constantinople"
         assert compiler.settings["optimize"] is True
 
@@ -188,13 +189,14 @@ def test_get_imports(compiler, project):
     assert set(actual["use_iface2.vy"]) == {local_import}
 
 
+# TODO: Test this on 0.3.8 and utilize the pcmap from the output.
 def test_pc_map(compiler, project):
     """
     Ensure we de-compress the source map correctly by comparing to the results
     from `compile_src()` which includes the uncompressed source map data.
     """
 
-    path = PASSING_BASE / "contract.vy"
+    path = PASSING_BASE / "contract_37.vy"
     result = compiler.compile([path], base_path=PASSING_BASE)[0]
     actual = result.pcmap.__root__
     code = path.read_text()
