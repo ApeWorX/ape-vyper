@@ -533,7 +533,7 @@ class VyperCompiler(CompilerAPI):
                             sub_trace = compiler.trace_source(
                                 called_contract.contract_type, trace, sub_calldata
                             )
-                            traceback.extend(sub_trace)
+                            traceback.extend(sub_trace, pcs={frame.pc})
                         except NotImplementedError:
                             # Compiler not supported. Fast forward out of this call.
                             for fr in trace:
@@ -542,7 +542,7 @@ class VyperCompiler(CompilerAPI):
 
                     else:
                         sub_trace = self._get_traceback(called_contract, trace, sub_calldata)
-                        traceback.extend(sub_trace)
+                        traceback.extend(sub_trace, pcs={frame.pc})
 
                 else:
                     # Contract not found. Fast forward out of this call.
@@ -616,7 +616,7 @@ class VyperCompiler(CompilerAPI):
 
                 # Empty source (is builtin)
                 traceback.add_builtin_jump(
-                    name, {frame.pc}, dev_item, self.name, source_path=contract_src.source_path
+                    name, dev_item, self.name, pcs={frame.pc}, source_path=contract_src.source_path
                 )
                 continue
 
@@ -646,7 +646,7 @@ class VyperCompiler(CompilerAPI):
                     source_path=contract_src.source_path,
                 )
             else:
-                traceback.extend_last(location, {frame.pc})
+                traceback.extend_last(location, pcs={frame.pc})
 
             last_pc = frame.pc
 
