@@ -8,7 +8,7 @@ from tempfile import mkdtemp
 import ape
 import pytest
 import vvm  # type: ignore
-from geth.wrapper import construct_test_chain_kwargs as actual_construct_test_chain_kwargs
+from geth.wrapper import construct_test_chain_kwargs as geth_ctor  # type: ignore
 
 from ape_vyper.compiler import VyperCompiler
 
@@ -113,7 +113,7 @@ def geth_provider(mocker):
     patch = mocker.patch("ape_geth.provider.construct_test_chain_kwargs")
 
     def side_effect(*args, **kwargs):
-        result = actual_construct_test_chain_kwargs(*args, **kwargs)
+        result = geth_ctor(*args, **kwargs)
         if "miner_threads" in result:
             del result["miner_threads"]
 
