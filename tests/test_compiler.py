@@ -313,15 +313,15 @@ def test_non_payable_check(geth_provider, traceback_contract_037, account):
         traceback_contract_037.addBalance(123, sender=account, value=1)
 
 
-def test_trace_source(account, geth_provider, project, traceback_contract_037):
+def test_trace_source(account, geth_provider, project, traceback_contract):
     """
     NOTE: Using 0.3.7 because 0.3.8 bugs and shows the wrong lines.
     """
 
-    receipt = traceback_contract_037.addBalance(123, sender=account)
+    receipt = traceback_contract.addBalance(123, sender=account)
     actual = receipt.source_traceback
     base_folder = project.contracts_folder
-    contract_name = traceback_contract_037.contract_type.name
+    contract_name = traceback_contract.contract_type.name
     expected = rf"""
 Traceback (most recent call last)
   File {base_folder}/{contract_name}.vy, in addBalance

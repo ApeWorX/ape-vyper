@@ -132,6 +132,11 @@ def traceback_contract_037(account, project, geth_provider):
     return _get_tb_contract("037", project, account)
 
 
+@pytest.fixture
+def traceback_contract_038(account, project, geth_provider):
+    return _get_tb_contract("038", project, account)
+
+
 def _get_tb_contract(version: str, project, account):
     registry_type = project.get_contract(f"registry_{version}")
     registry = account.deploy(registry_type)

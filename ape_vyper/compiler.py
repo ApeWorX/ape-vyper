@@ -480,23 +480,8 @@ class VyperCompiler(CompilerAPI):
                             break
 
             elif frame.op in _RETURN_OPCODES:
-                if frame.op == "RETURN" and function:
-                    return_ast_result = [x for x in function.ast.children if x.ast_type == "Return"]
-                    if return_ast_result:
-                        # Ensure return statement added.
-                        # Sometimes it is missing from the PCMap otherwise.
-                        return_ast = return_ast_result[-1]
-                        location = return_ast.line_numbers
-
-                        last_lineno = max(0, location[2] - 1)
-                        for frameset in traceback.__root__[::-1]:
-                            if frameset.end_lineno is not None:
-                                last_lineno = frameset.end_lineno
-                                break
-
-                        start = last_lineno + 1
-                        last_pcs = {last_pc + 1} if last_pc else {}
-                        traceback.last.extend(location, pcs=last_pcs, ws_start=start)
+                if frame.op in "RETURN" and function:
+                    _extend_return(function, traceback, last_pc)
 
                 # Completed!
                 return traceback
@@ -508,6 +493,14 @@ class VyperCompiler(CompilerAPI):
                 if next_frame and next_frame.op == "SSTORE":
                     push_location = tuple(contract_src.pcmap[frame.pc]["location"])  # type: ignore
                     pcmap = PCMap.parse_obj({next_frame.pc: {"location": push_location}})
+
+                elif next_frame and next_frame.op in _RETURN_OPCODES:
+                    if next_frame.op in "RETURN" and function:
+                        _extend_return(function, traceback, last_pc)
+
+                    # Completed!
+                    return traceback
+
                 else:
                     pcmap = contract_src.pcmap
                     dev_val = str((pcmap[frame.pc].get("dev") or "")).replace("dev: ", "")
@@ -753,3 +746,24 @@ def _get_revert_pc(opcodes: List[str]) -> int:
 def _is_immutable_member_load(opcodes: List[str]):
     is_code_copy = len(opcodes) > 5 and opcodes[5] == "CODECOPY"
     return not is_code_copy and opcodes and is_0x_prefixed(opcodes[0])
+
+
+def _extend_return(function: Function, traceback: SourceTraceback, last_pc: int):
+    return_ast_result = [x for x in function.ast.children if x.ast_type == "Return"]
+    if not return_ast_result:
+        return
+
+    # Ensure return statement added.
+    # Sometimes it is missing from the PCMap otherwise.
+    return_ast = return_ast_result[-1]
+    location = return_ast.line_numbers
+
+    last_lineno = max(0, location[2] - 1)
+    for frameset in traceback.__root__[::-1]:
+        if frameset.end_lineno is not None:
+            last_lineno = frameset.end_lineno
+            break
+
+    start = last_lineno + 1
+    last_pcs = {last_pc + 1} if last_pc else set()
+    traceback.last.extend(location, pcs=last_pcs, ws_start=start)
