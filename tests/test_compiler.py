@@ -145,6 +145,7 @@ def test_compiler_data_in_manifest(project):
     assert "contract" in vyper_latest.contractTypes
     assert "older_version" in vyper_028.contractTypes
     for compiler in (vyper_latest, vyper_028):
+        assert compiler.settings["evmVersion"] == "istanbul"
         assert compiler.settings["optimize"] is True
 
 
@@ -314,10 +315,7 @@ def test_non_payable_check(geth_provider, traceback_contract_037, account):
 
 def test_trace_source(account, geth_provider, project, traceback_contract_037):
     """
-    NOTE: Using 0.3.7 for 2 reasons:
-
-    1. The error map isn't working yet for 0.3.8 and greater
-    2. geth PoA test provider doesn't support shanghai yet
+    NOTE: Using 0.3.7 because 0.3.8 bugs and shows the wrong lines.
     """
 
     receipt = traceback_contract_037.addBalance(123, sender=account)
@@ -338,8 +336,8 @@ Traceback (most recent call last)
     assert str(actual) == expected
 
 
-def test_trace_err_source(account, geth_provider, project, traceback_contract_037):
-    txn = traceback_contract_037.addBalance_f.as_transaction(123)
+def test_trace_err_source(account, geth_provider, project, traceback_contract):
+    txn = traceback_contract.addBalance_f.as_transaction(123)
     try:
         account.call(txn)
     except ContractLogicError:
@@ -348,7 +346,7 @@ def test_trace_err_source(account, geth_provider, project, traceback_contract_03
     receipt = geth_provider.get_receipt(txn.txn_hash.hex())
     actual = receipt.source_traceback
     base_folder = project.contracts_folder
-    contract_name = traceback_contract_037.contract_type.name
+    contract_name = traceback_contract.contract_type.name
     version_key = contract_name.split("traceback_contract_")[-1]
     expected = rf"""
 Traceback (most recent call last)

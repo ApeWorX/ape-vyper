@@ -614,33 +614,26 @@ def _build_pcmap(
 
     pc_data[non_payable_check] = {"dev": _NON_PAYABLE_STR, "location": None}
 
-    # Unfortunately still need the legacy map because the error map is missing
-    # items needed.
-    # TODO: Replace with error_map when I can learn to make sense of the differences.
-    legacy_map = _build_legacy_pcmap(ast, src_map, opcodes)
-    legacy_errors = {k: v for k, v in legacy_map.__root__.items() if v.get("dev")}
-    pc_data = {**pc_data, **legacy_errors}
-    #
-    # # Apply other errors.
-    # errors = src_info["error_map"]
-    # for err_pc, error_type in errors.items():
-    #     if "safemul" in error_type or "safeadd" in err_pc:
-    #         error_str = RuntimeErrorType.INTEGER_OVERFLOW.value
-    #     elif "safesub" in error_type:
-    #         error_str = RuntimeErrorType.INTEGER_UNDERFLOW.value
-    #     elif "safediv" in error_type:
-    #         error_str = RuntimeErrorType.DIVISION_BY_ZERO.value
-    #     elif "safemod" in error_type:
-    #         error_str = RuntimeErrorType.MODULO_BY_ZERO.value
-    #     elif "bounds check" in error_type:
-    #         error_str = RuntimeErrorType.INDEX_OUT_OF_RANGE.value
-    #     else:
-    #         error_str = error_type.upper().replace(" ", "_")
-    #
-    #     if err_pc in pc_data:
-    #         pc_data[err_pc]["dev"] = f"dev: {error_str}"
-    #     else:
-    #         pc_data[err_pc] = {"dev": f"dev: {error_str}", "location": None}
+    # Apply other errors.
+    errors = src_info["error_map"]
+    for err_pc, error_type in errors.items():
+        if "safemul" in error_type or "safeadd" in err_pc:
+            error_str = RuntimeErrorType.INTEGER_OVERFLOW.value
+        elif "safesub" in error_type:
+            error_str = RuntimeErrorType.INTEGER_UNDERFLOW.value
+        elif "safediv" in error_type:
+            error_str = RuntimeErrorType.DIVISION_BY_ZERO.value
+        elif "safemod" in error_type:
+            error_str = RuntimeErrorType.MODULO_BY_ZERO.value
+        elif "bounds check" in error_type:
+            error_str = RuntimeErrorType.INDEX_OUT_OF_RANGE.value
+        else:
+            error_str = error_type.upper().replace(" ", "_")
+
+        if err_pc in pc_data:
+            pc_data[err_pc]["dev"] = f"dev: {error_str}"
+        else:
+            pc_data[err_pc] = {"dev": f"dev: {error_str}", "location": None}
 
     return PCMap.parse_obj(pc_data)
 
