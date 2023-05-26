@@ -122,11 +122,17 @@ def account():
     return ape.accounts.test_accounts[0]
 
 
-@pytest.fixture
-def registry(geth_provider, account, project):
-    return account.deploy(project.registry)
+@pytest.fixture(params=("037", "038"))
+def traceback_contract(request, account, project):
+    return _get_tb_contract(request.param, project, account)
 
 
-@pytest.fixture
-def contract(registry, account, project):
-    return account.deploy(project.traceback_contract, registry)
+def traceback_contract_037(account, project):
+    return _get_tb_contract("037", project, account)
+
+
+def _get_tb_contract(version: str, project, account):
+    registry_type = project.get_contract(f"registry_{version}")
+    registry = account.deploy(registry_type)
+    contract = project.get_contract(f"traceback_contract_{version}")
+    return account.deploy(contract, registry)

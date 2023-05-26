@@ -286,40 +286,7 @@ class VyperCompiler(CompilerAPI):
                     if vyper_version < Version("0.3.8"):
                         pcmap = _build_legacy_pcmap(ast, src_map, opcodes)
                     else:
-                        src_info = bytecode["sourceMapFull"]
-                        pc_data = {
-                            pc: {"location": ln} for pc, ln in src_info["pc_pos_map"].items()
-                        }
-
-                        # Find the non payable value check.
-                        non_payable_check = _find_non_payable_check(src_map, opcodes)
-                        if not non_payable_check:
-                            non_payable_check = min([int(x) for x in pc_data]) - 1
-
-                        pc_data[non_payable_check] = {"dev": _NON_PAYABLE_STR, "location": None}
-
-                        # Apply other errors.
-                        errors = src_info["error_map"]
-                        for err_pc, error_type in errors.items():
-                            if "safemul" in error_type or "safeadd" in err_pc:
-                                error_str = RuntimeErrorType.INTEGER_OVERFLOW.value
-                            elif "safesub" in error_type:
-                                error_str = RuntimeErrorType.INTEGER_UNDERFLOW.value
-                            elif "safediv" in error_type:
-                                error_str = RuntimeErrorType.DIVISION_BY_ZERO.value
-                            elif "safemod" in error_type:
-                                error_str = RuntimeErrorType.MODULO_BY_ZERO.value
-                            elif "bounds check" in error_type:
-                                error_str = RuntimeErrorType.INDEX_OUT_OF_RANGE.value
-                            else:
-                                error_str = error_type.upper().replace(" ", "_")
-
-                            if err_pc in pc_data:
-                                pc_data[err_pc]["dev"] = f"dev: {error_str}"
-                            else:
-                                pc_data[err_pc] = {"dev": f"dev: {error_str}", "location": None}
-
-                        pcmap = PCMap.parse_obj(pc_data)
+                        pcmap = _build_pcmap(bytecode, ast, src_map, opcodes)
 
                     # Find content-specified dev messages.
                     dev_messages = {}
@@ -564,7 +531,7 @@ class VyperCompiler(CompilerAPI):
                 if error_type != RuntimeErrorType.NONPAYABLE_CHECK and traceback.last is not None:
                     # If the error type is not the non-payable check,
                     # it happened in the last method.
-                    name = traceback.last.name
+                    name = traceback.last.closure.name
 
                 elif method_id in contract_src.contract_type.methods:
                     # For non-payable checks, they should hit here.
@@ -633,6 +600,49 @@ def _has_empty_revert(opcodes: List[str]) -> bool:
     return (len(opcodes) > 12 and opcodes[-13] == "JUMPDEST" and opcodes[-9] == "REVERT") or (
         len(opcodes) > 4 and opcodes[-5] == "JUMPDEST" and opcodes[-1] == "REVERT"
     )
+
+
+def _build_pcmap(
+    bytecode: Dict, ast: ASTNode, src_map: List[SourceMapItem], opcodes: List[str]
+) -> PCMap:
+    # Find the non payable value check.
+    src_info = bytecode["sourceMapFull"]
+    pc_data = {pc: {"location": ln} for pc, ln in src_info["pc_pos_map"].items()}
+    non_payable_check = _find_non_payable_check(src_map, opcodes)
+    if not non_payable_check:
+        non_payable_check = min([int(x) for x in pc_data]) - 1
+
+    pc_data[non_payable_check] = {"dev": _NON_PAYABLE_STR, "location": None}
+
+    # Unfortunately still need the legacy map because the error map is missing
+    # items needed.
+    # TODO: Replace with error_map when I can learn to make sense of the differences.
+    legacy_map = _build_legacy_pcmap(ast, src_map, opcodes)
+    legacy_errors = {k: v for k, v in legacy_map.__root__.items() if v.get("dev")}
+    pc_data = {**pc_data, **legacy_errors}
+    #
+    # # Apply other errors.
+    # errors = src_info["error_map"]
+    # for err_pc, error_type in errors.items():
+    #     if "safemul" in error_type or "safeadd" in err_pc:
+    #         error_str = RuntimeErrorType.INTEGER_OVERFLOW.value
+    #     elif "safesub" in error_type:
+    #         error_str = RuntimeErrorType.INTEGER_UNDERFLOW.value
+    #     elif "safediv" in error_type:
+    #         error_str = RuntimeErrorType.DIVISION_BY_ZERO.value
+    #     elif "safemod" in error_type:
+    #         error_str = RuntimeErrorType.MODULO_BY_ZERO.value
+    #     elif "bounds check" in error_type:
+    #         error_str = RuntimeErrorType.INDEX_OUT_OF_RANGE.value
+    #     else:
+    #         error_str = error_type.upper().replace(" ", "_")
+    #
+    #     if err_pc in pc_data:
+    #         pc_data[err_pc]["dev"] = f"dev: {error_str}"
+    #     else:
+    #         pc_data[err_pc] = {"dev": f"dev: {error_str}", "location": None}
+
+    return PCMap.parse_obj(pc_data)
 
 
 def _build_legacy_pcmap(ast: ASTNode, src_map: List[SourceMapItem], opcodes: List[str]):

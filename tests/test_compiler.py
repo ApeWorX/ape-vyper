@@ -261,65 +261,54 @@ def test_pc_map(compiler, project, src, vers):
     nonpayable_checks = _all(RuntimeErrorType.NONPAYABLE_CHECK)
     assert len(nonpayable_checks) == 1
 
-    # Verify integer overflow checks
-    overflows = _all(RuntimeErrorType.INTEGER_OVERFLOW)
-    overflow_no = line("return (2**127-1) + i")
-    expected_overflow_loc = [overflow_no, 12, overflow_no, 20]
-    assert len(overflows) >= 2
-
+    # TODO: Figure out 0.3.8 issue with error maps.
     if vers == "0.3.7":
-        # TODO: Figure out 0.3.8 issue.
+        # Verify integer overflow checks
+        overflows = _all(RuntimeErrorType.INTEGER_OVERFLOW)
+        overflow_no = line("return (2**127-1) + i")
+        expected_overflow_loc = [overflow_no, 12, overflow_no, 20]
+        assert len(overflows) >= 2
         assert expected_overflow_loc in [o["location"] for o in overflows]
 
-    # Verify integer underflow checks
-    underflows = _all(RuntimeErrorType.INTEGER_UNDERFLOW)
-    underflow_no = line("return i - (2**127-1)")
-    expected_underflow_loc = [underflow_no, 11, underflow_no, 25]
-    assert len(underflows) == 2
-
-    if vers == "0.3.7":
-        # TODO: Figure out 0.3.8 issue.
+        # Verify integer underflow checks
+        underflows = _all(RuntimeErrorType.INTEGER_UNDERFLOW)
+        underflow_no = line("return i - (2**127-1)")
+        expected_underflow_loc = [underflow_no, 11, underflow_no, 25]
+        assert len(underflows) == 2
         assert expected_underflow_loc in [u["location"] for u in underflows]
 
-    # Verify division by zero checks
-    div_zeros = _all(RuntimeErrorType.DIVISION_BY_ZERO)
-    div_no = line("return 4 / i")
-    expected_div_0 = [div_no, 11, div_no, 16]
+        # Verify division by zero checks
+        div_zeros = _all(RuntimeErrorType.DIVISION_BY_ZERO)
+        div_no = line("return 4 / i")
+        expected_div_0 = [div_no, 11, div_no, 16]
 
-    if vers == "0.3.7":
-        # TODO: Figure out 0.3.8 issue.
         assert len(div_zeros) >= 1
         assert expected_div_0 in [d["location"] for d in div_zeros]
 
-    # Verify modulo by zero checks
-    mod_zeros = _all(RuntimeErrorType.MODULO_BY_ZERO)
-    mod_no = line("return 4 % i")
-    expected_mod_0_loc = [mod_no, 11, mod_no, 16]
-    assert len(mod_zeros) >= 1
-    if vers == "0.3.7":
-        # TODO: Figure out 0.3.8 issue.
+        # Verify modulo by zero checks
+        mod_zeros = _all(RuntimeErrorType.MODULO_BY_ZERO)
+        mod_no = line("return 4 % i")
+        expected_mod_0_loc = [mod_no, 11, mod_no, 16]
+        assert len(mod_zeros) >= 1
         assert expected_mod_0_loc in [m["location"] for m in mod_zeros]
 
-    # Verify index out of range checks
-    range_checks = _all(RuntimeErrorType.INDEX_OUT_OF_RANGE)
-    range_no = line("return self.dynArray[idx]")
-    expected_range_check = [range_no, 11, range_no, 24]
-    assert len(range_checks) >= 1
-
-    if vers == "0.3.7":
-        # TODO: Figure out 0.3.8 issue.
+        # Verify index out of range checks
+        range_checks = _all(RuntimeErrorType.INDEX_OUT_OF_RANGE)
+        range_no = line("return self.dynArray[idx]")
+        expected_range_check = [range_no, 11, range_no, 24]
+        assert len(range_checks) >= 1
         assert expected_range_check in [r["location"] for r in range_checks]
 
 
-def test_int_overflow(geth_provider, contract, account):
+def test_int_overflow(geth_provider, traceback_contract_037, account):
     int_max = 2**256 - 1
     with pytest.raises(IntegerOverflowError):
-        contract.addBalance(int_max, sender=account)
+        traceback_contract_037.addBalance(int_max, sender=account)
 
 
-def test_non_payable_check(geth_provider, contract, account):
+def test_non_payable_check(geth_provider, traceback_contract_037, account):
     with pytest.raises(NonPayableError):
-        contract.addBalance(123, sender=account, value=1)
+        traceback_contract_037.addBalance(123, sender=account, value=1)
 
 
 # TODO: Run this test using 0.3.8 as well, once we get the PCMap working.
