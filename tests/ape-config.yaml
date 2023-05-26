@@ -7,8 +7,7 @@ dependencies:
     local: ./ExampleDependency
 
 vyper:
-  # Using evm_version compatible with older and newer vyper versions.
-  evm_version: constantinople
+  evm_version: istanbul
 
   # Allows importing dependencies.
   import_remapping:

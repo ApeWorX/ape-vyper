@@ -11,7 +11,7 @@ from ape.exceptions import ContractLogicError
 from ape.types import ContractType, SourceTraceback, TraceFrame
 from ape.utils import cached_property, get_relative_path
 from eth_utils import is_0x_prefixed
-from ethpm_types import ASTNode, HexBytes, PackageManifest, PCMap
+from ethpm_types import ASTNode, HexBytes, PackageManifest, PCMap, SourceMapItem
 from ethpm_types.ast import ASTClassification
 from ethpm_types.contract_type import SourceMap
 from ethpm_types.source import ContractSource, Function
@@ -282,82 +282,11 @@ class VyperCompiler(CompilerAPI):
                     opcodes = bytecode["opcodes"].split(" ")
                     compressed_src_map = SourceMap(__root__=bytecode["sourceMap"])
                     src_map = list(compressed_src_map.parse())[1:]
-                    pc = 0
-                    pc_map_list: List[Tuple[int, Dict[str, Optional[Any]]]] = []
-                    last_value = None
-                    revert_pc = -1
-                    if _has_empty_revert(opcodes):
-                        # Starting in vyper 0.2.14, reverts without a reason string are optimized
-                        # with a jump to the "end" of the bytecode.
-                        revert_pc = (
-                            len(opcodes)
-                            + sum(int(i[4:]) - 1 for i in opcodes if i.startswith("PUSH"))
-                            - _EMPTY_REVERT_OFFSET
-                        )
 
-                    processed_opcodes = []
-
-                    # There is only 1 non-payable check and it happens early in the bytecode.
-                    non_payable_check_found = False
-
-                    while src_map and opcodes:
-                        src = src_map.pop(0)
-                        op = opcodes.pop(0)
-                        processed_opcodes.append(op)
-                        pc += 1
-
-                        # Detect immutable state member load.
-                        # If this is the case, ignore increasing pc by push size.
-                        is_code_copy = len(opcodes) > 5 and opcodes[5] == "CODECOPY"
-
-                        if not is_code_copy and opcodes and is_0x_prefixed(opcodes[0]):
-                            last_value = int(opcodes.pop(0), 16)
-                            # Add the push number, e.g. PUSH1 adds `1`.
-                            num_pushed = int(op[4:])
-                            pc += num_pushed
-
-                        # Add content PC item.
-                        # Also check for compiler runtime error handling.
-                        # Runtime error locations are marked in the PCMap for further analysis.
-                        if src.start is not None and src.length is not None:
-                            stmt = ast.get_node(src)
-                            if stmt:
-                                # Add located item.
-                                line_nos = list(stmt.line_numbers)
-                                item: Dict = {"location": line_nos}
-                                is_revert_jump = _is_revert_jump(op, last_value, revert_pc)
-                                if op == "REVERT" or is_revert_jump:
-                                    dev = None
-                                    if stmt.ast_type in ("AugAssign", "BinOp"):
-                                        # SafeMath
-                                        for node in stmt.children:
-                                            dev = RuntimeErrorType.from_operator(node.ast_type)
-                                            if dev:
-                                                break
-
-                                    elif stmt.ast_type == "Subscript":
-                                        dev = RuntimeErrorType.INDEX_OUT_OF_RANGE
-
-                                    if dev:
-                                        val = f"dev: {dev.value}"
-                                        if is_revert_jump and len(pc_map_list) >= 1:
-                                            pc_map_list[-1][1]["dev"] = val
-                                        else:
-                                            item["dev"] = val
-
-                                pc_map_list.append((pc, item))
-
-                        elif (
-                            not non_payable_check_found
-                            and len(opcodes) >= 3
-                            and op == "CALLVALUE"
-                            and "PUSH" in opcodes[0]
-                            and is_0x_prefixed(opcodes[1])
-                            and _is_revert_jump(opcodes[2], int(opcodes[1], 16), revert_pc)
-                        ):
-                            item = {"dev": _NON_PAYABLE_STR, "location": None}
-                            pc_map_list.append((pc, item))
-                            non_payable_check_found = True
+                    if vyper_version < Version("0.3.8"):
+                        pcmap = _build_legacy_pcmap(ast, src_map, opcodes)
+                    else:
+                        pcmap = _build_pcmap(bytecode, ast, src_map, opcodes)
 
                     # Find content-specified dev messages.
                     dev_messages = {}
@@ -373,7 +302,7 @@ class VyperCompiler(CompilerAPI):
                         runtimeBytecode={"bytecode": bytecode["object"]},
                         abi=output["abi"],
                         sourcemap=compressed_src_map,
-                        pcmap=PCMap.parse_obj(dict(pc_map_list)),
+                        pcmap=pcmap,
                         userdoc=output["userdoc"],
                         devdoc=output["devdoc"],
                         dev_messages=dev_messages,
@@ -454,8 +383,8 @@ class VyperCompiler(CompilerAPI):
                 str(get_relative_path(p.absolute(), contracts_path)): p for p in source_paths
             }
             version_settings["outputSelection"] = {s: ["*"] for s in path_args}
-            if data["evm_version"]:
-                version_settings["evmVersion"] = data["evm_version"]
+            if evm_version := data.get("evm_version"):
+                version_settings["evmVersion"] = evm_version
 
             settings[version] = version_settings
 
@@ -551,23 +480,8 @@ class VyperCompiler(CompilerAPI):
                             break
 
             elif frame.op in _RETURN_OPCODES:
-                if frame.op == "RETURN" and function:
-                    return_ast_result = [x for x in function.ast.children if x.ast_type == "Return"]
-                    if return_ast_result:
-                        # Ensure return statement added.
-                        # Sometimes it is missing from the PCMap otherwise.
-                        return_ast = return_ast_result[-1]
-                        location = return_ast.line_numbers
-
-                        last_lineno = max(0, location[2] - 1)
-                        for frameset in traceback.__root__[::-1]:
-                            if frameset.end_lineno is not None:
-                                last_lineno = frameset.end_lineno
-                                break
-
-                        start = last_lineno + 1
-                        last_pcs = {last_pc + 1} if last_pc else {}
-                        traceback.last.extend(location, pcs=last_pcs, ws_start=start)
+                if frame.op in "RETURN" and function:
+                    _extend_return(function, traceback, last_pc, contract_src.source_path)
 
                 # Completed!
                 return traceback
@@ -579,6 +493,14 @@ class VyperCompiler(CompilerAPI):
                 if next_frame and next_frame.op == "SSTORE":
                     push_location = tuple(contract_src.pcmap[frame.pc]["location"])  # type: ignore
                     pcmap = PCMap.parse_obj({next_frame.pc: {"location": push_location}})
+
+                elif next_frame and next_frame.op in _RETURN_OPCODES:
+                    if next_frame.op in "RETURN" and function:
+                        _extend_return(function, traceback, last_pc, contract_src.source_path)
+
+                    # Completed!
+                    return traceback
+
                 else:
                     pcmap = contract_src.pcmap
                     dev_val = str((pcmap[frame.pc].get("dev") or "")).replace("dev: ", "")
@@ -602,7 +524,7 @@ class VyperCompiler(CompilerAPI):
                 if error_type != RuntimeErrorType.NONPAYABLE_CHECK and traceback.last is not None:
                     # If the error type is not the non-payable check,
                     # it happened in the last method.
-                    name = traceback.last.name
+                    name = traceback.last.closure.name
 
                 elif method_id in contract_src.contract_type.methods:
                     # For non-payable checks, they should hit here.
@@ -671,3 +593,181 @@ def _has_empty_revert(opcodes: List[str]) -> bool:
     return (len(opcodes) > 12 and opcodes[-13] == "JUMPDEST" and opcodes[-9] == "REVERT") or (
         len(opcodes) > 4 and opcodes[-5] == "JUMPDEST" and opcodes[-1] == "REVERT"
     )
+
+
+def _build_pcmap(
+    bytecode: Dict, ast: ASTNode, src_map: List[SourceMapItem], opcodes: List[str]
+) -> PCMap:
+    # Find the non payable value check.
+    src_info = bytecode["sourceMapFull"]
+    pc_data = {pc: {"location": ln} for pc, ln in src_info["pc_pos_map"].items()}
+    non_payable_check = _find_non_payable_check(src_map, opcodes)
+    if not non_payable_check:
+        non_payable_check = min([int(x) for x in pc_data]) - 1
+
+    pc_data[non_payable_check] = {"dev": _NON_PAYABLE_STR, "location": None}
+
+    # Apply other errors.
+    errors = src_info["error_map"]
+    for err_pc, error_type in errors.items():
+        if "safemul" in error_type or "safeadd" in err_pc:
+            error_str = RuntimeErrorType.INTEGER_OVERFLOW.value
+        elif "safesub" in error_type:
+            error_str = RuntimeErrorType.INTEGER_UNDERFLOW.value
+        elif "safediv" in error_type:
+            error_str = RuntimeErrorType.DIVISION_BY_ZERO.value
+        elif "safemod" in error_type:
+            error_str = RuntimeErrorType.MODULO_BY_ZERO.value
+        elif "bounds check" in error_type:
+            error_str = RuntimeErrorType.INDEX_OUT_OF_RANGE.value
+        else:
+            error_str = error_type.upper().replace(" ", "_")
+
+        if err_pc in pc_data:
+            pc_data[err_pc]["dev"] = f"dev: {error_str}"
+        else:
+            pc_data[err_pc] = {"dev": f"dev: {error_str}", "location": None}
+
+    return PCMap.parse_obj(pc_data)
+
+
+def _build_legacy_pcmap(ast: ASTNode, src_map: List[SourceMapItem], opcodes: List[str]):
+    """
+    For Vyper versions < 0.3.8, allows us to still get a PCMap.
+    """
+
+    pc = 0
+    pc_map_list: List[Tuple[int, Dict[str, Optional[Any]]]] = []
+    last_value = None
+    revert_pc = -1
+    if _has_empty_revert(opcodes):
+        revert_pc = _get_revert_pc(opcodes)
+
+    processed_opcodes = []
+
+    # There is only 1 non-payable check and it happens early in the bytecode.
+    non_payable_check_found = False
+
+    while src_map and opcodes:
+        src = src_map.pop(0)
+        op = opcodes.pop(0)
+        processed_opcodes.append(op)
+        pc += 1
+
+        # If immutable member load, ignore increasing pc by push size.
+        if _is_immutable_member_load(opcodes):
+            last_value = int(opcodes.pop(0), 16)
+            # Add the push number, e.g. PUSH1 adds `1`.
+            num_pushed = int(op[4:])
+            pc += num_pushed
+
+        # Add content PC item.
+        # Also check for compiler runtime error handling.
+        # Runtime error locations are marked in the PCMap for further analysis.
+        if src.start is not None and src.length is not None:
+            stmt = ast.get_node(src)
+            if stmt:
+                # Add located item.
+                line_nos = list(stmt.line_numbers)
+                item: Dict = {"location": line_nos}
+                is_revert_jump = _is_revert_jump(op, last_value, revert_pc)
+                if op == "REVERT" or is_revert_jump:
+                    dev = None
+                    if stmt.ast_type in ("AugAssign", "BinOp"):
+                        # SafeMath
+                        for node in stmt.children:
+                            dev = RuntimeErrorType.from_operator(node.ast_type)
+                            if dev:
+                                break
+
+                    elif stmt.ast_type == "Subscript":
+                        dev = RuntimeErrorType.INDEX_OUT_OF_RANGE
+
+                    if dev:
+                        val = f"dev: {dev.value}"
+                        if is_revert_jump and len(pc_map_list) >= 1:
+                            pc_map_list[-1][1]["dev"] = val
+                        else:
+                            item["dev"] = val
+
+                pc_map_list.append((pc, item))
+
+        elif not non_payable_check_found and _is_non_payable_check(opcodes, op, revert_pc):
+            item = {"dev": _NON_PAYABLE_STR, "location": None}
+            pc_map_list.append((pc, item))
+            non_payable_check_found = True
+
+    return PCMap.parse_obj(dict(pc_map_list))
+
+
+def _find_non_payable_check(src_map: List[SourceMapItem], opcodes: List[str]) -> Optional[int]:
+    pc = 0
+    revert_pc = -1
+    if _has_empty_revert(opcodes):
+        revert_pc = _get_revert_pc(opcodes)
+
+    while src_map and opcodes:
+        op = opcodes.pop(0)
+        pc += 1
+
+        # If immutable member load, ignore increasing pc by push size.
+        if _is_immutable_member_load(opcodes):
+            # Add the push number, e.g. PUSH1 adds `1`.
+            pc += int(op[4:])
+
+        if _is_non_payable_check(opcodes, op, revert_pc):
+            return pc
+
+    return None
+
+
+def _is_non_payable_check(opcodes: List[str], op: str, revert_pc: int) -> bool:
+    return (
+        len(opcodes) >= 3
+        and op == "CALLVALUE"
+        and "PUSH" in opcodes[0]
+        and is_0x_prefixed(opcodes[1])
+        and _is_revert_jump(opcodes[2], int(opcodes[1], 16), revert_pc)
+    )
+
+
+def _get_revert_pc(opcodes: List[str]) -> int:
+    """
+    Starting in vyper 0.2.14, reverts without a reason string are optimized
+    with a jump to the "end" of the bytecode.
+    """
+    return (
+        len(opcodes)
+        + sum(int(i[4:]) - 1 for i in opcodes if i.startswith("PUSH"))
+        - _EMPTY_REVERT_OFFSET
+    )
+
+
+def _is_immutable_member_load(opcodes: List[str]):
+    is_code_copy = len(opcodes) > 5 and opcodes[5] == "CODECOPY"
+    return not is_code_copy and opcodes and is_0x_prefixed(opcodes[0])
+
+
+def _extend_return(function: Function, traceback: SourceTraceback, last_pc: int, source_path: Path):
+    return_ast_result = [x for x in function.ast.children if x.ast_type == "Return"]
+    if not return_ast_result:
+        return
+
+    # Ensure return statement added.
+    # Sometimes it is missing from the PCMap otherwise.
+    return_ast = return_ast_result[-1]
+    location = return_ast.line_numbers
+
+    last_lineno = max(0, location[2] - 1)
+    for frameset in traceback.__root__[::-1]:
+        if frameset.end_lineno is not None:
+            last_lineno = frameset.end_lineno
+            break
+
+    start = last_lineno + 1
+    last_pcs = {last_pc + 1} if last_pc else set()
+    if traceback.last:
+        traceback.last.extend(location, pcs=last_pcs, ws_start=start)
+    else:
+        # Not sure if it ever gets here, but type-checks say it could.
+        traceback.add_jump(location, function, 1, last_pcs, source_path=source_path)

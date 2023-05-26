@@ -8,6 +8,7 @@ from tempfile import mkdtemp
 import ape
 import pytest
 import vvm  # type: ignore
+from geth.wrapper import construct_test_chain_kwargs as geth_ctor  # type: ignore
 
 from ape_vyper.compiler import VyperCompiler
 
@@ -107,7 +108,19 @@ def project(config):
 
 
 @pytest.fixture
-def geth_provider():
+def geth_provider(mocker):
+    # TODO: Delete this hack to fix bug in py-geth<0.3.13
+    patch = mocker.patch("ape_geth.provider.construct_test_chain_kwargs")
+
+    def side_effect(*args, **kwargs):
+        result = geth_ctor(*args, **kwargs)
+        if "miner_threads" in result:
+            del result["miner_threads"]
+
+        return result
+
+    patch.side_effect = side_effect
+
     if not ape.networks.active_provider or ape.networks.provider.name != "geth":
         with ape.networks.ethereum.local.use_provider(
             "geth", provider_settings={"uri": "http://127.0.0.1:5550"}
@@ -122,11 +135,23 @@ def account():
     return ape.accounts.test_accounts[0]
 
 
-@pytest.fixture
-def registry(geth_provider, account, project):
-    return account.deploy(project.registry)
+@pytest.fixture(params=("037", "038"))
+def traceback_contract(request, account, project, geth_provider):
+    return _get_tb_contract(request.param, project, account)
 
 
 @pytest.fixture
-def contract(registry, account, project):
-    return account.deploy(project.traceback_contract, registry)
+def traceback_contract_037(account, project, geth_provider):
+    return _get_tb_contract("037", project, account)
+
+
+@pytest.fixture
+def traceback_contract_038(account, project, geth_provider):
+    return _get_tb_contract("038", project, account)
+
+
+def _get_tb_contract(version: str, project, account):
+    registry_type = project.get_contract(f"registry_{version}")
+    registry = account.deploy(registry_type)
+    contract = project.get_contract(f"traceback_contract_{version}")
+    return account.deploy(contract, registry)
