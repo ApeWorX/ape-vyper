@@ -300,7 +300,6 @@ class VyperCompiler(CompilerAPI):
 
                         # Apply other errors.
                         errors = src_info["error_map"]
-                        breakpoint(
                         for err_pc, error_type in errors.items():
                             if "safemul" in error_type or "safeadd" in err_pc:
                                 error_str = RuntimeErrorType.INTEGER_OVERFLOW.value
@@ -318,19 +317,7 @@ class VyperCompiler(CompilerAPI):
                             if err_pc in pc_data:
                                 pc_data[err_pc]["dev"] = f"dev: {error_str}"
                             else:
-                                # Find nearest location
-                                location = None
-                                start = int(err_pc) + 1
-                                end = start + len(pc_data) - 1
-                                for test_pc in range(start, end):
-                                    if str(test_pc) not in pc_data:
-                                        continue
-
-                                    location = pc_data[str(test_pc)]["location"]
-                                    if location:
-                                        break
-
-                                pc_data[err_pc] = {"dev": f"dev: {error_str}", "location": location}
+                                pc_data[err_pc] = {"dev": f"dev: {error_str}", "location": None}
 
                         pcmap = PCMap.parse_obj(pc_data)
 
@@ -735,7 +722,7 @@ def _find_non_payable_check(src_map: List[SourceMapItem], opcodes: List[str]) ->
         if _is_non_payable_check(opcodes, op, revert_pc):
             return pc
 
-        return None
+    return None
 
 
 def _is_non_payable_check(opcodes: List[str], op: str, revert_pc: int) -> bool:
