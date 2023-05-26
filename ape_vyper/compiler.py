@@ -383,8 +383,8 @@ class VyperCompiler(CompilerAPI):
                 str(get_relative_path(p.absolute(), contracts_path)): p for p in source_paths
             }
             version_settings["outputSelection"] = {s: ["*"] for s in path_args}
-            if data["evm_version"]:
-                version_settings["evmVersion"] = data["evm_version"]
+            if evm_version := data.get("evm_version"):
+                version_settings["evmVersion"] = evm_version
 
             settings[version] = version_settings
 

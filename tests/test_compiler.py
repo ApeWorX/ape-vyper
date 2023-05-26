@@ -93,7 +93,7 @@ def test_get_version_map(project, compiler):
         pytest.fail(fail_message)
 
     assert len(actual[OLDER_VERSION_FROM_PRAGMA]) == 1
-    assert len(actual[VERSION_FROM_PRAGMA]) == 6
+    assert len(actual[VERSION_FROM_PRAGMA]) == 8
     assert actual[OLDER_VERSION_FROM_PRAGMA] == {project.contracts_folder / "older_version.vy"}
 
     expected = (
@@ -101,6 +101,8 @@ def test_get_version_map(project, compiler):
         "contract_no_pragma.vy",
         "contract_with_dev_messages.vy",
         "erc20.vy",
+        "registry_038.vy",
+        "traceback_contract_038.vy",
         "use_iface.vy",
         "use_iface2.vy",
     )
@@ -138,12 +140,11 @@ def test_compiler_data_in_manifest(project):
     for compiler in (vyper_028, vyper_latest):
         assert compiler.name == "vyper"
 
-    assert len(vyper_latest.contractTypes) == 6
+    assert len(vyper_latest.contractTypes) == 8
     assert len(vyper_028.contractTypes) == 1
     assert "contract" in vyper_latest.contractTypes
     assert "older_version" in vyper_028.contractTypes
     for compiler in (vyper_latest, vyper_028):
-        assert compiler.settings["evmVersion"] == "constantinople"
         assert compiler.settings["optimize"] is True
 
 
@@ -311,14 +312,21 @@ def test_non_payable_check(geth_provider, traceback_contract_037, account):
         traceback_contract_037.addBalance(123, sender=account, value=1)
 
 
-# TODO: Run this test using 0.3.8 as well, once we get the PCMap working.
-def test_trace_source(account, geth_provider, project, contract):
-    receipt = contract.addBalance(123, sender=account)
+def test_trace_source(account, geth_provider, project, traceback_contract_037):
+    """
+    NOTE: Using 0.3.7 for 2 reasons:
+
+    1. The error map isn't working yet for 0.3.8 and greater
+    2. geth PoA test provider doesn't support shanghai yet
+    """
+
+    receipt = traceback_contract_037.addBalance(123, sender=account)
     actual = receipt.source_traceback
     base_folder = project.contracts_folder
+    contract_name = traceback_contract_037.contract_type.name
     expected = rf"""
 Traceback (most recent call last)
-  File {base_folder}/traceback_contract.vy, in addBalance
+  File {base_folder}/{contract_name}.vy, in addBalance
        27     # Comments in the middle (is a test)
        28
        29     for i in [1, 2, 3, 4, 5]:
@@ -330,8 +338,8 @@ Traceback (most recent call last)
     assert str(actual) == expected
 
 
-def test_trace_err_source(account, geth_provider, project, contract):
-    txn = contract.addBalance_f.as_transaction(123)
+def test_trace_err_source(account, geth_provider, project, traceback_contract_037):
+    txn = traceback_contract_037.addBalance_f.as_transaction(123)
     try:
         account.call(txn)
     except ContractLogicError:
@@ -340,9 +348,11 @@ def test_trace_err_source(account, geth_provider, project, contract):
     receipt = geth_provider.get_receipt(txn.txn_hash.hex())
     actual = receipt.source_traceback
     base_folder = project.contracts_folder
+    contract_name = traceback_contract_037.contract_type.name
+    version_key = contract_name.split("traceback_contract_")[-1]
     expected = rf"""
 Traceback (most recent call last)
-  File {base_folder}/traceback_contract.vy, in addBalance_f
+  File {base_folder}/{contract_name}.vy, in addBalance_f
        44     # Run some loops.
        45     for i in [1, 2, 3, 4, 5]:
        46         if i == num:
@@ -356,7 +366,7 @@ Traceback (most recent call last)
        54         if i != num:
        55             continue
 
-  File {base_folder}/registry.vy, in register_f
+  File {base_folder}/registry_{version_key}.vy, in register_f
   -->  12     assert self.addr != addr, "doubling."
        13     self.addr = addr
     """.strip()

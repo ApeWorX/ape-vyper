@@ -123,11 +123,12 @@ def account():
 
 
 @pytest.fixture(params=("037", "038"))
-def traceback_contract(request, account, project):
+def traceback_contract(request, account, project, geth_provider):
     return _get_tb_contract(request.param, project, account)
 
 
-def traceback_contract_037(account, project):
+@pytest.fixture
+def traceback_contract_037(account, project, geth_provider):
     return _get_tb_contract("037", project, account)
 
 
