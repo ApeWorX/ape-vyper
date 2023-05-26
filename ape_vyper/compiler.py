@@ -481,7 +481,7 @@ class VyperCompiler(CompilerAPI):
 
             elif frame.op in _RETURN_OPCODES:
                 if frame.op in "RETURN" and function:
-                    _extend_return(function, traceback, last_pc)
+                    _extend_return(function, traceback, last_pc, contract_src.source_path)
 
                 # Completed!
                 return traceback
@@ -496,7 +496,7 @@ class VyperCompiler(CompilerAPI):
 
                 elif next_frame and next_frame.op in _RETURN_OPCODES:
                     if next_frame.op in "RETURN" and function:
-                        _extend_return(function, traceback, last_pc)
+                        _extend_return(function, traceback, last_pc, contract_src.source_path)
 
                     # Completed!
                     return traceback
@@ -748,7 +748,7 @@ def _is_immutable_member_load(opcodes: List[str]):
     return not is_code_copy and opcodes and is_0x_prefixed(opcodes[0])
 
 
-def _extend_return(function: Function, traceback: SourceTraceback, last_pc: int):
+def _extend_return(function: Function, traceback: SourceTraceback, last_pc: int, source_path: Path):
     return_ast_result = [x for x in function.ast.children if x.ast_type == "Return"]
     if not return_ast_result:
         return
@@ -766,4 +766,8 @@ def _extend_return(function: Function, traceback: SourceTraceback, last_pc: int)
 
     start = last_lineno + 1
     last_pcs = {last_pc + 1} if last_pc else set()
-    traceback.last.extend(location, pcs=last_pcs, ws_start=start)
+    if traceback.last:
+        traceback.last.extend(location, pcs=last_pcs, ws_start=start)
+    else:
+        # Not sure if it ever gets here, but type-checks say it could.
+        traceback.add_jump(location, function, 1, last_pcs, source_path=source_path)

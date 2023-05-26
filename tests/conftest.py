@@ -8,6 +8,7 @@ from tempfile import mkdtemp
 import ape
 import pytest
 import vvm  # type: ignore
+from geth.wrapper import construct_test_chain_kwargs as actual_construct_test_chain_kwargs
 
 from ape_vyper.compiler import VyperCompiler
 
@@ -107,7 +108,19 @@ def project(config):
 
 
 @pytest.fixture
-def geth_provider():
+def geth_provider(mocker):
+    # TODO: Delete this hack to fix bug in py-geth<0.3.13
+    patch = mocker.patch("ape_geth.provider.construct_test_chain_kwargs")
+
+    def side_effect(*args, **kwargs):
+        result = actual_construct_test_chain_kwargs(*args, **kwargs)
+        if "miner_threads" in result:
+            del result["miner_threads"]
+
+        return result
+
+    patch.side_effect = side_effect
+
     if not ape.networks.active_provider or ape.networks.provider.name != "geth":
         with ape.networks.ethereum.local.use_provider(
             "geth", provider_settings={"uri": "http://127.0.0.1:5550"}
