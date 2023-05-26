@@ -198,9 +198,7 @@ def test_pc_map(compiler, project, src, vers):
     result = compiler.compile([path], base_path=PASSING_BASE)[0]
     actual = result.pcmap.__root__
     code = path.read_text()
-    compile_result = compile_source(code, vyper_version=vers, evm_version=compiler.evm_version)[
-        "<stdin>"
-    ]
+    compile_result = compile_source(code, vyper_version=vers)["<stdin>"]
     src_map = compile_result["source_map"]
     lines = code.splitlines()
 
@@ -264,37 +262,32 @@ def test_pc_map(compiler, project, src, vers):
     # Verify integer overflow checks
     overflows = _all(RuntimeErrorType.INTEGER_OVERFLOW)
     overflow_no = line("return (2**127-1) + i")
-    expected_overflow_loc = [overflow_no, 12, overflow_no, 20]
-    assert len(overflows) >= 2
-    # assert expected_overflow_loc in [o["location"] for o in overflows]
+    assert len(overflows) == 2
+    assert overflows[0]["location"] == [overflow_no, 12, overflow_no, 20]
 
     # Verify integer underflow checks
     underflows = _all(RuntimeErrorType.INTEGER_UNDERFLOW)
     underflow_no = line("return i - (2**127-1)")
-    expected_underflow_loc = [underflow_no, 11, underflow_no, 25]
     assert len(underflows) == 2
-    # assert expected_underflow_loc in [u["location"] for u in underflows]
+    assert underflows[0]["location"] == [underflow_no, 11, underflow_no, 25]
 
     # Verify division by zero checks
     div_zeros = _all(RuntimeErrorType.DIVISION_BY_ZERO)
     div_no = line("return 4 / i")
-    expected_div_0 = [div_no, 11, div_no, 16]
-    assert len(div_zeros) >= 1
-    # assert expected_div_0 in [d["location"] for d in div_zeros]
+    assert len(div_zeros) == 1
+    assert div_zeros[0]["location"] == [div_no, 11, div_no, 16]
 
     # Verify modulo by zero checks
     mod_zeros = _all(RuntimeErrorType.MODULO_BY_ZERO)
     mod_no = line("return 4 % i")
-    expected_mod_0_loc = [mod_no, 11, mod_no, 16]
-    assert len(mod_zeros) >= 1
-    # assert expected_mod_0_loc in [m["location"] for m in mod_zeros]
+    assert len(mod_zeros) == 1
+    assert mod_zeros[0]["location"] == [mod_no, 11, mod_no, 16]
 
     # Verify index out of range checks
     range_checks = _all(RuntimeErrorType.INDEX_OUT_OF_RANGE)
     range_no = line("return self.dynArray[idx]")
-    expected_range_check = [range_no, 11, range_no, 24]
-    assert len(range_checks) >= 1
-    # assert expected_range_check in [r["location"] for r in range_checks]
+    assert len(range_checks) == 1
+    assert range_checks[0]["location"] == [range_no, 11, range_no, 24]
 
 
 def test_int_overflow(geth_provider, contract, account):

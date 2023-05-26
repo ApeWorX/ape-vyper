@@ -1,0 +1,15 @@
+# Allows compiling to work from the project-level.
+contracts_folder: contracts/passing_contracts
+
+# Specify a dependency to use in Vyper imports.
+dependencies:
+  - name: ExampleDependency
+    local: ./ExampleDependency
+
+vyper:
+  # Using evm_version compatible with older and newer vyper versions.
+  evm_version: constantinople
+
+  # Allows importing dependencies.
+  import_remapping:
+    - "exampledep=ExampleDependency"
