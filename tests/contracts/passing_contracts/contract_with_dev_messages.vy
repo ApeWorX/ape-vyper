@@ -1,4 +1,4 @@
-# @version 0.3.7
+# @version 0.3.8
 
 # Test dev messages in various code placements
 @external

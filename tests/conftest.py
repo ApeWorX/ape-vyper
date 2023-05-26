@@ -12,8 +12,13 @@ import vvm  # type: ignore
 from ape_vyper.compiler import VyperCompiler
 
 # NOTE: Ensure that we don't use local paths for these
-ape.config.DATA_FOLDER = Path(mkdtemp()).resolve()
-ape.config.PROJECT_FOLDER = Path(mkdtemp()).resolve()
+DATA_FOLDER = Path(mkdtemp()).resolve()
+PROJECT_FOLDER = Path(mkdtemp()).resolve()
+ape.config.DATA_FOLDER = DATA_FOLDER
+ape.config.PROJECT_FOLDER = PROJECT_FOLDER
+
+# Needed for integration testing
+pytest_plugins = ["pytester"]
 
 
 @contextmanager
@@ -60,6 +65,16 @@ def temp_vvm_path(monkeypatch):
     """
     with _tmp_vvm_path(monkeypatch) as path:
         yield path
+
+
+@pytest.fixture
+def data_folder():
+    return DATA_FOLDER
+
+
+@pytest.fixture
+def project_folder():
+    return PROJECT_FOLDER
 
 
 @pytest.fixture

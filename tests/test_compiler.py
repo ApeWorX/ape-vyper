@@ -8,7 +8,12 @@ from vvm import compile_source  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper.compiler import RuntimeErrorType
-from ape_vyper.exceptions import IntegerOverflowError, VyperCompileError, VyperInstallError
+from ape_vyper.exceptions import (
+    IntegerOverflowError,
+    NonPayableError,
+    VyperCompileError,
+    VyperInstallError,
+)
 
 BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
 PASSING_BASE = BASE_CONTRACTS_PATH / "passing_contracts"
@@ -16,7 +21,8 @@ FAILING_BASE = BASE_CONTRACTS_PATH / "failing_contracts"
 
 # Currently, this is the only version specified from a pragma spec
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.8")
-VERSION_FROM_PRAGMA = Version("0.3.7")
+VERSION_37 = Version("0.3.7")
+VERSION_FROM_PRAGMA = Version("0.3.8")
 
 
 @pytest.fixture
@@ -76,7 +82,7 @@ def test_get_version_map(project, compiler):
         x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
     ]
     actual = compiler.get_version_map(vyper_files)
-    expected_versions = (OLDER_VERSION_FROM_PRAGMA, VERSION_FROM_PRAGMA)
+    expected_versions = (OLDER_VERSION_FROM_PRAGMA, VERSION_FROM_PRAGMA, VERSION_37)
 
     for version, sources in actual.items():
         if version in expected_versions:
@@ -87,7 +93,7 @@ def test_get_version_map(project, compiler):
         pytest.fail(fail_message)
 
     assert len(actual[OLDER_VERSION_FROM_PRAGMA]) == 1
-    assert len(actual[VERSION_FROM_PRAGMA]) == 8
+    assert len(actual[VERSION_FROM_PRAGMA]) == 6
     assert actual[OLDER_VERSION_FROM_PRAGMA] == {project.contracts_folder / "older_version.vy"}
 
     expected = (
@@ -95,8 +101,6 @@ def test_get_version_map(project, compiler):
         "contract_no_pragma.vy",
         "contract_with_dev_messages.vy",
         "erc20.vy",
-        "registry.vy",
-        "traceback_contract.vy",
         "use_iface.vy",
         "use_iface2.vy",
     )
@@ -124,21 +128,21 @@ def test_get_version_map(project, compiler):
 def test_compiler_data_in_manifest(project):
     _ = project.contracts
     manifest = project.extract_manifest()
-    assert len(manifest.compilers) == 2, manifest.compilers
+    assert len(manifest.compilers) == 3, manifest.compilers
 
-    vyper_037 = [c for c in manifest.compilers if str(c.version) == str(VERSION_FROM_PRAGMA)][0]
+    vyper_latest = [c for c in manifest.compilers if str(c.version) == str(VERSION_FROM_PRAGMA)][0]
     vyper_028 = [c for c in manifest.compilers if str(c.version) == str(OLDER_VERSION_FROM_PRAGMA)][
         0
     ]
 
-    for compiler in (vyper_028, vyper_037):
+    for compiler in (vyper_028, vyper_latest):
         assert compiler.name == "vyper"
 
-    assert len(vyper_037.contractTypes) == 8
+    assert len(vyper_latest.contractTypes) == 6
     assert len(vyper_028.contractTypes) == 1
-    assert "contract" in vyper_037.contractTypes
+    assert "contract" in vyper_latest.contractTypes
     assert "older_version" in vyper_028.contractTypes
-    for compiler in (vyper_037, vyper_028):
+    for compiler in (vyper_latest, vyper_028):
         assert compiler.settings["evmVersion"] == "constantinople"
         assert compiler.settings["optimize"] is True
 
@@ -183,13 +187,14 @@ def test_get_imports(compiler, project):
     assert set(actual["use_iface2.vy"]) == {local_import}
 
 
+# TODO: Test this on 0.3.8 and utilize the pcmap from the output.
 def test_pc_map(compiler, project):
     """
     Ensure we de-compress the source map correctly by comparing to the results
     from `compile_src()` which includes the uncompressed source map data.
     """
 
-    path = PASSING_BASE / "contract.vy"
+    path = PASSING_BASE / "contract_37.vy"
     result = compiler.compile([path], base_path=PASSING_BASE)[0]
     actual = result.pcmap.__root__
     code = path.read_text()
@@ -252,7 +257,7 @@ def test_pc_map(compiler, project):
 
     # Verify non-payable checks.
     nonpayable_checks = _all(RuntimeErrorType.NONPAYABLE_CHECK)
-    assert len(nonpayable_checks) >= 8
+    assert len(nonpayable_checks) == 1
 
     # Verify integer overflow checks
     overflows = _all(RuntimeErrorType.INTEGER_OVERFLOW)
@@ -285,12 +290,18 @@ def test_pc_map(compiler, project):
     assert range_checks[0]["location"] == [range_no, 11, range_no, 24]
 
 
-def test_enrich_error(compiler, geth_provider, contract, account):
+def test_int_overflow(geth_provider, contract, account):
     int_max = 2**256 - 1
     with pytest.raises(IntegerOverflowError):
         contract.addBalance(int_max, sender=account)
 
 
+def test_non_payable_check(geth_provider, contract, account):
+    with pytest.raises(NonPayableError):
+        contract.addBalance(123, sender=account, value=1)
+
+
+# TODO: Run this test using 0.3.8 as well, once we get the PCMap working.
 def test_trace_source(account, geth_provider, project, contract):
     receipt = contract.addBalance(123, sender=account)
     actual = receipt.source_traceback
