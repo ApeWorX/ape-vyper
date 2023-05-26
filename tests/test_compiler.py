@@ -93,7 +93,7 @@ def test_get_version_map(project, compiler):
         pytest.fail(fail_message)
 
     assert len(actual[OLDER_VERSION_FROM_PRAGMA]) == 1
-    assert len(actual[VERSION_FROM_PRAGMA]) == 8
+    assert len(actual[VERSION_FROM_PRAGMA]) == 6
     assert actual[OLDER_VERSION_FROM_PRAGMA] == {project.contracts_folder / "older_version.vy"}
 
     expected = (
@@ -101,8 +101,6 @@ def test_get_version_map(project, compiler):
         "contract_no_pragma.vy",
         "contract_with_dev_messages.vy",
         "erc20.vy",
-        "registry.vy",
-        "traceback_contract.vy",
         "use_iface.vy",
         "use_iface2.vy",
     )
@@ -140,7 +138,7 @@ def test_compiler_data_in_manifest(project):
     for compiler in (vyper_028, vyper_latest):
         assert compiler.name == "vyper"
 
-    assert len(vyper_latest.contractTypes) == 8
+    assert len(vyper_latest.contractTypes) == 6
     assert len(vyper_028.contractTypes) == 1
     assert "contract" in vyper_latest.contractTypes
     assert "older_version" in vyper_028.contractTypes
@@ -303,6 +301,7 @@ def test_non_payable_check(geth_provider, contract, account):
         contract.addBalance(123, sender=account, value=1)
 
 
+# TODO: Run this test using 0.3.8 as well, once we get the PCMap working.
 def test_trace_source(account, geth_provider, project, contract):
     receipt = contract.addBalance(123, sender=account)
     actual = receipt.source_traceback
