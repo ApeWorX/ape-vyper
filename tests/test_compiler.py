@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import List
 
@@ -40,8 +41,15 @@ def contract_test_cases(passing: bool) -> List[str]:
 
 PASSING_CONTRACT_NAMES = contract_test_cases(True)
 FAILING_CONTRACT_NAMES = contract_test_cases(False)
-EXPECTED_FAIL_MESSAGES = {
-    "contract_undeclared_variable": "'hello' has not been declared",
+EXPECTED_FAIL_PATTERNS = {
+    "contract_undeclared_variable": re.compile(
+        (
+            r"\w*\.vy\s*UndeclaredDefinition:'\w*' "
+            r'has not been declared\s*contract "\w*.vy"'
+            # NOTE: Following bit proves we have line numbers (see all the \d's).
+            r', function "\w*",.*\w*\d:\d\s*\d def.*\s*.*\d\s*\w* = \w*\s*-*\^\s*\d\s*.*'
+        ),
+    ),
     "contract_unknown_pragma": "",
 }
 
@@ -65,7 +73,7 @@ def test_compile_individual_contracts(contract_name, compiler):
 )
 def test_compile_failures(contract_name, compiler):
     path = FAILING_BASE / contract_name
-    with pytest.raises(VyperCompileError, match=EXPECTED_FAIL_MESSAGES[path.stem]) as err:
+    with pytest.raises(VyperCompileError, match=EXPECTED_FAIL_PATTERNS[path.stem]) as err:
         compiler.compile([path], base_path=FAILING_BASE)
 
     assert isinstance(err.value.base_err, VyperError)
