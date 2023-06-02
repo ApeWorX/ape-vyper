@@ -320,6 +320,7 @@ def test_enrich_error_non_payable_check(geth_provider, traceback_contract_037, a
         traceback_contract_037.addBalance(123, sender=account, value=1)
 
 
+@pytest.mark.skipif(APE_VERSION <= Version("0.6.10"), reason="Fallback invoked via new API")
 def test_enrich_error_fallback(geth_provider, traceback_contract_037, account):
     """
     Show that when attempting to call a contract's fallback method when there is
