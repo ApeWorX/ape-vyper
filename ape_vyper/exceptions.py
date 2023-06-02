@@ -44,6 +44,7 @@ class RuntimeErrorType(Enum):
     INTEGER_UNDERFLOW = "Integer underflow"
     DIVISION_BY_ZERO = "Division by zero"
     MODULO_BY_ZERO = "Modulo by zero"
+    FALLBACK_NOT_DEFINED = "Fallback not defined"
 
     @classmethod
     def from_operator(cls, operator: str) -> Optional["RuntimeErrorType"]:
@@ -124,6 +125,16 @@ class ModuloByZeroError(VyperRuntimeError, ZeroDivisionError):
         super().__init__(RuntimeErrorType.MODULO_BY_ZERO, **kwargs)
 
 
+class FallbackNotDefinedError(VyperRuntimeError):
+    """
+    Raised when calling a contract directly (with missing method bytes) that has no fallback
+    method defined in its ABI.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(RuntimeErrorType.FALLBACK_NOT_DEFINED, **kwargs)
+
+
 RUNTIME_ERROR_MAP: Dict[RuntimeErrorType, Type[ContractLogicError]] = {
     RuntimeErrorType.NONPAYABLE_CHECK: NonPayableError,
     RuntimeErrorType.INDEX_OUT_OF_RANGE: IndexOutOfRangeError,
@@ -131,4 +142,5 @@ RUNTIME_ERROR_MAP: Dict[RuntimeErrorType, Type[ContractLogicError]] = {
     RuntimeErrorType.INTEGER_UNDERFLOW: IntegerUnderflowError,
     RuntimeErrorType.DIVISION_BY_ZERO: DivisionByZeroError,
     RuntimeErrorType.MODULO_BY_ZERO: ModuloByZeroError,
+    RuntimeErrorType.FALLBACK_NOT_DEFINED: FallbackNotDefinedError,
 }

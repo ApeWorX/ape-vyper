@@ -4,12 +4,14 @@ from typing import List
 
 import pytest
 from ape.exceptions import ContractLogicError
+from pkg_resources import get_distribution
 from semantic_version import Version  # type: ignore
 from vvm import compile_source  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper.compiler import RuntimeErrorType
 from ape_vyper.exceptions import (
+    FallbackNotDefinedError,
     IntegerOverflowError,
     NonPayableError,
     VyperCompileError,
@@ -23,7 +25,12 @@ FAILING_BASE = BASE_CONTRACTS_PATH / "failing_contracts"
 # Currently, this is the only version specified from a pragma spec
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.8")
 VERSION_37 = Version("0.3.7")
-VERSION_FROM_PRAGMA = Version("0.3.8")
+
+# NOTE: This is really just about testing > 0.3.7.
+#  Should get switched as soon as a more stable version is released.
+VERSION_FROM_PRAGMA = Version("0.3.9")
+
+APE_VERSION = Version(get_distribution("eth-ape").version.split(".dev")[0].strip())
 
 
 @pytest.fixture
@@ -109,8 +116,8 @@ def test_get_version_map(project, compiler):
         "contract_no_pragma.vy",
         "contract_with_dev_messages.vy",
         "erc20.vy",
-        "registry_038.vy",
-        "traceback_contract_038.vy",
+        "registry_039.vy",
+        "traceback_contract_039.vy",
         "use_iface.vy",
         "use_iface2.vy",
     )
@@ -197,7 +204,7 @@ def test_get_imports(compiler, project):
     assert set(actual["use_iface2.vy"]) == {local_import}
 
 
-@pytest.mark.parametrize("src,vers", [("contract", "0.3.8"), ("contract_37", "0.3.7")])
+@pytest.mark.parametrize("src,vers", [("contract", "0.3.9"), ("contract_37", "0.3.7")])
 def test_pc_map(compiler, project, src, vers):
     """
     Ensure we de-compress the source map correctly by comparing to the results
@@ -271,7 +278,7 @@ def test_pc_map(compiler, project, src, vers):
     nonpayable_checks = _all(RuntimeErrorType.NONPAYABLE_CHECK)
     assert len(nonpayable_checks) == 1
 
-    # TODO: Figure out 0.3.8 issue with error maps.
+    # TODO: Figure out >0.3.7 issue with error maps.
     if vers == "0.3.7":
         # Verify integer overflow checks
         overflows = _all(RuntimeErrorType.INTEGER_OVERFLOW)
@@ -310,20 +317,30 @@ def test_pc_map(compiler, project, src, vers):
         assert expected_range_check in [r["location"] for r in range_checks]
 
 
-def test_int_overflow(geth_provider, traceback_contract_037, account):
+def test_enrich_error_int_overflow(geth_provider, traceback_contract_037, account):
     int_max = 2**256 - 1
     with pytest.raises(IntegerOverflowError):
         traceback_contract_037.addBalance(int_max, sender=account)
 
 
-def test_non_payable_check(geth_provider, traceback_contract_037, account):
+def test_enrich_error_non_payable_check(geth_provider, traceback_contract_037, account):
     with pytest.raises(NonPayableError):
         traceback_contract_037.addBalance(123, sender=account, value=1)
 
 
+@pytest.mark.skipif(APE_VERSION <= Version("0.6.10"), reason="Fallback invoked via new API")
+def test_enrich_error_fallback(geth_provider, traceback_contract_037, account):
+    """
+    Show that when attempting to call a contract's fallback method when there is
+    no fallback defined results in a custom contract logic error.
+    """
+    with pytest.raises(FallbackNotDefinedError):
+        traceback_contract_037(sender=account)
+
+
 def test_trace_source(account, geth_provider, project, traceback_contract):
     """
-    NOTE: Using 0.3.7 because 0.3.8 bugs and shows the wrong lines.
+    NOTE: Using 0.3.7 because 0.3.9 bugs and shows the wrong lines.
     """
 
     receipt = traceback_contract.addBalance(123, sender=account)
@@ -377,3 +394,16 @@ Traceback (most recent call last)
        13     self.addr = addr
     """.strip()
     assert str(actual) == expected
+
+
+@pytest.mark.skipif(APE_VERSION <= Version("0.6.10"), reason="Fallback invoked via new API")
+def test_trace_source_default_method(geth_provider, account, project):
+    """
+    This test proves you get a working source-traceback from __default__ calls.
+    """
+    contract = project.non_payable_default.deploy(sender=account)
+    receipt = contract(sender=account)
+    src_tb = receipt.source_traceback
+    actual = str(src_tb[-1][-1]).lstrip()  # Last line in traceback (without indent).
+    expected = "8     log NotPayment(msg.sender)"
+    assert actual == expected

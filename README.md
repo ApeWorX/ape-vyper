@@ -67,7 +67,7 @@ vyper:
 Import the voting contract types like this:
 
 ```python
-# @version 0.3.8
+# @version 0.3.9
 
 import voting.ballot as ballot
 ```
