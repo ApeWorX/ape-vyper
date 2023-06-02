@@ -19,6 +19,7 @@ target-version = ['py38', 'py39', 'py310', 'py311']
 include = '\.pyi?$'
 
 [tool.pytest.ini_options]
+norecursedirs = "projects"
 addopts = """
     -p no:ape_test
     --cov-branch
