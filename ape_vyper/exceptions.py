@@ -27,7 +27,7 @@ class VyperCompileError(VyperCompilerPluginError):
             self.base_err = err
             message = "\n\n".join(
                 f"{e['sourceLocation']['file']}\n{e['type']}:"
-                f"{e.get('formattedMessage', e.get('message'))}"
+                f"{e.get('formattedMessage', e['message'])}"
                 for e in err.error_dict
             )
         else:
