@@ -19,7 +19,6 @@ from ape_vyper.exceptions import (
 )
 
 BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
-PASSING_BASE = BASE_CONTRACTS_PATH / "passing_contracts"
 FAILING_BASE = BASE_CONTRACTS_PATH / "failing_contracts"
 
 # Currently, this is the only version specified from a pragma spec
@@ -34,8 +33,8 @@ APE_VERSION = Version(get_distribution("eth-ape").version.split(".dev")[0].strip
 
 
 @pytest.fixture
-def dev_revert_source():
-    return PASSING_BASE / "contract_with_dev_messages.vy"
+def dev_revert_source(project):
+    return project.contracts_folder / "contract_with_dev_messages.vy"
 
 
 def contract_test_cases(passing: bool) -> List[str]:
@@ -63,15 +62,17 @@ EXPECTED_FAIL_PATTERNS = {
 
 def test_compile_project(project):
     contracts = project.load_contracts()
-    assert len(contracts) == len([p.name for p in PASSING_BASE.glob("*.vy") if p.is_file()])
+    assert len(contracts) == len(
+        [p.name for p in project.contracts_folder.glob("*.vy") if p.is_file()]
+    )
     assert contracts["contract"].source_id == "contract.vy"
     assert contracts["contract_no_pragma"].source_id == "contract_no_pragma.vy"
     assert contracts["older_version"].source_id == "older_version.vy"
 
 
 @pytest.mark.parametrize("contract_name", PASSING_CONTRACT_NAMES)
-def test_compile_individual_contracts(contract_name, compiler):
-    path = PASSING_BASE / contract_name
+def test_compile_individual_contracts(project, contract_name, compiler):
+    path = project.contracts_folder / contract_name
     assert compiler.compile([path])
 
 
@@ -165,14 +166,14 @@ def test_compiler_data_in_manifest(project):
         assert compiler.settings["optimize"] is True
 
 
-def test_compile_parse_dev_messages(compiler, dev_revert_source):
+def test_compile_parse_dev_messages(compiler, dev_revert_source, project):
     """
     Test parsing of dev messages in a contract. These follow the form of "#dev: ...".
 
     The compiler will output a map that maps dev messages to line numbers.
     See contract_with_dev_messages.vy for more information.
     """
-    result = compiler.compile([dev_revert_source], base_path=PASSING_BASE)
+    result = compiler.compile([dev_revert_source], base_path=project.contracts_folder)
 
     assert len(result) == 1
 
@@ -212,8 +213,8 @@ def test_pc_map(compiler, project, src, vers):
     from `compile_src()` which includes the uncompressed source map data.
     """
 
-    path = PASSING_BASE / f"{src}.vy"
-    result = compiler.compile([path], base_path=PASSING_BASE)[0]
+    path = project.contracts_folder / f"{src}.vy"
+    result = compiler.compile([path], base_path=project.contracts_folder)[0]
     actual = result.pcmap.__root__
     code = path.read_text()
     compile_result = compile_source(code, vyper_version=vers, evm_version=compiler.evm_version)[

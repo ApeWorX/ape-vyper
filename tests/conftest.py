@@ -88,7 +88,7 @@ def config():
     return ape.config
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def project(config):
     project_source_dir = Path(__file__).parent
     project_dest_dir = config.PROJECT_FOLDER / project_source_dir.name
