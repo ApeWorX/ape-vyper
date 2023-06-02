@@ -135,7 +135,7 @@ def account():
     return ape.accounts.test_accounts[0]
 
 
-@pytest.fixture(params=("037", "038"))
+@pytest.fixture(params=("037", "039"))
 def traceback_contract(request, account, project, geth_provider):
     return _get_tb_contract(request.param, project, account)
 
@@ -146,8 +146,8 @@ def traceback_contract_037(account, project, geth_provider):
 
 
 @pytest.fixture
-def traceback_contract_038(account, project, geth_provider):
-    return _get_tb_contract("038", project, account)
+def traceback_contract_039(account, project, geth_provider):
+    return _get_tb_contract("039", project, account)
 
 
 def _get_tb_contract(version: str, project, account):

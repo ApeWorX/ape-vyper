@@ -284,9 +284,9 @@ class VyperCompiler(CompilerAPI):
                     src_map = list(compressed_src_map.parse())[1:]
 
                     if vyper_version < Version("0.3.8"):
-                        pcmap = _build_legacy_pcmap(ast, src_map, opcodes)
+                        pcmap = _get_legacy_pcmap(ast, src_map, opcodes)
                     else:
-                        pcmap = _build_pcmap(bytecode, ast, src_map, opcodes)
+                        pcmap = _get_pcmap(bytecode, src_map, opcodes)
 
                     # Find content-specified dev messages.
                     dev_messages = {}
@@ -595,9 +595,7 @@ def _has_empty_revert(opcodes: List[str]) -> bool:
     )
 
 
-def _build_pcmap(
-    bytecode: Dict, ast: ASTNode, src_map: List[SourceMapItem], opcodes: List[str]
-) -> PCMap:
+def _get_pcmap(bytecode: Dict, src_map: List[SourceMapItem], opcodes: List[str]) -> PCMap:
     # Find the non payable value check.
     src_info = bytecode["sourceMapFull"]
     pc_data = {pc: {"location": ln} for pc, ln in src_info["pc_pos_map"].items()}
@@ -631,7 +629,7 @@ def _build_pcmap(
     return PCMap.parse_obj(pc_data)
 
 
-def _build_legacy_pcmap(ast: ASTNode, src_map: List[SourceMapItem], opcodes: List[str]):
+def _get_legacy_pcmap(ast: ASTNode, src_map: List[SourceMapItem], opcodes: List[str]):
     """
     For Vyper versions < 0.3.8, allows us to still get a PCMap.
     """
@@ -647,6 +645,9 @@ def _build_legacy_pcmap(ast: ASTNode, src_map: List[SourceMapItem], opcodes: Lis
 
     # There is only 1 non-payable check and it happens early in the bytecode.
     non_payable_check_found = False
+
+    # There is at most 1 fallback error PC
+    fallback_found = False
 
     while src_map and opcodes:
         src = src_map.pop(0)
@@ -691,6 +692,13 @@ def _build_legacy_pcmap(ast: ASTNode, src_map: List[SourceMapItem], opcodes: Lis
                             item["dev"] = val
 
                 pc_map_list.append((pc, item))
+
+        elif not fallback_found and _is_fallback_check(opcodes, op):
+            # You can tell this is the Fallback jump because it is checking for the method ID.
+            item = {"dev": f"dev: {RuntimeErrorType.FALLBACK_NOT_DEFINED.value}", "location": None}
+            # PC is actually the one before but it easier to detect here.
+            pc_map_list.append((pc - 1, item))
+            fallback_found = True
 
         elif not non_payable_check_found and _is_non_payable_check(opcodes, op, revert_pc):
             item = {"dev": _NON_PAYABLE_STR, "location": None}
@@ -771,3 +779,13 @@ def _extend_return(function: Function, traceback: SourceTraceback, last_pc: int,
     else:
         # Not sure if it ever gets here, but type-checks say it could.
         traceback.add_jump(location, function, 1, last_pcs, source_path=source_path)
+
+
+def _is_fallback_check(opcodes: List[str], op: str) -> bool:
+    return (
+        "JUMP" in op
+        and len(opcodes) >= 7
+        and opcodes[0] == "JUMPDEST"
+        and opcodes[6] == "SHR"
+        and opcodes[5] == "0xE0"
+    )
