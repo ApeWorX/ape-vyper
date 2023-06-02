@@ -59,7 +59,7 @@ setup(
     include_package_data=True,
     install_requires=[
         "eth-ape>=0.6.10,<0.7",
-        "ethpm-types>=0.5.1,<0.6",  # Currently bumped 1 higher than eth-ape
+        "ethpm-types>=0.5.2,<0.6",  # TODO: can remove pin after ape release
         "tqdm",  # Use same version as eth-ape
         "vvm>=0.1.0,<0.2",
     ],
