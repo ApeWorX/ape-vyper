@@ -1,6 +1,20 @@
+import re
 import shutil
+import tempfile
+from pathlib import Path
+from typing import List
 
 import pytest
+
+EXPECTED_COVERAGE_REPORT = """
+=============================== Coverage Profile ===============================
+             Contract Coverage
+
+Name               Stmts   Miss   Cover
+──────────────────────────────────────────
+coverage_test.vy   4       0      100.0%
+""".lstrip()
+COVERAGE_START_PATTERN = re.compile(r"=* Coverage Profile =*")
 
 
 @pytest.fixture
@@ -12,8 +26,12 @@ def coverage_project_path(projects_path):
 def coverage_project(config, coverage_project_path):
     build_dir = coverage_project_path / ".build"
     shutil.rmtree(build_dir, ignore_errors=True)
-    with config.using_project(coverage_project_path) as project:
-        yield project
+    with tempfile.TemporaryDirectory() as base_dir:
+        # Copy Coverage project
+        project_dir = Path(base_dir) / "coverage_project"
+        shutil.copytree(coverage_project_path, project_dir)
+        with config.using_project(project_dir) as project:
+            yield project
 
     shutil.rmtree(build_dir, ignore_errors=True)
 
@@ -54,3 +72,37 @@ def test_coverage(geth_provider, setup_pytester, coverage_project, pytester):
     passed, failed = setup_pytester
     result = pytester.runpytest("--coverage")
     result.assert_outcomes(passed=passed, failed=failed)
+    actual = _get_coverage_report(result.outlines)
+    expected = [x.strip() for x in EXPECTED_COVERAGE_REPORT.split("\n")]
+    _assert_coverage(actual, expected)
+
+
+def _get_coverage_report(lines: List[str]) -> List[str]:
+    ret = []
+    started = False
+    for line in lines:
+        if not started:
+            if COVERAGE_START_PATTERN.match(line):
+                # Started.
+                started = True
+                ret.append(line.strip())
+            else:
+                # Wait for start.
+                continue
+
+        elif started and re.match(r"=* .* =*", line):
+            # Ended.
+            ret.append(line.strip())
+            return ret
+
+        else:
+            # Line in between start and end.
+            ret.append(line.strip())
+
+    return ret
+
+
+def _assert_coverage(actual: List[str], expected: List[str]):
+    for idx, (a_line, e_line) in enumerate(zip(actual, expected)):
+        message = f"Failed at index {idx}. Expected={e_line}, Actual={a_line}"
+        assert a_line == e_line, message
