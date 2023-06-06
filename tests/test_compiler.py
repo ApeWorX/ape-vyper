@@ -363,13 +363,13 @@ def test_trace_source(account, geth_provider, project, traceback_contract):
     expected = rf"""
 Traceback (most recent call last)
   File {base_folder}/{contract_name}.vy, in addBalance
-       27     # Comments in the middle (is a test)
-       28
-       29     for i in [1, 2, 3, 4, 5]:
-       30         if i != num:
-       31             continue
-       32
-  -->  33     return self._balance
+       29     # Comments in the middle (is a test)
+       30
+       31     for i in [1, 2, 3, 4, 5]:
+       32         if i != num:
+       33             continue
+       34
+  -->  35     return self._balance
 """.strip()
     assert str(actual) == expected
 
@@ -389,18 +389,18 @@ def test_trace_err_source(account, geth_provider, project, traceback_contract):
     expected = rf"""
 Traceback (most recent call last)
   File {base_folder}/{contract_name}.vy, in addBalance_f
-       44     # Run some loops.
-       45     for i in [1, 2, 3, 4, 5]:
-       46         if i == num:
-       47             break
-       48
-       49     # Fail in the middle (is test)
-       50     # Fails because was already set above.
-  -->  51     self.registry.register_f(msg.sender)
-       52
-       53     for i in [1, 2, 3, 4, 5]:
-       54         if i != num:
-       55             continue
+       46     # Run some loops.
+       47     for i in [1, 2, 3, 4, 5]:
+       48         if i == num:
+       49             break
+       50
+       51     # Fail in the middle (is test)
+       52     # Fails because was already set above.
+  -->  53     self.registry.register_f(msg.sender)
+       54
+       55     for i in [1, 2, 3, 4, 5]:
+       56         if i != num:
+       57             continue
 
   File {base_folder}/registry_{version_key}.vy, in register_f
        11 def register_f(addr: address):

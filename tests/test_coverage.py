@@ -6,15 +6,15 @@ from typing import List
 
 import pytest
 
-EXPECTED_COVERAGE_REPORT = """
-=============================== Coverage Profile ===============================
-             Contract Coverage
-
-Name               Stmts   Miss   Cover
-──────────────────────────────────────────
-coverage_test.vy   4       0      100.0%
+EXPECTED_COVERAGE_REPORT = r"""
+\s*=+ Coverage Profile =+\s*
+\s*Contract Coverage\s*
+\s*
+\s*Name\s+Stmts\s+Miss\s+Cover\s+Funcs\s*
+\s*─+\s*
+\s*coverage_test\.vy\s+4\s+0\s+100.0%\s+100.0%\s*
 """.lstrip()
-COVERAGE_START_PATTERN = re.compile(r"=* Coverage Profile =*")
+COVERAGE_START_PATTERN = re.compile(r"=+ Coverage Profile =+")
 
 
 @pytest.fixture
@@ -90,7 +90,7 @@ def _get_coverage_report(lines: List[str]) -> List[str]:
                 # Wait for start.
                 continue
 
-        elif started and re.match(r"=* .* =*", line):
+        elif started and re.match(r"=+ .* =+", line):
             # Ended.
             ret.append(line.strip())
             return ret
@@ -105,4 +105,4 @@ def _get_coverage_report(lines: List[str]) -> List[str]:
 def _assert_coverage(actual: List[str], expected: List[str]):
     for idx, (a_line, e_line) in enumerate(zip(actual, expected)):
         message = f"Failed at index {idx}. Expected={e_line}, Actual={a_line}"
-        assert a_line == e_line, message
+        assert re.match(e_line, a_line), message

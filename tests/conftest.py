@@ -88,7 +88,7 @@ def config():
     return ape.config
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def project(config):
     project_source_dir = Path(__file__).parent
     project_dest_dir = config.PROJECT_FOLDER / project_source_dir.name
@@ -155,8 +155,3 @@ def _get_tb_contract(version: str, project, account):
     registry = account.deploy(registry_type)
     contract = project.get_contract(f"traceback_contract_{version}")
     return account.deploy(contract, registry)
-
-
-@pytest.fixture
-def projects_path():
-    return Path(__file__).parent / "projects"
