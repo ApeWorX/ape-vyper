@@ -278,7 +278,8 @@ class VyperCompiler(CompilerAPI):
                         ):
                             function_offsets.append((node.lineno, node.end_lineno))
 
-                    bytecode = output["evm"]["deployedBytecode"]
+                    evm = output["evm"]
+                    bytecode = evm["deployedBytecode"]
                     opcodes = bytecode["opcodes"].split(" ")
                     compressed_src_map = SourceMap(__root__=bytecode["sourceMap"])
                     src_map = list(compressed_src_map.parse())[1:]
@@ -298,7 +299,7 @@ class VyperCompiler(CompilerAPI):
                         ast=ast,
                         contractName=name,
                         sourceId=source_id,
-                        deploymentBytecode={"bytecode": output["evm"]["bytecode"]["object"]},
+                        deploymentBytecode={"bytecode": evm["bytecode"]["object"]},
                         runtimeBytecode={"bytecode": bytecode["object"]},
                         abi=output["abi"],
                         sourcemap=compressed_src_map,
