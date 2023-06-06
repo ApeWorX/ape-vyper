@@ -497,7 +497,7 @@ class VyperCompiler(CompilerAPI):
 
             if "PUSH" in frame.op and frame.pc in contract_src.pcmap:
                 # Check if next op is SSTORE to properly use AST from push op.
-                next_frame = frame
+                next_frame: Optional[TraceFrame] = frame
                 while next_frame and "PUSH" in next_frame.op:
                     next_frame = next(trace, None)
 

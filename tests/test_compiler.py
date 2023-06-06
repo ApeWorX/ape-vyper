@@ -371,6 +371,30 @@ Traceback (most recent call last)
     assert str(actual) == expected
 
 
+def test_trace_source_content_from_kwarg_default_parametrization(
+    account, geth_provider, project, traceback_contract
+):
+    """
+    This test is for verifying stuff around Vyper auto-generated methods from kwarg defaults.
+    Mostly, need to make sure the correct content is discoverable in the source traceback
+    so that coverage works properly.
+    """
+    no_args_tx = traceback_contract.addBalance(sender=account)
+    no_args_tb = no_args_tx.source_traceback
+    assert no_args_tb[1].closure.full_name == "addBalance()"
+    assert str(no_args_tb[1][0]) == "    16     num: uint256 = 123,"
+
+    single_arg_tx = traceback_contract.addBalance(442, sender=account)
+    single_arg_tb = single_arg_tx.source_traceback
+    assert single_arg_tb[1].closure.full_name == "addBalance(uint256)"
+    assert str(single_arg_tb[1][0]) == "    16     num: uint256 = 123,"
+
+    both_args_tx = traceback_contract.addBalance(4, 5, sender=account)
+    both_args_tb = both_args_tx.source_traceback
+    assert both_args_tb[1].closure.full_name == "addBalance(uint256,uint256)"
+    assert str(both_args_tb[1][0]) == "    16     num: uint256 = 123,"
+
+
 def test_trace_err_source(account, geth_provider, project, traceback_contract):
     txn = traceback_contract.addBalance_f.as_transaction(123)
     try:
