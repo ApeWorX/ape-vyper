@@ -7,10 +7,10 @@ from typing import List
 
 import pytest
 
-LINES_VALID = 8
-MISSES = 3
-LINE_COV = "62.5".replace(".", r"\.")
-FUNC_COV = "50.0".replace(".", r"\.")
+LINES_VALID = 7
+MISSES = 0
+LINE_COV = "100.0".replace(".", r"\.")
+FUNC_COV = "100.0".replace(".", r"\.")
 EXPECTED_COVERAGE_REPORT = rf"""
 \s*=+ Coverage Profile =+\s*
 \s*Contract Coverage\s*
