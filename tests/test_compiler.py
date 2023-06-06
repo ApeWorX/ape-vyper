@@ -351,8 +351,9 @@ def test_enrich_error_handle_when_name(compiler, geth_provider):
     assert isinstance(new_error, NonPayableError)
 
 
-def test_trace_source(account, geth_provider, project, traceback_contract):
-    receipt = traceback_contract.addBalance(123, sender=account)
+@pytest.mark.parametrize("arguments", [(), (123,), (123, 321)])
+def test_trace_source(account, geth_provider, project, traceback_contract, arguments):
+    receipt = traceback_contract.addBalance(*arguments, sender=account)
     actual = receipt.source_traceback
     base_folder = project.contracts_folder
     contract_name = traceback_contract.contract_type.name

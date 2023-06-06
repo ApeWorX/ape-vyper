@@ -497,8 +497,12 @@ class VyperCompiler(CompilerAPI):
 
             if "PUSH" in frame.op and frame.pc in contract_src.pcmap:
                 # Check if next op is SSTORE to properly use AST from push op.
-                next_frame = next(trace, None)
+                next_frame = frame
+                while next_frame and "PUSH" in next_frame.op:
+                    next_frame = next(trace, None)
+
                 is_non_payable_hit = False
+
                 if next_frame and next_frame.op == "SSTORE":
                     push_location = tuple(contract_src.pcmap[frame.pc]["location"])  # type: ignore
                     pcmap = PCMap.parse_obj({next_frame.pc: {"location": push_location}})
@@ -526,6 +530,7 @@ class VyperCompiler(CompilerAPI):
 
             method_id = HexBytes(calldata[:4])
             location = cast(Tuple[int, int, int, int], tuple(pcmap[frame.pc].get("location") or []))
+
             dev_item = pcmap[frame.pc].get("dev", "")
             dev = str(dev_item).replace("dev: ", "")
             if not location and dev in [m.value for m in RuntimeErrorType]:
@@ -534,19 +539,27 @@ class VyperCompiler(CompilerAPI):
                     # If the error type is not the non-payable check,
                     # it happened in the last method.
                     name = traceback.last.closure.name
+                    full_name = traceback.last.closure.full_name
 
                 elif method_id in contract_src.contract_type.methods:
                     # For non-payable checks, they should hit here.
                     method_checked = contract_src.contract_type.methods[method_id]
                     name = method_checked.name
+                    full_name = method_checked.selector
 
                 else:
                     # Not sure if possible to get here.
                     name = error_type.name.lower()
+                    full_name = name
 
                 # Empty source (is builtin)
                 traceback.add_builtin_jump(
-                    name, dev_item, self.name, pcs={frame.pc}, source_path=contract_src.source_path
+                    name,
+                    dev_item,
+                    self.name,
+                    full_name=full_name,
+                    pcs={frame.pc},
+                    source_path=contract_src.source_path,
                 )
                 continue
 
