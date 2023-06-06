@@ -573,7 +573,7 @@ class VyperCompiler(CompilerAPI):
 
             if (
                 not traceback.last
-                or traceback.last.closure.name != function.name
+                or traceback.last.closure.full_name != function.full_name
                 or not isinstance(traceback.last.closure, Function)
             ):
                 depth = (
