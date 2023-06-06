@@ -352,10 +352,6 @@ def test_enrich_error_handle_when_name(compiler, geth_provider):
 
 
 def test_trace_source(account, geth_provider, project, traceback_contract):
-    """
-    NOTE: Using 0.3.7 because 0.3.9 bugs and shows the wrong lines.
-    """
-
     receipt = traceback_contract.addBalance(123, sender=account)
     actual = receipt.source_traceback
     base_folder = project.contracts_folder
