@@ -1,18 +1,23 @@
 import re
 import shutil
 import tempfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import List
 
 import pytest
 
-EXPECTED_COVERAGE_REPORT = r"""
+LINES_VALID = 8
+MISSES = 3
+LINE_COV = "62.5".replace(".", r"\.")
+FUNC_COV = "50.0".replace(".", r"\.")
+EXPECTED_COVERAGE_REPORT = rf"""
 \s*=+ Coverage Profile =+\s*
 \s*Contract Coverage\s*
 \s*
 \s*Name\s+Stmts\s+Miss\s+Cover\s+Funcs\s*
 \s*─+\s*
-\s*coverage_test\.vy\s+4\s+0\s+100.0%\s+100.0%\s*
+\s*coverage_test\.vy\s+{LINES_VALID}\s+{MISSES}\s+{LINE_COV}%\s+{FUNC_COV}%\s*
 """.lstrip()
 COVERAGE_START_PATTERN = re.compile(r"=+ Coverage Profile =+")
 
@@ -76,6 +81,10 @@ def test_coverage(geth_provider, setup_pytester, coverage_project, pytester):
     expected = [x.strip() for x in EXPECTED_COVERAGE_REPORT.split("\n")]
     _assert_coverage(actual, expected)
 
+    # Ensure XML was created.
+    xml_path = coverage_project.local_project._cache_folder / "coverage.xml"
+    _assert_xml(xml_path)
+
 
 def _get_coverage_report(lines: List[str]) -> List[str]:
     ret = []
@@ -106,3 +115,37 @@ def _assert_coverage(actual: List[str], expected: List[str]):
     for idx, (a_line, e_line) in enumerate(zip(actual, expected)):
         message = f"Failed at index {idx}. Expected={e_line}, Actual={a_line}"
         assert re.match(e_line, a_line), message
+
+
+def _assert_xml(xml_path: Path):
+    assert xml_path.is_file()
+    xml = xml_path.read_text()
+    assert '<?xml version="1.0" ?>' in xml
+    # Since is a parametrized function, the full selectors should be present.
+    assert "foo_method()" in xml
+    assert "foo_method(uint256)" in xml
+    assert "foo_method(uint256,uint256)" in xml
+    # Show is valid XML.
+    tree = ET.parse(str(xml_path))
+    projects = tree.find("projects")
+    assert projects is not None
+    project = projects.find("project")
+    assert project is not None
+    sources = project.find("sources")
+    assert sources is not None
+    src = sources.find("source")
+    assert src is not None
+    contracts = src.find("contracts")
+    assert contracts is not None
+    contract = contracts.find("contract")
+    assert contract is not None
+    functions = contract.find("functions")
+    assert functions is not None
+    function = functions.find("function")
+    assert function is not None
+    statements = function.find("statements")
+    assert statements is not None
+    statement = statements.find("statement")
+    assert statement is not None
+    assert "hits" in statement.keys()
+    assert "pcs" in statement.keys()

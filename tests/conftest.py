@@ -131,6 +131,11 @@ def geth_provider(mocker):
 
 
 @pytest.fixture
+def projects_path():
+    return Path(__file__).parent / "projects"
+
+
+@pytest.fixture
 def account():
     return ape.accounts.test_accounts[0]
 
