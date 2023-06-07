@@ -49,3 +49,11 @@ def test_foo_method_one_arg(contract, account):
     """
     receipt = contract.foo_method(1, sender=account)
     assert not receipt.failed
+
+
+def test_view_method(contract, account):
+    """
+    Prove that view methods work in coverage.
+    Without this, it would not be 100%.
+    """
+    assert contract.view_method() is True

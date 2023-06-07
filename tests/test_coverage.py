@@ -7,7 +7,7 @@ from typing import List
 
 import pytest
 
-LINES_VALID = 7
+LINES_VALID = 8
 MISSES = 0
 LINE_COV = "100.0".replace(".", r"\.")
 FUNC_COV = "100.0".replace(".", r"\.")

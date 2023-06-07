@@ -651,16 +651,21 @@ class VyperCompiler(CompilerAPI):
                 # Completed!
                 return traceback
 
+            pcs_to_try_adding = set()
             if "PUSH" in frame.op and frame.pc in contract_src.pcmap:
                 # Check if next op is SSTORE to properly use AST from push op.
                 next_frame: Optional[TraceFrame] = frame
+                loc = contract_src.pcmap[frame.pc]
+                pcs_to_try_adding.add(frame.pc)
+
                 while next_frame and "PUSH" in next_frame.op:
                     next_frame = next(trace, None)
+                    if "PUSH" in next_frame:
+                        pcs_to_try_adding.add(next_frame.pc)
 
                 is_non_payable_hit = False
-
                 if next_frame and next_frame.op == "SSTORE":
-                    push_location = tuple(contract_src.pcmap[frame.pc]["location"])  # type: ignore
+                    push_location = tuple(loc["location"])  # type: ignore
                     pcmap = PCMap.parse_obj({next_frame.pc: {"location": push_location}})
 
                 elif next_frame and next_frame.op in _RETURN_OPCODES:
@@ -672,7 +677,7 @@ class VyperCompiler(CompilerAPI):
 
                 else:
                     pcmap = contract_src.pcmap
-                    dev_val = str((pcmap[frame.pc].get("dev") or "")).replace("dev: ", "")
+                    dev_val = str((loc.get("dev") or "")).replace("dev: ", "")
                     is_non_payable_hit = dev_val == RuntimeErrorType.NONPAYABLE_CHECK.value
 
                 if not is_non_payable_hit and next_frame:
@@ -681,71 +686,95 @@ class VyperCompiler(CompilerAPI):
             else:
                 pcmap = contract_src.pcmap
 
-            if frame.pc not in pcmap:
+            pcs_to_try_adding.add(frame.pc)
+            pcs_to_try_adding = {pc for pc in pcs_to_try_adding if pc in pcmap}
+            if not pcs_to_try_adding:
                 continue
 
-            location = cast(Tuple[int, int, int, int], tuple(pcmap[frame.pc].get("location") or []))
-            dev_item = pcmap[frame.pc].get("dev", "")
-            dev = str(dev_item).replace("dev: ", "")
-            if not location and dev in [m.value for m in RuntimeErrorType]:
-                error_type = RuntimeErrorType(dev)
-                if error_type != RuntimeErrorType.NONPAYABLE_CHECK and traceback.last is not None:
-                    # If the error type is not the non-payable check,
-                    # it happened in the last method.
-                    name = traceback.last.closure.name
-                    full_name = traceback.last.closure.full_name
+            pc_groups: List[List] = []
+            for pc in pcs_to_try_adding:
+                location = (
+                    cast(Tuple[int, int, int, int], tuple(pcmap[pc].get("location") or [])) or None
+                )
+                dev_item = pcmap[pc].get("dev", "")
+                dev = str(dev_item).replace("dev: ", "")
+                done = False
+                for group in pc_groups:
+                    if group[0] != location:
+                        continue
 
-                elif method_id in contract_src.contract_type.methods:
-                    # For non-payable checks, they should hit here.
-                    method_checked = contract_src.contract_type.methods[method_id]
-                    name = method_checked.name
-                    full_name = method_checked.selector
+                    group[1].add(pc)
+                    group[2] = dev
+                    done = True
+                    break
 
+                if not done:
+                    # New group.
+                    pc_groups.append([location, {pc}, dev])
+
+            for location, pcs, dev in pc_groups:
+                if not location and dev in [m.value for m in RuntimeErrorType]:
+                    error_type = RuntimeErrorType(dev)
+                    if (
+                        error_type != RuntimeErrorType.NONPAYABLE_CHECK
+                        and traceback.last is not None
+                    ):
+                        # If the error type is not the non-payable check,
+                        # it happened in the last method.
+                        name = traceback.last.closure.name
+                        full_name = traceback.last.closure.full_name
+
+                    elif method_id in contract_src.contract_type.methods:
+                        # For non-payable checks, they should hit here.
+                        method_checked = contract_src.contract_type.methods[method_id]
+                        name = method_checked.name
+                        full_name = method_checked.selector
+
+                    else:
+                        # Not sure if possible to get here.
+                        name = error_type.name.lower()
+                        full_name = name
+
+                    # Empty source (is builtin)
+                    traceback.add_builtin_jump(
+                        name,
+                        f"dev: {dev}",
+                        self.name,
+                        full_name=full_name,
+                        pcs=pcs,
+                        source_path=contract_src.source_path,
+                    )
+                    continue
+
+                elif not location:
+                    # Unknown.
+                    continue
+
+                function = contract_src.lookup_function(location, method_id=method_id)
+                if not function:
+                    continue
+
+                if (
+                    not traceback.last
+                    or traceback.last.closure.full_name != function.full_name
+                    or not isinstance(traceback.last.closure, Function)
+                ):
+                    depth = (
+                        frame.depth + 1
+                        if traceback.last and traceback.last.depth == frame.depth
+                        else frame.depth
+                    )
+                    traceback.add_jump(
+                        location,
+                        function,
+                        depth,
+                        pcs=pcs,
+                        source_path=contract_src.source_path,
+                    )
                 else:
-                    # Not sure if possible to get here.
-                    name = error_type.name.lower()
-                    full_name = name
+                    traceback.extend_last(location, pcs=pcs)
 
-                # Empty source (is builtin)
-                traceback.add_builtin_jump(
-                    name,
-                    dev_item,
-                    self.name,
-                    full_name=full_name,
-                    pcs={frame.pc},
-                    source_path=contract_src.source_path,
-                )
-                continue
-
-            elif not location:
-                # Unknown.
-                continue
-
-            function = contract_src.lookup_function(location, method_id=method_id)
-            if not function:
-                continue
-
-            if (
-                not traceback.last
-                or traceback.last.closure.full_name != function.full_name
-                or not isinstance(traceback.last.closure, Function)
-            ):
-                depth = (
-                    frame.depth + 1
-                    if traceback.last and traceback.last.depth == frame.depth
-                    else frame.depth
-                )
-                traceback.add_jump(
-                    location,
-                    function,
-                    depth,
-                    pcs={frame.pc},
-                    source_path=contract_src.source_path,
-                )
-            else:
-                traceback.extend_last(location, pcs={frame.pc})
-
-            last_pc = frame.pc
+                last_pc = max(pcs)
 
         # Never actually hits this return.
         # See `Completed!` comment above.

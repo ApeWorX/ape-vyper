@@ -360,9 +360,6 @@ def test_trace_source(account, geth_provider, project, traceback_contract, argum
     expected = rf"""
 Traceback (most recent call last)
   File {base_folder}/{contract_name}.vy, in addBalance
-       29     # Comments in the middle (is a test)
-       30
-       31     for i in [1, 2, 3, 4, 5]:
        32         if i != num:
        33             continue
        34
@@ -410,8 +407,6 @@ def test_trace_err_source(account, geth_provider, project, traceback_contract):
     expected = rf"""
 Traceback (most recent call last)
   File {base_folder}/{contract_name}.vy, in addBalance_f
-       46     # Run some loops.
-       47     for i in [1, 2, 3, 4, 5]:
        48         if i == num:
        49             break
        50

@@ -6,6 +6,11 @@ def foo_method(a: uint256 = 1, b: uint256 = 2) -> bool:
     assert a != b
     return True
 
+@view
+@external
+def view_method() -> bool:
+    return True
+
 @external
 def DEBUG_exclude_me() -> bool:
     return True
