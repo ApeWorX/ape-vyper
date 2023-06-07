@@ -613,6 +613,7 @@ class VyperCompiler(CompilerAPI):
         traceback = SourceTraceback.parse_obj([])
         function = None
         last_pc = None
+        method_id = HexBytes(calldata[:4])
 
         for frame in trace:
             if frame.op in CALL_OPCODES:
@@ -683,7 +684,6 @@ class VyperCompiler(CompilerAPI):
             if frame.pc not in pcmap:
                 continue
 
-            method_id = HexBytes(calldata[:4])
             location = cast(Tuple[int, int, int, int], tuple(pcmap[frame.pc].get("location") or []))
             dev_item = pcmap[frame.pc].get("dev", "")
             dev = str(dev_item).replace("dev: ", "")
