@@ -393,9 +393,7 @@ class VyperCompiler(CompilerAPI):
         return settings
 
     def init_coverage_profile(
-        self,
-        source_coverage: ContractSourceCoverage,
-        contract_source: ContractSource,
+        self, source_coverage: ContractSourceCoverage, contract_source: ContractSource
     ):
         exclusions = self.config_manager.get_config("test").coverage.exclude
         contract_name = contract_source.contract_type.name or "__UnknownContract__"
@@ -410,14 +408,20 @@ class VyperCompiler(CompilerAPI):
 
         contract_coverage = source_coverage.include(contract_name)
 
-        def _profile(_name: str, _full_name: str):
-            # Ensure function isn't excluded.
+        def _exclude_fn(_name: str) -> bool:
             for _exclusion in exclusions:
                 if fnmatch(contract_coverage.name, _exclusion.contract_name) and fnmatch(
                     _name, _exclusion.method_name
                 ):
                     # This function should be skipped.
-                    return
+                    return True
+
+            return False
+
+        def _profile(_name: str, _full_name: str):
+            # Ensure function isn't excluded.
+            if _exclude_fn(_name):
+                return
 
             _function_coverage = contract_coverage.include(_name, _full_name)
             tag = str(item["dev"]) if item.get("dev") else None
@@ -544,7 +548,15 @@ class VyperCompiler(CompilerAPI):
                         function_coverage = contract_coverage.include(fn_name, full_name)
                         function_coverage.profile_statement(_pc, location=location)
 
-        return contract_coverage
+        # After handling all methods with locations, let's also add the auto-getters,
+        # which are not present in the source map.
+        for method in contract_source.contract_type.view_methods:
+            if method.selector not in [fn.full_name for fn in contract_coverage.functions]:
+                if _exclude_fn(method.name):
+                    return
+
+                # Auto-getter found. Profile function without statements.
+                contract_coverage.include(method.name, method.selector)
 
     def _get_compiler_arguments(self, version_map: Dict, base_path: Path) -> Dict[Version, Dict]:
         base_path = base_path or self.project_manager.contracts_folder
