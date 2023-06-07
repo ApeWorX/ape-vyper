@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union, cast
 
@@ -392,13 +393,32 @@ class VyperCompiler(CompilerAPI):
         return settings
 
     def init_coverage_profile(
-        self, source_coverage: ContractSourceCoverage, contract_source: ContractSource
+        self,
+        source_coverage: ContractSourceCoverage,
+        contract_source: ContractSource,
     ):
-        contract_coverage = source_coverage.include(
-            contract_source.contract_type.name or "__UnknownContract__"
-        )
+        exclusions = self.config_manager.get_config("test").coverage.exclude
+        contract_name = contract_source.contract_type.name or "__UnknownContract__"
+
+        # Check if excluding this contract.
+        for exclusion in exclusions:
+            if fnmatch(contract_name, exclusion.contract_name) and (
+                not exclusion.method_name or exclusion.method_name == "*"
+            ):
+                # Skip this whole source.
+                return
+
+        contract_coverage = source_coverage.include(contract_name)
 
         def _profile(_name: str, _full_name: str):
+            # Ensure function isn't excluded.
+            for _exclusion in exclusions:
+                if fnmatch(contract_coverage.name, _exclusion.contract_name) and fnmatch(
+                    _name, _exclusion.method_name
+                ):
+                    # This function should be skipped.
+                    return
+
             _function_coverage = contract_coverage.include(_name, _full_name)
             tag = str(item["dev"]) if item.get("dev") else None
             _function_coverage.profile_statement(pc_int, location=location, tag=tag)
