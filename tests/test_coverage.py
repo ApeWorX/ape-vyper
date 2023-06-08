@@ -18,7 +18,7 @@ EXPECTED_COVERAGE_REPORT = rf"""
 \s*Name\s+Stmts\s+Miss\s+Cover\s+Funcs\s*
 \s*─+\s*
 \s*coverage_test\.vy\s+{LINES_VALID}\s+{MISSES}\s+{LINE_COV}%\s+{FUNC_COV}%\s*
-\s*exclude_part_of_contract\.vy\s+\d\s+\d\s*\d\.\d%\s+\d\.\d%\s*
+\s*exclude_part_of_contract\.vy\s+\d\s+\d\s*\d\.\d%\s+\d+\.\d%\s*
 """.lstrip()
 COVERAGE_START_PATTERN = re.compile(r"=+ Coverage Profile =+")
 
@@ -129,34 +129,33 @@ def _assert_xml(xml_path: Path):
     assert xml_path.is_file()
     xml = xml_path.read_text()
     assert '<?xml version="1.0" ?>' in xml
-    # Since is a parametrized function, the full selectors should be present.
-    assert "foo_method()" in xml
-    assert "foo_method(uint256)" in xml
-    assert "foo_method(uint256,uint256)" in xml
+
     # Show is valid XML.
     tree = ET.parse(str(xml_path))
-    projects = tree.find("projects")
-    assert projects is not None
-    project = projects.find("project")
-    assert project is not None
-    sources = project.find("sources")
+
+    # Assert there are sources.
+    sources = tree.find("sources")
     assert sources is not None
-    src = sources.find("source")
-    assert src is not None
-    contracts = src.find("contracts")
-    assert contracts is not None
-    contract = contracts.find("contract")
-    assert contract is not None
-    functions = contract.find("functions")
-    assert functions is not None
-    function = functions.find("function")
-    assert function is not None
-    statements = function.find("statements")
-    assert statements is not None
-    statement = statements.find("statement")
-    assert statement is not None
-    assert "hits" in statement.keys()
-    assert "pcs" in statement.keys()
+    source = sources.find("source")
+    assert source is not None
+    assert source.text is not None
+    assert "contracts" in source.text
+
+    # Assert there are statements.
+    packages = tree.find("packages")
+    assert packages is not None
+    package = packages.find("package")
+    assert package is not None
+    classes = package.find("classes")
+    assert classes is not None
+    _class = classes.find("class")
+    assert _class is not None
+    lines = _class.find("lines")
+    assert lines is not None
+    line = lines.find("line")
+    assert line is not None
+    assert "hits" in line.keys()
+    assert "number" in line.keys()
 
 
 def _assert_html(index_html: Path):

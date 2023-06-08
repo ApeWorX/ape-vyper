@@ -545,6 +545,9 @@ class VyperCompiler(CompilerAPI):
 
                 for full_name, statements in buckets.items():
                     for _pc, location in statements:
+                        if _exclude_fn(fn_name):
+                            continue
+
                         function_coverage = contract_coverage.include(fn_name, full_name)
                         function_coverage.profile_statement(_pc, location=location)
 
@@ -672,7 +675,7 @@ class VyperCompiler(CompilerAPI):
 
                 while next_frame and "PUSH" in next_frame.op:
                     next_frame = next(trace, None)
-                    if "PUSH" in next_frame:
+                    if next_frame and "PUSH" in next_frame.op:
                         pcs_to_try_adding.add(next_frame.pc)
 
                 is_non_payable_hit = False
