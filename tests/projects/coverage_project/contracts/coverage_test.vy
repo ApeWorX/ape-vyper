@@ -1,9 +1,17 @@
 # @version 0.3.7
 
+_number: public(uint256)
+_immutable_number: public(immutable(uint256))
+
 @external
-def foo_method(a: uint256 = 1, b: uint256 = 2) -> bool:
+def __init__(_number: uint256):
+    _immutable_number = _number
+
+
+@external
+def foo_method(a: uint256 = 3, b: uint256 = 1) -> bool:
     assert a != 0  # dev: sub-zero
-    assert a != b
+    self._number = a + b
     return True
 
 @view
@@ -12,5 +20,5 @@ def view_method() -> bool:
     return True
 
 @external
-def DEBUG_exclude_me() -> bool:
+def DEBUG_ignore_me() -> bool:
     return True

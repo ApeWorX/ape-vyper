@@ -3,11 +3,25 @@ import ape
 from ape_vyper.exceptions import FallbackNotDefinedError, NonPayableError
 
 
+def test_immutable_number(contract, account, START_NUM):
+    """
+    Ensure that immutable members work in coverage.
+    This is needed for full function coverage.
+    """
+    assert contract._immutable_number() == START_NUM
+
+
 def test_happy_path(contract, account):
     """
     Covers some implicit statements as well two source statements.
     """
-    receipt = contract.foo_method(5, 6, sender=account)
+    num1 = 5
+    num2 = 6
+    receipt = contract.foo_method(num1, num2, sender=account)
+
+    # In order for full coverage, we need to also call `_number()`.
+    assert contract._number() == num1 + num2
+
     assert receipt.return_value is True
 
 
