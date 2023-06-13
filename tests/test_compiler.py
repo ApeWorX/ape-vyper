@@ -390,6 +390,7 @@ Traceback (most recent call last)
        55             continue
 
   File {base_folder}/registry_{version_key}.vy, in register_f
+       11 def register_f(addr: address):
   -->  12     assert self.addr != addr, "doubling."
        13     self.addr = addr
     """.strip()
