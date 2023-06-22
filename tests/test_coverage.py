@@ -11,14 +11,31 @@ LINES_VALID = 8
 MISSES = 0
 LINE_COV = "100.0".replace(".", r"\.")
 FUNC_COV = "100.0".replace(".", r"\.")
-EXPECTED_COVERAGE_REPORT = rf"""
-\s*=+ Coverage Profile =+\s*
-\s*Contract Coverage\s*
+
+EXPECTED_COVERAGE_REPORT = r"""
+\s*=+\s*Coverage Profile\s*=+\s*
+\s*\s*coverage_test Coverage\s*\s*
 \s*
-\s*Name\s+Stmts\s+Miss\s+Cover\s+Funcs\s*
+\s*Func\s+Stmts\s+Miss\s+Cover\s*
 \s*─+\s*
-\s*coverage_test\.vy\s+{LINES_VALID}\s+{MISSES}\s+{LINE_COV}%\s+{FUNC_COV}%\s*
-\s*exclude_part_of_contract\.vy\s+\d\s+\d\s*\d\.\d%\s+\d+\.\d%\s*
+\s*__builtin__\s+2\s+0\s+100\.0%\s*
+\s*_immutable_number\s+0\s+0\s+100\.0%\s*
+\s*_number\s+0\s+0\s+100\.0%\s*
+\s*foo_method\(\)\s+1\s+0\s+100\.0%\s*
+\s*foo_method\(uint256\)\s+1\s+0\s+100\.0%\s*
+\s*foo_method\(uint256,uint256\)\s+3\s+0\s+100\.0%\s*
+\s*view_method\s+1\s+0\s+100\.0%\s*
+\s*
+\s*line=100\.0%, func=100\.0%\s*
+\s*
+\s*exclude_part_of_contract Coverage\s*
+\s*
+\s*Func\s+Stmts\s+Miss\s+Cover\s*
+\s*─+\s*
+\s*__builtin__\s+2\s+2\s+0\.0%\s*
+\s*include_me\s+1\s+1\s+0\.0%\s*
+\s*
+\s*line=0\.0%, func=0\.0%\s*
 """.lstrip()
 COVERAGE_START_PATTERN = re.compile(r"=+ Coverage Profile =+")
 
