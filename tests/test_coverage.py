@@ -186,8 +186,9 @@ def _assert_html(index_html: Path):
         "Statement Coverage",
         "Function Coverage",
     )
-    for column in expected_columns:
-        expected_col_tag = f"<th>{column}</th>"
+    for idx, column in enumerate(expected_columns):
+        col_no = idx + 1
+        expected_col_tag = f'<th class="column{col_no}">{column}</th>'
         assert expected_col_tag in html
 
-    assert "<td>100.0%</td>" in html
+    assert "100.0%</td>" in html

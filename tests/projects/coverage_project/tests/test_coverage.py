@@ -11,7 +11,7 @@ def test_immutable_number(contract, account, START_NUM):
     assert contract._immutable_number() == START_NUM
 
 
-def test_happy_path(contract, account):
+def test_happy_path(contract, account, chain):
     """
     Covers some implicit statements as well two source statements.
     """
@@ -22,14 +22,16 @@ def test_happy_path(contract, account):
     # In order for full coverage, we need to also call `_number()`.
     assert contract._number() == num1 + num2
 
-    assert receipt.return_value is True
+    if chain.provider.supports_tracing:
+        assert receipt.return_value is True
 
 
-def test_sad_path(contract, account):
+def test_sad_path(contract, account, chain):
     """
     Covers some implicit statements as well as one source statement.
     """
-    with ape.reverts(dev_message="dev: sub-zero"):
+    kwargs = {"dev_message": "dev: sub-zero"} if chain.provider.supports_tracing else {}
+    with ape.reverts(**kwargs):
         contract.foo_method(0, 1, sender=account)
 
 
