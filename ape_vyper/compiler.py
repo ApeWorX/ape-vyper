@@ -418,21 +418,29 @@ class VyperCompiler(CompilerAPI):
             return err
 
         err_str = dev_message.replace("dev: ", "")
-
+        error_type = None
         if err_str in [m.value for m in RuntimeErrorType]:
             # Is a builtin compiler error.
-            runtime_error_type = RuntimeErrorType(err_str)
-            runtime_error_cls = RUNTIME_ERROR_MAP[runtime_error_type]
-            return runtime_error_cls(
-                contract_address=err.contract_address,
-                source_traceback=err.source_traceback,
-                trace=err.trace,
-                txn=err.txn,
-            )
+            error_type = RuntimeErrorType(err_str)
 
         else:
+            # Check names
+            for name, _type in [(m.name, m) for m in RuntimeErrorType]:
+                if err_str == name:
+                    error_type = _type
+                    break
+
+        if not error_type:
             # Not a builtin compiler error; cannot enrich.
             return err
+
+        runtime_error_cls = RUNTIME_ERROR_MAP[error_type]
+        return runtime_error_cls(
+            contract_address=err.contract_address,
+            source_traceback=err.source_traceback,
+            trace=err.trace,
+            txn=err.txn,
+        )
 
     def trace_source(
         self, contract_type: ContractType, trace: Iterator[TraceFrame], calldata: HexBytes

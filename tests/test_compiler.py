@@ -329,7 +329,6 @@ def test_enrich_error_non_payable_check(geth_provider, traceback_contract_037, a
         traceback_contract_037.addBalance(123, sender=account, value=1)
 
 
-@pytest.mark.skipif(APE_VERSION <= Version("0.6.10"), reason="Fallback invoked via new API")
 def test_enrich_error_fallback(geth_provider, traceback_contract_037, account):
     """
     Show that when attempting to call a contract's fallback method when there is
@@ -337,6 +336,18 @@ def test_enrich_error_fallback(geth_provider, traceback_contract_037, account):
     """
     with pytest.raises(FallbackNotDefinedError):
         traceback_contract_037(sender=account)
+
+
+def test_enrich_error_handle_when_name(compiler, geth_provider):
+    """
+    Sometimes, a provider may use the name of the enum instead of the value,
+    which we are still able to enrich.
+    """
+
+    error = ContractLogicError("")
+    error.__dict__["dev_message"] = "dev: NONPAYABLE_CHECK"
+    new_error = compiler.enrich_error(error)
+    assert isinstance(new_error, NonPayableError)
 
 
 def test_trace_source(account, geth_provider, project, traceback_contract):
@@ -398,7 +409,6 @@ Traceback (most recent call last)
     assert str(actual) == expected
 
 
-@pytest.mark.skipif(APE_VERSION <= Version("0.6.10"), reason="Fallback invoked via new API")
 def test_trace_source_default_method(geth_provider, account, project):
     """
     This test proves you get a working source-traceback from __default__ calls.
