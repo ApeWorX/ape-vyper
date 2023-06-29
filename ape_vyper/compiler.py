@@ -607,6 +607,9 @@ def _get_pcmap(bytecode: Dict, src_map: List[SourceMapItem], opcodes: List[str])
     # Find the non payable value check.
     src_info = bytecode["sourceMapFull"]
     pc_data = {pc: {"location": ln} for pc, ln in src_info["pc_pos_map"].items()}
+    if not pc_data:
+        return PCMap.parse_obj({})
+
     non_payable_check = _find_non_payable_check(src_map, opcodes)
     if not non_payable_check:
         non_payable_check = min([int(x) for x in pc_data]) - 1

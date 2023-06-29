@@ -108,13 +108,14 @@ def test_get_version_map(project, compiler):
         pytest.fail(fail_message)
 
     assert len(actual[OLDER_VERSION_FROM_PRAGMA]) == 1
-    assert len(actual[VERSION_FROM_PRAGMA]) == 8
+    assert len(actual[VERSION_FROM_PRAGMA]) == 9
     assert actual[OLDER_VERSION_FROM_PRAGMA] == {project.contracts_folder / "older_version.vy"}
 
     expected = (
         "contract.vy",
         "contract_no_pragma.vy",
         "contract_with_dev_messages.vy",
+        "empty.vy",
         "erc20.vy",
         "registry_039.vy",
         "traceback_contract_039.vy",
@@ -155,7 +156,7 @@ def test_compiler_data_in_manifest(project):
     for compiler in (vyper_028, vyper_latest):
         assert compiler.name == "vyper"
 
-    assert len(vyper_latest.contractTypes) == 8
+    assert len(vyper_latest.contractTypes) == 9
     assert len(vyper_028.contractTypes) == 1
     assert "contract" in vyper_latest.contractTypes
     assert "older_version" in vyper_028.contractTypes
