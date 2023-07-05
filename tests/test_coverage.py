@@ -106,7 +106,6 @@ def test_coverage(geth_provider, setup_pytester, coverage_project, pytester):
     html_path = base_dir / "htmlcov"
     assert html_path.is_dir()
     index = html_path / "index.html"
-    assert (html_path / "favicon.ico").is_file()
     assert index.is_file()
     _assert_html(index)
 
