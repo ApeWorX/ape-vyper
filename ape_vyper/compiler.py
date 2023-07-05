@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union, cast
 
@@ -8,13 +9,13 @@ import vvm  # type: ignore
 from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
 from ape.exceptions import ContractLogicError
-from ape.types import ContractType, SourceTraceback, TraceFrame
+from ape.types import ContractSourceCoverage, ContractType, SourceTraceback, TraceFrame
 from ape.utils import cached_property, get_relative_path
 from eth_utils import is_0x_prefixed
 from ethpm_types import ASTNode, HexBytes, PackageManifest, PCMap, SourceMapItem
 from ethpm_types.ast import ASTClassification
 from ethpm_types.contract_type import SourceMap
-from ethpm_types.source import ContractSource, Function
+from ethpm_types.source import ContractSource, Function, SourceLocation
 from evm_trace.enums import CALL_OPCODES
 from semantic_version import NpmSpec, Version  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
@@ -278,7 +279,8 @@ class VyperCompiler(CompilerAPI):
                         ):
                             function_offsets.append((node.lineno, node.end_lineno))
 
-                    bytecode = output["evm"]["deployedBytecode"]
+                    evm = output["evm"]
+                    bytecode = evm["deployedBytecode"]
                     opcodes = bytecode["opcodes"].split(" ")
                     compressed_src_map = SourceMap(__root__=bytecode["sourceMap"])
                     src_map = list(compressed_src_map.parse())[1:]
@@ -298,7 +300,7 @@ class VyperCompiler(CompilerAPI):
                         ast=ast,
                         contractName=name,
                         sourceId=source_id,
-                        deploymentBytecode={"bytecode": output["evm"]["bytecode"]["object"]},
+                        deploymentBytecode={"bytecode": evm["bytecode"]["object"]},
                         runtimeBytecode={"bytecode": bytecode["object"]},
                         abi=output["abi"],
                         sourcemap=compressed_src_map,
@@ -390,6 +392,175 @@ class VyperCompiler(CompilerAPI):
 
         return settings
 
+    def init_coverage_profile(
+        self, source_coverage: ContractSourceCoverage, contract_source: ContractSource
+    ):
+        exclusions = self.config_manager.get_config("test").coverage.exclude
+        contract_name = contract_source.contract_type.name or "__UnknownContract__"
+
+        # Check if excluding this contract.
+        for exclusion in exclusions:
+            if fnmatch(contract_name, exclusion.contract_name) and (
+                not exclusion.method_name or exclusion.method_name == "*"
+            ):
+                # Skip this whole source.
+                return
+
+        contract_coverage = source_coverage.include(contract_name)
+
+        def _exclude_fn(_name: str) -> bool:
+            for _exclusion in exclusions:
+                if fnmatch(contract_coverage.name, _exclusion.contract_name) and fnmatch(
+                    _name, _exclusion.method_name
+                ):
+                    # This function should be skipped.
+                    return True
+
+            return False
+
+        def _profile(_name: str, _full_name: str):
+            # Ensure function isn't excluded.
+            if _exclude_fn(_name):
+                return
+
+            _function_coverage = contract_coverage.include(_name, _full_name)
+            tag = str(item["dev"]) if item.get("dev") else None
+            _function_coverage.profile_statement(pc_int, location=location, tag=tag)
+
+        # Some statements are too difficult to know right away where they belong,
+        # such as statement related to kwarg-default auto-generated implicit lookups.
+        # function_name -> (pc, location)
+        pending_statements: Dict[str, List[Tuple[int, SourceLocation]]] = {}
+
+        for pc, item in contract_source.pcmap.__root__.items():
+            pc_int = int(pc)
+            if pc_int < 0:
+                continue
+
+            location: Optional[SourceLocation]
+            if item.get("location"):
+                location_list = item["location"]
+                if not isinstance(location_list, (list, tuple)):
+                    raise TypeError(f"Unexpected location type '{type(location_list)}'.")
+
+                # NOTE: Only doing 0 because mypy for some reason thinks it is optional.
+                location = (
+                    location_list[0] or 0,
+                    location_list[1] or 0,
+                    location_list[2] or 0,
+                    location_list[3] or 0,
+                )
+            else:
+                location = None
+
+            if location is not None and not isinstance(location, tuple):
+                # Only really for mypy.
+                raise TypeError(f"Received unexpected type for location '{location}'.")
+
+            if not location and not item.get("dev"):
+                # Not a statement we can measure.
+                continue
+
+            if location:
+                function = contract_source.lookup_function(location)
+                if not function:
+                    # Not sure if this happens.
+                    continue
+
+                matching_abis = [
+                    a for a in contract_source.contract_type.methods if a.name == function.name
+                ]
+                if len(matching_abis) > 1:
+                    # In Vyper, if there are multiple method ABIs with the same name,
+                    # that is evidence of the default key-word argument generated methods.
+
+                    is_part_of_signature = location[0] < function.offset
+                    if is_part_of_signature and location[0] != location[2]:
+                        # This likely is not a real statement, but not really sure what this is.
+                        continue
+
+                    # In Vyper, the ABI with the most inputs should be the one without extra steps.
+                    longest_abi = max(matching_abis, key=lambda x: len(x.inputs))
+                    if is_part_of_signature and longest_abi.name in pending_statements:
+                        pending_statements[longest_abi.name].append((pc_int, location))
+                    elif is_part_of_signature:
+                        pending_statements[longest_abi.name] = [(pc_int, location)]
+                    else:
+                        # Put actual source statements under the ABI with all parameters as inputs.
+                        _profile(longest_abi.name, longest_abi.selector)
+
+                elif len(matching_abis) == 1:
+                    _profile(function.name, matching_abis[0].selector)
+
+                elif len(matching_abis) == 0:
+                    # Is likely an internal method.
+                    _profile(function.name, function.full_name or function.name)
+
+            else:
+                _profile("__builtin__", "__builtin__")
+
+        if pending_statements:
+            # Handle auto-generated kwarg-default statements here.
+            # Sort each statement into buckets mapping to the method it belongs in.
+            for fn_name, pending_ls in pending_statements.items():
+                matching_abis = [
+                    m for m in contract_source.contract_type.methods if m.name == fn_name
+                ]
+                longest_abi = max(matching_abis, key=lambda x: len(x.inputs))
+                autogenerated_abis = [
+                    abi for abi in matching_abis if abi.selector != longest_abi.selector
+                ]
+                # Sort the autogenerated ABIs so we can loop through them in the correct order.
+                autogenerated_abis.sort(key=lambda a: len(a.inputs))
+                buckets: Dict[str, List[Tuple[int, SourceLocation]]] = {
+                    a.selector: [] for a in autogenerated_abis
+                }
+                selector_index = 0
+                selector = autogenerated_abis[0].selector
+                # Must loop through PCs from smallest to greatest for this to work.
+                pending_ls.sort()
+                jump_threshold = 10
+                for _pc, loc in pending_ls:
+                    if selector_index < len(autogenerated_abis):
+                        selector = autogenerated_abis[selector_index].selector
+
+                    if not buckets[selector]:
+                        # No need for bounds checking when the bucket is empty.
+                        buckets[selector].append((_pc, loc))
+                        continue
+
+                    last_pc = buckets[selector][-1][0]
+
+                    # Check if jumped.
+                    distance = _pc - last_pc
+                    if distance > jump_threshold:
+                        selector_index += 1
+                        if selector_index >= len(autogenerated_abis):
+                            break
+
+                        selector = autogenerated_abis[selector_index].selector
+                        buckets[selector].append((_pc, loc))
+                    else:
+                        buckets[selector].append((_pc, loc))
+
+                for full_name, statements in buckets.items():
+                    for _pc, location in statements:
+                        if _exclude_fn(fn_name):
+                            continue
+
+                        function_coverage = contract_coverage.include(fn_name, full_name)
+                        function_coverage.profile_statement(_pc, location=location)
+
+        # After handling all methods with locations, let's also add the auto-getters,
+        # which are not present in the source map.
+        for method in contract_source.contract_type.view_methods:
+            if method.selector not in [fn.full_name for fn in contract_coverage.functions]:
+                if _exclude_fn(method.name):
+                    return
+
+                # Auto-getter found. Profile function without statements.
+                contract_coverage.include(method.name, method.selector)
+
     def _get_compiler_arguments(self, version_map: Dict, base_path: Path) -> Dict[Version, Dict]:
         base_path = base_path or self.project_manager.contracts_folder
         arguments_map = {}
@@ -457,6 +628,7 @@ class VyperCompiler(CompilerAPI):
         traceback = SourceTraceback.parse_obj([])
         function = None
         last_pc = None
+        method_id = HexBytes(calldata[:4])
 
         for frame in trace:
             if frame.op in CALL_OPCODES:
@@ -494,12 +666,21 @@ class VyperCompiler(CompilerAPI):
                 # Completed!
                 return traceback
 
+            pcs_to_try_adding = set()
             if "PUSH" in frame.op and frame.pc in contract_src.pcmap:
                 # Check if next op is SSTORE to properly use AST from push op.
-                next_frame = next(trace, None)
+                next_frame: Optional[TraceFrame] = frame
+                loc = contract_src.pcmap[frame.pc]
+                pcs_to_try_adding.add(frame.pc)
+
+                while next_frame and "PUSH" in next_frame.op:
+                    next_frame = next(trace, None)
+                    if next_frame and "PUSH" in next_frame.op:
+                        pcs_to_try_adding.add(next_frame.pc)
+
                 is_non_payable_hit = False
                 if next_frame and next_frame.op == "SSTORE":
-                    push_location = tuple(contract_src.pcmap[frame.pc]["location"])  # type: ignore
+                    push_location = tuple(loc["location"])  # type: ignore
                     pcmap = PCMap.parse_obj({next_frame.pc: {"location": push_location}})
 
                 elif next_frame and next_frame.op in _RETURN_OPCODES:
@@ -511,7 +692,7 @@ class VyperCompiler(CompilerAPI):
 
                 else:
                     pcmap = contract_src.pcmap
-                    dev_val = str((pcmap[frame.pc].get("dev") or "")).replace("dev: ", "")
+                    dev_val = str((loc.get("dev") or "")).replace("dev: ", "")
                     is_non_payable_hit = dev_val == RuntimeErrorType.NONPAYABLE_CHECK.value
 
                 if not is_non_payable_hit and next_frame:
@@ -520,64 +701,95 @@ class VyperCompiler(CompilerAPI):
             else:
                 pcmap = contract_src.pcmap
 
-            if frame.pc not in pcmap:
+            pcs_to_try_adding.add(frame.pc)
+            pcs_to_try_adding = {pc for pc in pcs_to_try_adding if pc in pcmap}
+            if not pcs_to_try_adding:
                 continue
 
-            method_id = HexBytes(calldata[:4])
-            location = cast(Tuple[int, int, int, int], tuple(pcmap[frame.pc].get("location") or []))
-            dev_item = pcmap[frame.pc].get("dev", "")
-            dev = str(dev_item).replace("dev: ", "")
-            if not location and dev in [m.value for m in RuntimeErrorType]:
-                error_type = RuntimeErrorType(dev)
-                if error_type != RuntimeErrorType.NONPAYABLE_CHECK and traceback.last is not None:
-                    # If the error type is not the non-payable check,
-                    # it happened in the last method.
-                    name = traceback.last.closure.name
+            pc_groups: List[List] = []
+            for pc in pcs_to_try_adding:
+                location = (
+                    cast(Tuple[int, int, int, int], tuple(pcmap[pc].get("location") or [])) or None
+                )
+                dev_item = pcmap[pc].get("dev", "")
+                dev = str(dev_item).replace("dev: ", "")
+                done = False
+                for group in pc_groups:
+                    if group[0] != location:
+                        continue
 
-                elif method_id in contract_src.contract_type.methods:
-                    # For non-payable checks, they should hit here.
-                    method_checked = contract_src.contract_type.methods[method_id]
-                    name = method_checked.name
+                    group[1].add(pc)
+                    group[2] = dev
+                    done = True
+                    break
 
+                if not done:
+                    # New group.
+                    pc_groups.append([location, {pc}, dev])
+
+            for location, pcs, dev in pc_groups:
+                if not location and dev in [m.value for m in RuntimeErrorType]:
+                    error_type = RuntimeErrorType(dev)
+                    if (
+                        error_type != RuntimeErrorType.NONPAYABLE_CHECK
+                        and traceback.last is not None
+                    ):
+                        # If the error type is not the non-payable check,
+                        # it happened in the last method.
+                        name = traceback.last.closure.name
+                        full_name = traceback.last.closure.full_name
+
+                    elif method_id in contract_src.contract_type.methods:
+                        # For non-payable checks, they should hit here.
+                        method_checked = contract_src.contract_type.methods[method_id]
+                        name = method_checked.name
+                        full_name = method_checked.selector
+
+                    else:
+                        # Not sure if possible to get here.
+                        name = error_type.name.lower()
+                        full_name = name
+
+                    # Empty source (is builtin)
+                    traceback.add_builtin_jump(
+                        name,
+                        f"dev: {dev}",
+                        self.name,
+                        full_name=full_name,
+                        pcs=pcs,
+                        source_path=contract_src.source_path,
+                    )
+                    continue
+
+                elif not location:
+                    # Unknown.
+                    continue
+
+                function = contract_src.lookup_function(location, method_id=method_id)
+                if not function:
+                    continue
+
+                if (
+                    not traceback.last
+                    or traceback.last.closure.full_name != function.full_name
+                    or not isinstance(traceback.last.closure, Function)
+                ):
+                    depth = (
+                        frame.depth + 1
+                        if traceback.last and traceback.last.depth == frame.depth
+                        else frame.depth
+                    )
+                    traceback.add_jump(
+                        location,
+                        function,
+                        depth,
+                        pcs=pcs,
+                        source_path=contract_src.source_path,
+                    )
                 else:
-                    # Not sure if possible to get here.
-                    name = error_type.name.lower()
+                    traceback.extend_last(location, pcs=pcs)
 
-                # Empty source (is builtin)
-                traceback.add_builtin_jump(
-                    name, dev_item, self.name, pcs={frame.pc}, source_path=contract_src.source_path
-                )
-                continue
-
-            elif not location:
-                # Unknown.
-                continue
-
-            function = contract_src.lookup_function(location, method_id=method_id)
-            if not function:
-                continue
-
-            if (
-                not traceback.last
-                or traceback.last.closure.name != function.name
-                or not isinstance(traceback.last.closure, Function)
-            ):
-                depth = (
-                    frame.depth + 1
-                    if traceback.last and traceback.last.depth == frame.depth
-                    else frame.depth
-                )
-                traceback.add_jump(
-                    location,
-                    function,
-                    depth,
-                    pcs={frame.pc},
-                    source_path=contract_src.source_path,
-                )
-            else:
-                traceback.extend_last(location, pcs={frame.pc})
-
-            last_pc = frame.pc
+                last_pc = max(pcs)
 
         # Never actually hits this return.
         # See `Completed!` comment above.

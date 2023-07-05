@@ -13,9 +13,11 @@ def __init__(registry: IRegistry_039):
 
 @external
 def addBalance(
-    num: uint256
+    num: uint256 = 123,
+    num2: uint256 = 321,
 ) -> uint256:
     assert num != self._balance
+    assert num != num2
     self.registry.register(msg.sender)
     self._balance = self._balance + self.addInterest(num)
 

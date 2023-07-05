@@ -1,0 +1,20 @@
+ethereum:
+  local:
+    default_provider: geth
+
+test:
+  coverage:
+    exclude:
+        # Exclude any method starting with DEBUG_
+      - method_name: "DEBUG_*"
+        # Exclude the entire contract source `exclude_whole_contract.vy`.
+      - contract_name: "exclude_whole_*"
+        # Exclude a single method from `exclude_part_of_contract.vy`.
+      - contract_name: "exclude_part_*"
+        method_name: "exclude_*"
+
+    reports:
+      terminal:
+        verbose: True
+      html: True
+      xml: True

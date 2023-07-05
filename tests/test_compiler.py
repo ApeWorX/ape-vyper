@@ -19,7 +19,6 @@ from ape_vyper.exceptions import (
 )
 
 BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
-PASSING_BASE = BASE_CONTRACTS_PATH / "passing_contracts"
 FAILING_BASE = BASE_CONTRACTS_PATH / "failing_contracts"
 
 # Currently, this is the only version specified from a pragma spec
@@ -34,8 +33,8 @@ APE_VERSION = Version(get_distribution("eth-ape").version.split(".dev")[0].strip
 
 
 @pytest.fixture
-def dev_revert_source():
-    return PASSING_BASE / "contract_with_dev_messages.vy"
+def dev_revert_source(project):
+    return project.contracts_folder / "contract_with_dev_messages.vy"
 
 
 def contract_test_cases(passing: bool) -> List[str]:
@@ -63,15 +62,17 @@ EXPECTED_FAIL_PATTERNS = {
 
 def test_compile_project(project):
     contracts = project.load_contracts()
-    assert len(contracts) == len([p.name for p in PASSING_BASE.glob("*.vy") if p.is_file()])
+    assert len(contracts) == len(
+        [p.name for p in project.contracts_folder.glob("*.vy") if p.is_file()]
+    )
     assert contracts["contract"].source_id == "contract.vy"
     assert contracts["contract_no_pragma"].source_id == "contract_no_pragma.vy"
     assert contracts["older_version"].source_id == "older_version.vy"
 
 
 @pytest.mark.parametrize("contract_name", PASSING_CONTRACT_NAMES)
-def test_compile_individual_contracts(contract_name, compiler):
-    path = PASSING_BASE / contract_name
+def test_compile_individual_contracts(project, contract_name, compiler):
+    path = project.contracts_folder / contract_name
     assert compiler.compile([path])
 
 
@@ -165,14 +166,14 @@ def test_compiler_data_in_manifest(project):
         assert compiler.settings["optimize"] is True
 
 
-def test_compile_parse_dev_messages(compiler, dev_revert_source):
+def test_compile_parse_dev_messages(compiler, dev_revert_source, project):
     """
     Test parsing of dev messages in a contract. These follow the form of "#dev: ...".
 
     The compiler will output a map that maps dev messages to line numbers.
     See contract_with_dev_messages.vy for more information.
     """
-    result = compiler.compile([dev_revert_source], base_path=PASSING_BASE)
+    result = compiler.compile([dev_revert_source], base_path=project.contracts_folder)
 
     assert len(result) == 1
 
@@ -205,15 +206,15 @@ def test_get_imports(compiler, project):
     assert set(actual["use_iface2.vy"]) == {local_import}
 
 
-@pytest.mark.parametrize("src,vers", [("contract", "0.3.9"), ("contract_37", "0.3.7")])
+@pytest.mark.parametrize("src,vers", [("contract", "0.3.9"), ("contract_037", "0.3.7")])
 def test_pc_map(compiler, project, src, vers):
     """
     Ensure we de-compress the source map correctly by comparing to the results
     from `compile_src()` which includes the uncompressed source map data.
     """
 
-    path = PASSING_BASE / f"{src}.vy"
-    result = compiler.compile([path], base_path=PASSING_BASE)[0]
+    path = project.contracts_folder / f"{src}.vy"
+    result = compiler.compile([path], base_path=project.contracts_folder)[0]
     actual = result.pcmap.__root__
     code = path.read_text()
     compile_result = compile_source(code, vyper_version=vers, evm_version=compiler.evm_version)[
@@ -350,27 +351,47 @@ def test_enrich_error_handle_when_name(compiler, geth_provider):
     assert isinstance(new_error, NonPayableError)
 
 
-def test_trace_source(account, geth_provider, project, traceback_contract):
-    """
-    NOTE: Using 0.3.7 because 0.3.9 bugs and shows the wrong lines.
-    """
-
-    receipt = traceback_contract.addBalance(123, sender=account)
+@pytest.mark.parametrize("arguments", [(), (123,), (123, 321)])
+def test_trace_source(account, geth_provider, project, traceback_contract, arguments):
+    receipt = traceback_contract.addBalance(*arguments, sender=account)
     actual = receipt.source_traceback
     base_folder = project.contracts_folder
     contract_name = traceback_contract.contract_type.name
     expected = rf"""
 Traceback (most recent call last)
   File {base_folder}/{contract_name}.vy, in addBalance
-       27     # Comments in the middle (is a test)
-       28
-       29     for i in [1, 2, 3, 4, 5]:
-       30         if i != num:
-       31             continue
-       32
-  -->  33     return self._balance
+       32         if i != num:
+       33             continue
+       34
+  -->  35     return self._balance
 """.strip()
     assert str(actual) == expected
+
+
+def test_trace_source_content_from_kwarg_default_parametrization(
+    account, geth_provider, project, traceback_contract
+):
+    """
+    This test is for verifying stuff around Vyper auto-generated methods from kwarg defaults.
+    Mostly, need to make sure the correct content is discoverable in the source traceback
+    so that coverage works properly.
+    """
+    no_args_tx = traceback_contract.addBalance(sender=account)
+    no_args_tb = no_args_tx.source_traceback
+
+    def check(name: str, tb):
+        items = [x.closure.full_name for x in tb if x.closure.full_name == name]
+        assert len(items) >= 1
+
+    check("addBalance()", no_args_tb)
+
+    single_arg_tx = traceback_contract.addBalance(442, sender=account)
+    single_arg_tb = single_arg_tx.source_traceback
+    check("addBalance(uint256)", single_arg_tb)
+
+    both_args_tx = traceback_contract.addBalance(4, 5, sender=account)
+    both_args_tb = both_args_tx.source_traceback
+    check("addBalance(uint256,uint256)", both_args_tb)
 
 
 def test_trace_err_source(account, geth_provider, project, traceback_contract):
@@ -388,18 +409,16 @@ def test_trace_err_source(account, geth_provider, project, traceback_contract):
     expected = rf"""
 Traceback (most recent call last)
   File {base_folder}/{contract_name}.vy, in addBalance_f
-       44     # Run some loops.
-       45     for i in [1, 2, 3, 4, 5]:
-       46         if i == num:
-       47             break
-       48
-       49     # Fail in the middle (is test)
-       50     # Fails because was already set above.
-  -->  51     self.registry.register_f(msg.sender)
-       52
-       53     for i in [1, 2, 3, 4, 5]:
-       54         if i != num:
-       55             continue
+       48         if i == num:
+       49             break
+       50
+       51     # Fail in the middle (is test)
+       52     # Fails because was already set above.
+  -->  53     self.registry.register_f(msg.sender)
+       54
+       55     for i in [1, 2, 3, 4, 5]:
+       56         if i != num:
+       57             continue
 
   File {base_folder}/registry_{version_key}.vy, in register_f
        11 def register_f(addr: address):
