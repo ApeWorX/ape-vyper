@@ -2,6 +2,7 @@ from enum import Enum
 from typing import Dict, Optional, Type, Union
 
 from ape.exceptions import CompilerError, ContractLogicError
+from ape.utils import USER_ASSERT_TAG
 from vvm.exceptions import VyperError  # type: ignore
 
 
@@ -42,9 +43,11 @@ class RuntimeErrorType(Enum):
     INDEX_OUT_OF_RANGE = "Index out of range"
     INTEGER_OVERFLOW = "Integer overflow"
     INTEGER_UNDERFLOW = "Integer underflow"
+    INTEGER_BOUNDS_CHECK = "Integer bounds check"
     DIVISION_BY_ZERO = "Division by zero"
     MODULO_BY_ZERO = "Modulo by zero"
     FALLBACK_NOT_DEFINED = "Fallback not defined"
+    USER_ASSERT = USER_ASSERT_TAG
 
     @classmethod
     def from_operator(cls, operator: str) -> Optional["RuntimeErrorType"]:
@@ -67,8 +70,8 @@ class VyperRuntimeError(ContractLogicError):
     compiler and not directly from the source.
     """
 
-    def __init__(self, error_type: RuntimeErrorType, **kwargs):
-        super().__init__(error_type.value, **kwargs)
+    def __init__(self, error_type: Union[RuntimeErrorType, str], **kwargs):
+        super().__init__(error_type if isinstance(error_type, str) else error_type.value, **kwargs)
 
 
 class NonPayableError(VyperRuntimeError):
@@ -107,6 +110,15 @@ class IntegerUnderflowError(VyperRuntimeError):
         super().__init__(RuntimeErrorType.INTEGER_UNDERFLOW, **kwargs)
 
 
+class IntegerBoundsCheck(VyperRuntimeError):
+    """
+    Raised when receiving any integer bounds check failure.
+    """
+
+    def __init__(self, _type: str, **kwargs):
+        super().__init__(f"{_type} {RuntimeErrorType.INTEGER_OVERFLOW.value}", **kwargs)
+
+
 class DivisionByZeroError(VyperRuntimeError, ZeroDivisionError):
     """
     Raised when dividing by zero.
@@ -140,6 +152,7 @@ RUNTIME_ERROR_MAP: Dict[RuntimeErrorType, Type[ContractLogicError]] = {
     RuntimeErrorType.INDEX_OUT_OF_RANGE: IndexOutOfRangeError,
     RuntimeErrorType.INTEGER_OVERFLOW: IntegerOverflowError,
     RuntimeErrorType.INTEGER_UNDERFLOW: IntegerUnderflowError,
+    RuntimeErrorType.INTEGER_BOUNDS_CHECK: IntegerBoundsCheck,
     RuntimeErrorType.DIVISION_BY_ZERO: DivisionByZeroError,
     RuntimeErrorType.MODULO_BY_ZERO: ModuloByZeroError,
     RuntimeErrorType.FALLBACK_NOT_DEFINED: FallbackNotDefinedError,

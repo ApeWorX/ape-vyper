@@ -1,6 +1,4 @@
 import re
-from pathlib import Path
-from typing import List
 
 import pytest
 from ape.exceptions import ContractLogicError
@@ -18,10 +16,9 @@ from ape_vyper.exceptions import (
     VyperInstallError,
 )
 
-BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
-FAILING_BASE = BASE_CONTRACTS_PATH / "failing_contracts"
-
 # Currently, this is the only version specified from a pragma spec
+from .conftest import FAILING_BASE, FAILING_CONTRACT_NAMES, PASSING_CONTRACT_NAMES, TEMPLATES
+
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.8")
 VERSION_37 = Version("0.3.7")
 
@@ -37,16 +34,6 @@ def dev_revert_source(project):
     return project.contracts_folder / "contract_with_dev_messages.vy"
 
 
-def contract_test_cases(passing: bool) -> List[str]:
-    """
-    Returns test-case names for outputting nicely with pytest.
-    """
-    suffix = "passing_contracts" if passing else "failing_contracts"
-    return [p.name for p in (BASE_CONTRACTS_PATH / suffix).glob("*.vy") if p.is_file()]
-
-
-PASSING_CONTRACT_NAMES = contract_test_cases(True)
-FAILING_CONTRACT_NAMES = contract_test_cases(False)
 EXPECTED_FAIL_PATTERNS = {
     "contract_undeclared_variable": re.compile(
         (
@@ -65,7 +52,7 @@ def test_compile_project(project):
     assert len(contracts) == len(
         [p.name for p in project.contracts_folder.glob("*.vy") if p.is_file()]
     )
-    assert contracts["contract"].source_id == "contract.vy"
+    assert contracts["contract_039"].source_id == "contract_039.vy"
     assert contracts["contract_no_pragma"].source_id == "contract_no_pragma.vy"
     assert contracts["older_version"].source_id == "older_version.vy"
 
@@ -109,20 +96,22 @@ def test_get_version_map(project, compiler):
         pytest.fail(fail_message)
 
     assert len(actual[OLDER_VERSION_FROM_PRAGMA]) == 1
-    assert len(actual[VERSION_FROM_PRAGMA]) == 9
+    assert len(actual[VERSION_FROM_PRAGMA]) >= 11
     assert actual[OLDER_VERSION_FROM_PRAGMA] == {project.contracts_folder / "older_version.vy"}
 
-    expected = (
-        "contract.vy",
+    expected = [
         "contract_no_pragma.vy",
         "contract_with_dev_messages.vy",
         "empty.vy",
         "erc20.vy",
-        "registry_039.vy",
-        "traceback_contract_039.vy",
         "use_iface.vy",
         "use_iface2.vy",
-    )
+    ]
+
+    # Add the 0.3.9 contracts.
+    for template in TEMPLATES:
+        expected.append(f"{template}_039.vy")
+
     names = [x.name for x in actual[VERSION_FROM_PRAGMA]]
     failures = []
     missing = []
@@ -147,7 +136,7 @@ def test_get_version_map(project, compiler):
 def test_compiler_data_in_manifest(project):
     _ = project.contracts
     manifest = project.extract_manifest()
-    assert len(manifest.compilers) == 3, manifest.compilers
+    assert len(manifest.compilers) >= 3, manifest.compilers
 
     vyper_latest = [c for c in manifest.compilers if str(c.version) == str(VERSION_FROM_PRAGMA)][0]
     vyper_028 = [c for c in manifest.compilers if str(c.version) == str(OLDER_VERSION_FROM_PRAGMA)][
@@ -157,9 +146,9 @@ def test_compiler_data_in_manifest(project):
     for compiler in (vyper_028, vyper_latest):
         assert compiler.name == "vyper"
 
-    assert len(vyper_latest.contractTypes) == 9
-    assert len(vyper_028.contractTypes) == 1
-    assert "contract" in vyper_latest.contractTypes
+    assert len(vyper_latest.contractTypes) >= 9
+    assert len(vyper_028.contractTypes) >= 1
+    assert "contract_039" in vyper_latest.contractTypes
     assert "older_version" in vyper_028.contractTypes
     for compiler in (vyper_latest, vyper_028):
         assert compiler.settings["evmVersion"] == "istanbul"
@@ -198,15 +187,15 @@ def test_get_imports(compiler, project):
     local_from_import = "interfaces/IFace2.vy"
     dependency_import = "exampledep/Dependency.json"
 
-    assert len(actual["contract.vy"]) == 1
-    assert set(actual["contract.vy"]) == {builtin_import}
+    assert len(actual["contract_037.vy"]) == 1
+    assert set(actual["contract_037.vy"]) == {builtin_import}
     assert len(actual["use_iface.vy"]) == 3
     assert set(actual["use_iface.vy"]) == {local_import, local_from_import, dependency_import}
     assert len(actual["use_iface2.vy"]) == 1
     assert set(actual["use_iface2.vy"]) == {local_import}
 
 
-@pytest.mark.parametrize("src,vers", [("contract", "0.3.9"), ("contract_037", "0.3.7")])
+@pytest.mark.parametrize("src,vers", [("contract_039", "0.3.9"), ("contract_037", "0.3.7")])
 def test_pc_map(compiler, project, src, vers):
     """
     Ensure we de-compress the source map correctly by comparing to the results
@@ -278,65 +267,73 @@ def test_pc_map(compiler, project, src, vers):
 
     # Verify non-payable checks.
     nonpayable_checks = _all(RuntimeErrorType.NONPAYABLE_CHECK)
-    assert len(nonpayable_checks) == 1
+    assert len(nonpayable_checks) >= 1
 
-    # TODO: Figure out >0.3.7 issue with error maps.
+    # Verify integer overflow checks
+    overflows = _all(RuntimeErrorType.INTEGER_OVERFLOW)
+    overflow_no = line("return (2**127-1) + i")
+    expected_overflow_loc = [overflow_no, 12, overflow_no, 20]
+    assert len(overflows) >= 2
+
     if vers == "0.3.7":
-        # Verify integer overflow checks
-        overflows = _all(RuntimeErrorType.INTEGER_OVERFLOW)
-        overflow_no = line("return (2**127-1) + i")
-        expected_overflow_loc = [overflow_no, 12, overflow_no, 20]
-        assert len(overflows) >= 2
-        assert expected_overflow_loc in [o["location"] for o in overflows]
+        assert expected_overflow_loc in [o["location"] for o in overflows if o["location"]]
+    # else: 0.3.9 registers as IntegerBoundsCheck
 
-        # Verify integer underflow checks
-        underflows = _all(RuntimeErrorType.INTEGER_UNDERFLOW)
-        underflow_no = line("return i - (2**127-1)")
-        expected_underflow_loc = [underflow_no, 11, underflow_no, 25]
-        assert len(underflows) == 2
-        assert expected_underflow_loc in [u["location"] for u in underflows]
+    # Verify integer underflow checks
+    underflows = _all(RuntimeErrorType.INTEGER_UNDERFLOW)
+    underflow_no = line("return i - (2**127-1)")
+    expected_underflow_loc = [underflow_no, 11, underflow_no, 25]
+    assert len(underflows) >= 2
 
-        # Verify division by zero checks
-        div_zeros = _all(RuntimeErrorType.DIVISION_BY_ZERO)
-        div_no = line("return 4 / i")
-        expected_div_0 = [div_no, 11, div_no, 16]
+    if vers == "0.3.7":
+        assert expected_underflow_loc in [u["location"] for u in underflows if u["location"]]
+    # else: 0.3.9 registers as IntegerBoundsCheck
 
+    # Verify division by zero checks
+    div_zeros = _all(RuntimeErrorType.DIVISION_BY_ZERO)
+    div_no = line("return 4 / i")
+    expected_div_0 = [div_no, 11, div_no, 16]
+
+    if vers == "0.3.7":
         assert len(div_zeros) >= 1
-        assert expected_div_0 in [d["location"] for d in div_zeros]
+        assert expected_div_0 in [d["location"] for d in div_zeros if d["location"]]
+    # TODO: figure out how to detect these on 0.3.9
 
-        # Verify modulo by zero checks
-        mod_zeros = _all(RuntimeErrorType.MODULO_BY_ZERO)
-        mod_no = line("return 4 % i")
-        expected_mod_0_loc = [mod_no, 11, mod_no, 16]
-        assert len(mod_zeros) >= 1
-        assert expected_mod_0_loc in [m["location"] for m in mod_zeros]
+    # Verify modulo by zero checks
+    mod_zeros = _all(RuntimeErrorType.MODULO_BY_ZERO)
+    mod_no = line("return 4 % i")
+    expected_mod_0_loc = [mod_no, 11, mod_no, 16]
+    assert len(mod_zeros) >= 1
+    assert expected_mod_0_loc in [m["location"] for m in mod_zeros if m["location"]]
 
-        # Verify index out of range checks
-        range_checks = _all(RuntimeErrorType.INDEX_OUT_OF_RANGE)
-        range_no = line("return self.dynArray[idx]")
-        expected_range_check = [range_no, 11, range_no, 24]
+    # Verify index out of range checks
+    range_checks = _all(RuntimeErrorType.INDEX_OUT_OF_RANGE)
+    range_no = line("return self.dynArray[idx]")
+    expected_range_check = [range_no, 11, range_no, 24]
+    if vers == "0.3.7":
         assert len(range_checks) >= 1
         assert expected_range_check in [r["location"] for r in range_checks]
+    # TODO: figure out how to detect these on 0.3.9
 
 
-def test_enrich_error_int_overflow(geth_provider, traceback_contract_037, account):
+def test_enrich_error_int_overflow(geth_provider, traceback_contract, account):
     int_max = 2**256 - 1
     with pytest.raises(IntegerOverflowError):
-        traceback_contract_037.addBalance(int_max, sender=account)
+        traceback_contract.addBalance(int_max, sender=account)
 
 
-def test_enrich_error_non_payable_check(geth_provider, traceback_contract_037, account):
+def test_enrich_error_non_payable_check(geth_provider, traceback_contract, account):
     with pytest.raises(NonPayableError):
-        traceback_contract_037.addBalance(123, sender=account, value=1)
+        traceback_contract.addBalance(123, sender=account, value=1)
 
 
-def test_enrich_error_fallback(geth_provider, traceback_contract_037, account):
+def test_enrich_error_fallback(geth_provider, traceback_contract, account):
     """
     Show that when attempting to call a contract's fallback method when there is
     no fallback defined results in a custom contract logic error.
     """
     with pytest.raises(FallbackNotDefinedError):
-        traceback_contract_037(sender=account)
+        traceback_contract(sender=account)
 
 
 def test_enrich_error_handle_when_name(compiler, geth_provider):

@@ -22,6 +22,7 @@ from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper.exceptions import (
     RUNTIME_ERROR_MAP,
+    IntegerBoundsCheck,
     RuntimeErrorType,
     VyperCompileError,
     VyperInstallError,
@@ -236,8 +237,7 @@ class VyperCompiler(CompilerAPI):
                 "settings": settings,
                 "sources": {s: {"content": p.read_text()} for s, p in path_args.items()},
             }
-            interfaces = self.import_remapping
-            if interfaces:
+            if interfaces := self.import_remapping:
                 input_json["interfaces"] = interfaces
 
             vyper_binary = compiler_data[vyper_version]["vyper_binary"]
@@ -285,10 +285,11 @@ class VyperCompiler(CompilerAPI):
                     compressed_src_map = SourceMap(__root__=bytecode["sourceMap"])
                     src_map = list(compressed_src_map.parse())[1:]
 
-                    if vyper_version < Version("0.3.8"):
-                        pcmap = _get_legacy_pcmap(ast, src_map, opcodes)
-                    else:
-                        pcmap = _get_pcmap(bytecode, src_map, opcodes)
+                    pcmap = (
+                        _get_legacy_pcmap(ast, src_map, opcodes)
+                        if vyper_version <= Version("0.3.7")
+                        else _get_pcmap(bytecode, src_map, opcodes)
+                    )
 
                     # Find content-specified dev messages.
                     dev_messages = {}
@@ -594,6 +595,9 @@ class VyperCompiler(CompilerAPI):
             # Is a builtin compiler error.
             error_type = RuntimeErrorType(err_str)
 
+        elif "bounds check" in err_str:
+            error_type = RuntimeErrorType.INTEGER_BOUNDS_CHECK
+
         else:
             # Check names
             for name, _type in [(m.name, m) for m in RuntimeErrorType]:
@@ -606,11 +610,16 @@ class VyperCompiler(CompilerAPI):
             return err
 
         runtime_error_cls = RUNTIME_ERROR_MAP[error_type]
-        return runtime_error_cls(
-            contract_address=err.contract_address,
-            source_traceback=err.source_traceback,
-            trace=err.trace,
-            txn=err.txn,
+        tx_kwargs: Dict = {
+            "contract_address": err.contract_address,
+            "source_traceback": err.source_traceback,
+            "trace": err.trace,
+            "txn": err.txn,
+        }
+        return (
+            runtime_error_cls(err_str.split(" ")[0], **tx_kwargs)
+            if runtime_error_cls == IntegerBoundsCheck
+            else runtime_error_cls(**tx_kwargs)
         )
 
     def trace_source(
@@ -626,9 +635,9 @@ class VyperCompiler(CompilerAPI):
         self, contract_src: ContractSource, trace: Iterator[TraceFrame], calldata: HexBytes
     ) -> SourceTraceback:
         traceback = SourceTraceback.parse_obj([])
-        function = None
-        last_pc = None
         method_id = HexBytes(calldata[:4])
+        completed = False
+        pcmap = PCMap.parse_obj({})
 
         for frame in trace:
             if frame.op in CALL_OPCODES:
@@ -649,7 +658,10 @@ class VyperCompiler(CompilerAPI):
                                 if fr.op == "RETURN":
                                     break
 
+                            continue
+
                     else:
+                        # Called another Vyper contract.
                         sub_trace = self._get_traceback(called_contract, trace, sub_calldata)
                         traceback.extend(sub_trace)
 
@@ -659,12 +671,10 @@ class VyperCompiler(CompilerAPI):
                         if fr.op == "RETURN":
                             break
 
-            elif frame.op in _RETURN_OPCODES:
-                if frame.op in "RETURN" and function:
-                    _extend_return(function, traceback, last_pc, contract_src.source_path)
+                    continue
 
-                # Completed!
-                return traceback
+            elif frame.op in _RETURN_OPCODES:
+                completed = True
 
             pcs_to_try_adding = set()
             if "PUSH" in frame.op and frame.pc in contract_src.pcmap:
@@ -684,11 +694,7 @@ class VyperCompiler(CompilerAPI):
                     pcmap = PCMap.parse_obj({next_frame.pc: {"location": push_location}})
 
                 elif next_frame and next_frame.op in _RETURN_OPCODES:
-                    if next_frame.op in "RETURN" and function:
-                        _extend_return(function, traceback, last_pc, contract_src.source_path)
-
-                    # Completed!
-                    return traceback
+                    completed = True
 
                 else:
                     pcmap = contract_src.pcmap
@@ -704,7 +710,14 @@ class VyperCompiler(CompilerAPI):
             pcs_to_try_adding.add(frame.pc)
             pcs_to_try_adding = {pc for pc in pcs_to_try_adding if pc in pcmap}
             if not pcs_to_try_adding:
-                continue
+                if (
+                    frame.op == "REVERT"
+                    and frame.pc + 1 in pcmap
+                    and RuntimeErrorType.USER_ASSERT.value
+                    in str(pcmap[frame.pc + 1].get("dev", ""))
+                ):
+                    # Not sure why this happens. Maybe an off-by-1 bug in Vyper.
+                    pcs_to_try_adding.add(frame.pc + 1)
 
             pc_groups: List[List] = []
             for pc in pcs_to_try_adding:
@@ -713,13 +726,14 @@ class VyperCompiler(CompilerAPI):
                 )
                 dev_item = pcmap[pc].get("dev", "")
                 dev = str(dev_item).replace("dev: ", "")
+
                 done = False
                 for group in pc_groups:
                     if group[0] != location:
                         continue
 
                     group[1].add(pc)
-                    group[2] = dev
+                    dev = group[2] = dev or group[2]
                     done = True
                     break
 
@@ -727,8 +741,9 @@ class VyperCompiler(CompilerAPI):
                     # New group.
                     pc_groups.append([location, {pc}, dev])
 
+            dev_messages = contract_src.contract_type.dev_messages or {}
             for location, pcs, dev in pc_groups:
-                if not location and dev in [m.value for m in RuntimeErrorType]:
+                if dev in [m.value for m in RuntimeErrorType if m != RuntimeErrorType.USER_ASSERT]:
                     error_type = RuntimeErrorType(dev)
                     if (
                         error_type != RuntimeErrorType.NONPAYABLE_CHECK
@@ -765,8 +780,7 @@ class VyperCompiler(CompilerAPI):
                     # Unknown.
                     continue
 
-                function = contract_src.lookup_function(location, method_id=method_id)
-                if not function:
+                if not (function := contract_src.lookup_function(location, method_id=method_id)):
                     continue
 
                 if (
@@ -779,6 +793,7 @@ class VyperCompiler(CompilerAPI):
                         if traceback.last and traceback.last.depth == frame.depth
                         else frame.depth
                     )
+
                     traceback.add_jump(
                         location,
                         function,
@@ -789,10 +804,22 @@ class VyperCompiler(CompilerAPI):
                 else:
                     traceback.extend_last(location, pcs=pcs)
 
-                last_pc = max(pcs)
+                if (
+                    dev.endswith(RuntimeErrorType.USER_ASSERT.value)
+                    and len(traceback.source_statements) > 0
+                ):
+                    # Add dev message to user assert.
+                    last_statement = traceback.source_statements[-1]
 
-        # Never actually hits this return.
-        # See `Completed!` comment above.
+                    for lineno in range(
+                        last_statement.end_lineno, last_statement.begin_lineno - 1, -1
+                    ):
+                        if lineno in dev_messages:
+                            last_statement.type = dev_messages[lineno]
+
+            if completed:
+                break
+
         return traceback
 
 
@@ -822,39 +849,60 @@ def _get_pcmap(bytecode: Dict, src_map: List[SourceMapItem], opcodes: List[str])
     if not pc_data:
         return PCMap.parse_obj({})
 
-    non_payable_check = _find_non_payable_check(src_map, opcodes)
-    if not non_payable_check:
-        non_payable_check = min([int(x) for x in pc_data]) - 1
-
-    pc_data[non_payable_check] = {"dev": _NON_PAYABLE_STR, "location": None}
-
     # Apply other errors.
     errors = src_info["error_map"]
     for err_pc, error_type in errors.items():
-        if "safemul" in error_type or "safeadd" in err_pc:
+        use_loc = True
+        if "safemul" in error_type or "safeadd" in error_type or "bounds check" in error_type:
+            # NOTE: Bound check may also occur for underflow.
             error_str = RuntimeErrorType.INTEGER_OVERFLOW.value
-        elif "safesub" in error_type:
+        elif "safesub" in error_type or "clamp" in error_type:
             error_str = RuntimeErrorType.INTEGER_UNDERFLOW.value
-        elif "safediv" in error_type:
+        elif "safediv" in error_type or "clamp gt 0" in error_type:
             error_str = RuntimeErrorType.DIVISION_BY_ZERO.value
         elif "safemod" in error_type:
             error_str = RuntimeErrorType.MODULO_BY_ZERO.value
         elif "bounds check" in error_type:
             error_str = RuntimeErrorType.INDEX_OUT_OF_RANGE.value
+        elif "user assert" in error_type.lower() or "user revert" in error_type.lower():
+            # Mark user-asserts so the Ape can correctly find dev messages.
+            error_str = RuntimeErrorType.USER_ASSERT.value
+        elif "fallback function" in error_type:
+            error_str = RuntimeErrorType.FALLBACK_NOT_DEFINED.value
+            use_loc = False
         else:
-            error_str = error_type.upper().replace(" ", "_")
+            error_str = ""
+            error_type_name = error_type.upper().replace(" ", "_")
+            for _type in RuntimeErrorType:
+                if _type.name == error_type_name:
+                    error_str = _type.value
+                    break
+
+            error_str = error_str or error_type_name
+            use_loc = False
+
+        location = None
+        if use_loc:
+            # Add surrounding locations
+            for pc in range(int(err_pc), -1, -1):
+                if (
+                    (data := pc_data.get(f"{pc}"))
+                    and "dev" not in data
+                    and (location := data.get("location"))
+                ):
+                    break
 
         if err_pc in pc_data:
             pc_data[err_pc]["dev"] = f"dev: {error_str}"
         else:
-            pc_data[err_pc] = {"dev": f"dev: {error_str}", "location": None}
+            pc_data[err_pc] = {"dev": f"dev: {error_str}", "location": location}
 
     return PCMap.parse_obj(pc_data)
 
 
 def _get_legacy_pcmap(ast: ASTNode, src_map: List[SourceMapItem], opcodes: List[str]):
     """
-    For Vyper versions < 0.3.8, allows us to still get a PCMap.
+    For Vyper versions <= 0.3.7, allows us to still get a PCMap.
     """
 
     pc = 0
@@ -907,6 +955,10 @@ def _get_legacy_pcmap(ast: ASTNode, src_map: List[SourceMapItem], opcodes: List[
                     elif stmt.ast_type == "Subscript":
                         dev = RuntimeErrorType.INDEX_OUT_OF_RANGE
 
+                    else:
+                        # This is needed for finding the corresponding dev message.
+                        dev = RuntimeErrorType.USER_ASSERT
+
                     if dev:
                         val = f"dev: {dev.value}"
                         if is_revert_jump and len(pc_map_list) >= 1:
@@ -927,6 +979,13 @@ def _get_legacy_pcmap(ast: ASTNode, src_map: List[SourceMapItem], opcodes: List[
             item = {"dev": _NON_PAYABLE_STR, "location": None}
             pc_map_list.append((pc, item))
             non_payable_check_found = True
+
+        elif op == "REVERT":
+            # Source-less revert found, use latest item with a source.
+            for item in [x[1] for x in pc_map_list[::-1] if x[1]["location"]]:
+                if not item.get("dev"):
+                    item["dev"] = f"dev: {RuntimeErrorType.USER_ASSERT.value}"
+                    break
 
     return PCMap.parse_obj(dict(pc_map_list))
 

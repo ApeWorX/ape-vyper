@@ -1,0 +1,13 @@
+# @version {{VYPER_VERSION}}
+
+addr: public(address)
+
+@external
+def register(addr: address):
+    self.addr = addr
+
+
+@external
+def register_f(addr: address):
+    assert self.addr != addr, "doubling."
+    self.addr = addr

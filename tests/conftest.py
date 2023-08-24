@@ -4,11 +4,11 @@ from contextlib import contextmanager
 from distutils.dir_util import copy_tree
 from pathlib import Path
 from tempfile import mkdtemp
+from typing import List
 
 import ape
 import pytest
 import vvm  # type: ignore
-from geth.wrapper import construct_test_chain_kwargs as geth_ctor  # type: ignore
 
 from ape_vyper.compiler import VyperCompiler
 
@@ -17,6 +17,27 @@ DATA_FOLDER = Path(mkdtemp()).resolve()
 PROJECT_FOLDER = Path(mkdtemp()).resolve()
 ape.config.DATA_FOLDER = DATA_FOLDER
 ape.config.PROJECT_FOLDER = PROJECT_FOLDER
+
+BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
+TEMPLATES_PATH = BASE_CONTRACTS_PATH / "templates"
+FAILING_BASE = BASE_CONTRACTS_PATH / "failing_contracts"
+PASSING_BASE = BASE_CONTRACTS_PATH / "passing_contracts"
+
+MULTI_VERSION_TESTS = ("0.3.7", "0.3.9")
+
+
+def contract_test_cases(passing: bool) -> List[str]:
+    """
+    Returns test-case names for outputting nicely with pytest.
+    """
+    suffix = "passing_contracts" if passing else "failing_contracts"
+    return [p.name for p in (BASE_CONTRACTS_PATH / suffix).glob("*.vy") if p.is_file()]
+
+
+PASSING_CONTRACT_NAMES = contract_test_cases(True)
+FAILING_CONTRACT_NAMES = contract_test_cases(False)
+TEMPLATES = [p.stem for p in TEMPLATES_PATH.glob("*.template") if p.is_file()]
+
 
 # Needed for integration testing
 pytest_plugins = ["pytester"]
@@ -57,6 +78,22 @@ def setup_session_vvm_path(request):
 
     with _tmp_vvm_path(patch) as path:
         yield path
+
+
+@pytest.fixture(scope="session", autouse=True)
+def generate_contracts():
+    """
+    Generate contracts from templates. This is used in
+    multi-version testing.
+    """
+    for file in TEMPLATES_PATH.iterdir():
+        if not file.is_file() or file.suffix != ".template":
+            continue
+
+        for version in MULTI_VERSION_TESTS:
+            new_file = PASSING_BASE / f"{file.stem}_{version.replace('.', '')}.vy"
+            new_file.unlink(missing_ok=True)
+            new_file.write_text(file.read_text().replace("{{VYPER_VERSION}}", version))
 
 
 @pytest.fixture
@@ -108,19 +145,7 @@ def project(config):
 
 
 @pytest.fixture
-def geth_provider(mocker):
-    # TODO: Delete this hack to fix bug in py-geth<0.3.13
-    patch = mocker.patch("ape_geth.provider.construct_test_chain_kwargs")
-
-    def side_effect(*args, **kwargs):
-        result = geth_ctor(*args, **kwargs)
-        if "miner_threads" in result:
-            del result["miner_threads"]
-
-        return result
-
-    patch.side_effect = side_effect
-
+def geth_provider():
     if not ape.networks.active_provider or ape.networks.provider.name != "geth":
         with ape.networks.ethereum.local.use_provider(
             "geth", provider_settings={"uri": "http://127.0.0.1:5550"}

@@ -1,13 +1,13 @@
 # @version 0.3.9
 
-import interfaces.IRegistry_039 as IRegistry_039
+import interfaces.IRegistry as IRegistry
 
 _balance: public(uint256)
-registry: public(IRegistry_039)
+registry: public(IRegistry)
 
 
 @external
-def __init__(registry: IRegistry_039):
+def __init__(registry: IRegistry):
     self.registry = registry
 
 
