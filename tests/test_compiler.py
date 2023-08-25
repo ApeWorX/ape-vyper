@@ -336,14 +336,15 @@ def test_enrich_error_fallback(geth_provider, traceback_contract, account):
         traceback_contract(sender=account)
 
 
-def test_enrich_error_handle_when_name(compiler, geth_provider):
+def test_enrich_error_handle_when_name(compiler, geth_provider, mocker):
     """
     Sometimes, a provider may use the name of the enum instead of the value,
     which we are still able to enrich.
     """
 
-    error = ContractLogicError("")
-    error.__dict__["dev_message"] = "dev: NONPAYABLE_CHECK"
+    tb = mocker.MagicMock()
+    tb.revert_type = "NONPAYABLE_CHECK"
+    error = ContractLogicError("", source_traceback=tb)
     new_error = compiler.enrich_error(error)
     assert isinstance(new_error, NonPayableError)
 

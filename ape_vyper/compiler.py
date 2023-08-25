@@ -625,11 +625,10 @@ class VyperCompiler(CompilerAPI):
     def trace_source(
         self, contract_type: ContractType, trace: Iterator[TraceFrame], calldata: HexBytes
     ) -> SourceTraceback:
-        source_contract_type = self.project_manager._create_contract_source(contract_type)
-        if not source_contract_type:
-            return SourceTraceback.parse_obj([])
+        if source_contract_type := self.project_manager._create_contract_source(contract_type):
+            return self._get_traceback(source_contract_type, trace, calldata)
 
-        return self._get_traceback(source_contract_type, trace, calldata)
+        return SourceTraceback.parse_obj([])
 
     def _get_traceback(
         self, contract_src: ContractSource, trace: Iterator[TraceFrame], calldata: HexBytes
