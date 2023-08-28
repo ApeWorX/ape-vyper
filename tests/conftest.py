@@ -23,7 +23,13 @@ TEMPLATES_PATH = BASE_CONTRACTS_PATH / "templates"
 FAILING_BASE = BASE_CONTRACTS_PATH / "failing_contracts"
 PASSING_BASE = BASE_CONTRACTS_PATH / "passing_contracts"
 
-MULTI_VERSION_TESTS = ("0.3.7", "0.3.9")
+
+MULTI_VERSION_TESTS = (
+    "0.2.16",
+    "0.3.4",
+    "0.3.7",
+    "0.3.9",
+)
 
 
 def contract_test_cases(passing: bool) -> List[str]:
