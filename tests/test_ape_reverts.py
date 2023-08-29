@@ -4,6 +4,12 @@ import pytest
 from ape.pytest.contextmanagers import RevertsContextManager as reverts
 
 
+@pytest.fixture(params=("021", "022", "023", "0215", "0216", "034"))
+def older_reverts_contract(account, project, geth_provider, request):
+    container = project.get_contract(f"sub_reverts_{request.param}")
+    return container.deploy(sender=account)
+
+
 @pytest.fixture(params=("037", "039"))
 def reverts_contract_instance(account, project, geth_provider, request):
     sub_reverts_container = project.get_contract(f"sub_reverts_{request.param}")
@@ -108,3 +114,8 @@ def test_both_message_and_dev_str(account, reverts_contract_instance, geth_provi
     """
     with reverts(expected_message="two", dev_message="dev: error"):
         reverts_contract_instance.revertStrings(2, sender=account)
+
+
+def test_dev_message_older_versions(account, older_reverts_contract):
+    with reverts(dev_message="dev: sub-zero"):
+        older_reverts_contract.revertStrings(0, sender=account)

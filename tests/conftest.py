@@ -23,13 +23,26 @@ TEMPLATES_PATH = BASE_CONTRACTS_PATH / "templates"
 FAILING_BASE = BASE_CONTRACTS_PATH / "failing_contracts"
 PASSING_BASE = BASE_CONTRACTS_PATH / "passing_contracts"
 
-
-MULTI_VERSION_TESTS = (
-    "0.2.16",
-    "0.3.4",
-    "0.3.7",
-    "0.3.9",
-)
+CONTRACT_VERSION_GEN_MAP = {
+    "": (
+        "0.3.7",
+        "0.3.9",
+    ),
+    "sub_reverts": (
+        "0.2.1",
+        "0.2.2",
+        "0.2.3",
+        "0.2.15",
+        "0.2.16",
+        "0.3.0",
+        "0.3.1",
+        "0.3.2",
+        "0.3.3",
+        "0.3.4",
+        "0.3.7",
+        "0.3.9",
+    ),
+}
 
 
 def contract_test_cases(passing: bool) -> List[str]:
@@ -96,7 +109,8 @@ def generate_contracts():
         if not file.is_file() or file.suffix != ".template":
             continue
 
-        for version in MULTI_VERSION_TESTS:
+        versions = CONTRACT_VERSION_GEN_MAP.get(file.stem, CONTRACT_VERSION_GEN_MAP[""])
+        for version in versions:
             new_file = PASSING_BASE / f"{file.stem}_{version.replace('.', '')}.vy"
             new_file.unlink(missing_ok=True)
             new_file.write_text(file.read_text().replace("{{VYPER_VERSION}}", version))

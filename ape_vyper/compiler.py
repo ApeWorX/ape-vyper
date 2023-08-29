@@ -28,7 +28,7 @@ from ape_vyper.exceptions import (
     VyperInstallError,
 )
 
-DEV_MSG_PATTERN = re.compile(r"#\s*(dev:.+)")
+DEV_MSG_PATTERN = re.compile(r".*\s*#\s*(dev:.+)")
 _RETURN_OPCODES = ("RETURN", "REVERT", "STOP")
 _FUNCTION_DEF = "FunctionDef"
 _FUNCTION_AST_TYPES = (_FUNCTION_DEF, "Name", "arguments")
@@ -803,18 +803,17 @@ class VyperCompiler(CompilerAPI):
                 else:
                     traceback.extend_last(location, pcs=pcs)
 
-                if (
-                    dev.endswith(RuntimeErrorType.USER_ASSERT.value)
-                    and len(traceback.source_statements) > 0
-                ):
-                    # Add dev message to user assert.
+                if len(traceback.source_statements) > 0:
                     last_statement = traceback.source_statements[-1]
-
-                    for lineno in range(
-                        last_statement.end_lineno, last_statement.begin_lineno - 1, -1
+                    if dev.endswith(RuntimeErrorType.USER_ASSERT.value) or any(
+                        DEV_MSG_PATTERN.match(str(s)) for s in str(last_statement).splitlines()
                     ):
-                        if lineno in dev_messages:
-                            last_statement.type = dev_messages[lineno]
+                        # Add dev message to user assert
+                        for lineno in range(
+                            last_statement.end_lineno, last_statement.begin_lineno - 1, -1
+                        ):
+                            if lineno in dev_messages:
+                                last_statement.type = dev_messages[lineno]
 
             if completed:
                 break
