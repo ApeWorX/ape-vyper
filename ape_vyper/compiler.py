@@ -640,6 +640,7 @@ class VyperCompiler(CompilerAPI):
 
         for frame in trace:
             if frame.op in CALL_OPCODES:
+                start_depth = frame.depth
                 called_contract, sub_calldata = self._create_contract_from_call(frame)
                 if called_contract:
                     ext = Path(called_contract.source_id).suffix
@@ -654,7 +655,7 @@ class VyperCompiler(CompilerAPI):
                         except NotImplementedError:
                             # Compiler not supported. Fast forward out of this call.
                             for fr in trace:
-                                if fr.op == "RETURN":
+                                if fr.depth <= start_depth:
                                     break
 
                             continue
@@ -667,7 +668,7 @@ class VyperCompiler(CompilerAPI):
                 else:
                     # Contract not found. Fast forward out of this call.
                     for fr in trace:
-                        if fr.op == "RETURN":
+                        if fr.depth <= start_depth:
                             break
 
                     continue
