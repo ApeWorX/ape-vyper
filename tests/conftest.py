@@ -22,26 +22,27 @@ BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
 TEMPLATES_PATH = BASE_CONTRACTS_PATH / "templates"
 FAILING_BASE = BASE_CONTRACTS_PATH / "failing_contracts"
 PASSING_BASE = BASE_CONTRACTS_PATH / "passing_contracts"
+ALL_VERSIONS = (
+    "0.2.1",
+    "0.2.2",
+    "0.2.3",
+    "0.2.15",
+    "0.2.16",
+    "0.3.0",
+    "0.3.1",
+    "0.3.2",
+    "0.3.3",
+    "0.3.4",
+    "0.3.7",
+    "0.3.9",
+)
 
 CONTRACT_VERSION_GEN_MAP = {
     "": (
         "0.3.7",
         "0.3.9",
     ),
-    "sub_reverts": (
-        "0.2.1",
-        "0.2.2",
-        "0.2.3",
-        "0.2.15",
-        "0.2.16",
-        "0.3.0",
-        "0.3.1",
-        "0.3.2",
-        "0.3.3",
-        "0.3.4",
-        "0.3.7",
-        "0.3.9",
-    ),
+    "sub_reverts": ALL_VERSIONS,
 }
 
 
@@ -198,6 +199,11 @@ def traceback_contract_037(account, project, geth_provider):
 @pytest.fixture
 def traceback_contract_039(account, project, geth_provider):
     return _get_tb_contract("039", project, account)
+
+
+@pytest.fixture
+def all_versions():
+    return ALL_VERSIONS
 
 
 def _get_tb_contract(version: str, project, account):

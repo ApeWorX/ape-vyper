@@ -19,7 +19,7 @@ from ape_vyper.exceptions import (
 # Currently, this is the only version specified from a pragma spec
 from .conftest import FAILING_BASE, FAILING_CONTRACT_NAMES, PASSING_CONTRACT_NAMES, TEMPLATES
 
-OLDER_VERSION_FROM_PRAGMA = Version("0.2.8")
+OLDER_VERSION_FROM_PRAGMA = Version("0.2.16")
 VERSION_37 = Version("0.3.7")
 
 # NOTE: This is really just about testing > 0.3.7.
@@ -80,12 +80,12 @@ def test_install_failure(compiler):
         compiler.compile([path])
 
 
-def test_get_version_map(project, compiler):
+def test_get_version_map(project, compiler, all_versions):
     vyper_files = [
         x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
     ]
     actual = compiler.get_version_map(vyper_files)
-    expected_versions = (OLDER_VERSION_FROM_PRAGMA, VERSION_FROM_PRAGMA, VERSION_37)
+    expected_versions = [Version(v) for v in all_versions]
 
     for version, sources in actual.items():
         if version in expected_versions:
@@ -95,9 +95,9 @@ def test_get_version_map(project, compiler):
         fail_message = f"Unexpected version '{version}' with sources: {sources}"
         pytest.fail(fail_message)
 
-    assert len(actual[OLDER_VERSION_FROM_PRAGMA]) == 1
+    assert len(actual[OLDER_VERSION_FROM_PRAGMA]) >= 1
     assert len(actual[VERSION_FROM_PRAGMA]) >= 11
-    assert actual[OLDER_VERSION_FROM_PRAGMA] == {project.contracts_folder / "older_version.vy"}
+    assert project.contracts_folder / "older_version.vy" in actual[OLDER_VERSION_FROM_PRAGMA]
 
     expected = [
         "contract_no_pragma.vy",
