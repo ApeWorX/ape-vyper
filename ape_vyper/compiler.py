@@ -430,6 +430,7 @@ class VyperCompiler(CompilerAPI):
             tag = (
                 str(item["dev"])
                 if item.get("dev")
+                and isinstance(item["dev"], str)
                 and item["dev"].startswith("dev: ")
                 and RuntimeErrorType.USER_ASSERT.value not in item["dev"]
                 else None
