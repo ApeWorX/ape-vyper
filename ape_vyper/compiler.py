@@ -425,7 +425,15 @@ class VyperCompiler(CompilerAPI):
                 return
 
             _function_coverage = contract_coverage.include(_name, _full_name)
-            tag = str(item["dev"]) if item.get("dev") else None
+
+            # Only put the builtin-tags we expect users to be able to cover.
+            tag = (
+                str(item["dev"])
+                if item.get("dev")
+                and item["dev"].startswith("dev: ")
+                and RuntimeErrorType.USER_ASSERT.value not in item["dev"]
+                else None
+            )
             _function_coverage.profile_statement(pc_int, location=location, tag=tag)
 
         # Some statements are too difficult to know right away where they belong,

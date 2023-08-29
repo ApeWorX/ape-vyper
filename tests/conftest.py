@@ -158,7 +158,10 @@ def project(config):
     if cache.is_dir():
         shutil.rmtree(cache)
 
-    copy_tree(project_source_dir.as_posix(), project_dest_dir.as_posix())
+    project_dest_dir.mkdir()
+    os.chdir(project_dest_dir)
+    copy_tree(project_source_dir.as_posix(), ".")
+
     with config.using_project(project_dest_dir) as project:
         yield project
         if project.local_project._cache_folder.is_dir():
