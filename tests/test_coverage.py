@@ -18,7 +18,8 @@ EXPECTED_COVERAGE_REPORT = r"""
 \s*
 \s*Func\s+Stmts\s+Miss\s+Cover\s*
 \s*─+\s*
-\s*__builtin__\s+2\s+0\s+100\.0%\s*
+\s*__cannot_send_ether_to_nonpayable_function__\s+1\s+0\s+100\.0%\s*
+\s*__fallback_not_defined__\s+1\s+0\s+100\.0%\s*
 \s*_immutable_number\s+0\s+0\s+100\.0%\s*
 \s*_number\s+0\s+0\s+100\.0%\s*
 \s*foo_method\(\)\s+1\s+0\s+100\.0%\s*
@@ -32,7 +33,7 @@ EXPECTED_COVERAGE_REPORT = r"""
 \s*
 \s*Func\s+Stmts\s+Miss\s+Cover\s*
 \s*─+\s*
-\s*__builtin__\s+2\s+2\s+0\.0%\s*
+\s*__fallback_not_defined__\s+1\s+1\s+0\.0%\s*
 \s*include_me\s+1\s+1\s+0\.0%\s*
 \s*
 \s*line=0\.0%, func=0\.0%\s*

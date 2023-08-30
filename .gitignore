@@ -123,3 +123,6 @@ version.py
 **/.DS_Store
 *.swp
 *.swo
+
+# Generated contracts
+tests/contracts/passing_contracts/*_0*.vy
