@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+import time
 from fnmatch import fnmatch
 from importlib import import_module
 from pathlib import Path
@@ -168,7 +169,37 @@ class VyperCompiler(CompilerAPI):
     @cached_property
     def available_versions(self) -> List[Version]:
         # NOTE: Package version should already be included in available versions
-        return vvm.get_installable_vyper_versions()
+        max_retries = 10
+        buffer = 1
+        times_tried = 0
+        result = []
+
+        while times_tried < max_retries:
+            try:
+                result = vvm.get_installable_vyper_versions()
+            except ConnectionError as err:
+                if "API rate limit exceeded" in str(err):
+                    if times_tried == max_retries:
+                        raise VyperInstallError(str(err)) from err
+
+                    # Retry
+                    logger.warning(
+                        f"GitHub throttled requests. Retrying in '{buffer}' seconds. "
+                        f"Tries left={max_retries - times_tried}"
+                    )
+                    time.sleep(buffer)
+                    buffer += 1
+                    times_tried += 1
+                    continue
+
+                else:
+                    # Not a 403.
+                    raise VyperInstallError(str(err)) from err
+
+            # Succeeded.
+            break
+
+        return result
 
     @property
     def installed_versions(self) -> List[Version]:
