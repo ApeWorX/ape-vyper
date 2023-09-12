@@ -150,8 +150,13 @@ class VyperCompiler(CompilerAPI):
                     # Make sure we have the best compiler available to compile this
                     version_iter = version_spec.filter(self.available_versions)
 
-                except VyperInstallError:
+                except VyperInstallError as err:
                     # Possible internet issues. Try to stick to installed versions.
+                    logger.error(
+                        "Error checking available versions, possibly due to Internet problems. "
+                        "Attempting to use the best installed version. "
+                        f"Error: {err}"
+                    )
                     version_iter = version_spec.filter(self.installed_versions)
 
                 matching_versions = sorted(list(version_iter))
