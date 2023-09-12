@@ -339,6 +339,7 @@ class VyperCompiler(CompilerAPI):
         # Install all requires versions *before* building map
         for pragma_spec, path_set in source_path_by_pragma_spec.items():
             if list(pragma_spec.filter(self.installed_versions)):
+                # Already met.
                 continue
 
             versions_can_install = sorted(
