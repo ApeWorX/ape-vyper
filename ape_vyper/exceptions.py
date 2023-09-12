@@ -84,7 +84,7 @@ class NonPayableError(VyperRuntimeError):
         super().__init__(RuntimeErrorType.NONPAYABLE_CHECK, **kwargs)
 
 
-class InvalidCalldataOrValue(VyperRuntimeError):
+class InvalidCalldataOrValueError(VyperRuntimeError):
     """
     Raises on Vyper versions >= 0.3.10rc3 in place of NonPayableError.
     """
@@ -159,7 +159,7 @@ class FallbackNotDefinedError(VyperRuntimeError):
 
 RUNTIME_ERROR_MAP: Dict[RuntimeErrorType, Type[ContractLogicError]] = {
     RuntimeErrorType.NONPAYABLE_CHECK: NonPayableError,
-    RuntimeErrorType.INVALID_CALLDATA_OR_VALUE: InvalidCalldataOrValue,
+    RuntimeErrorType.INVALID_CALLDATA_OR_VALUE: InvalidCalldataOrValueError,
     RuntimeErrorType.INDEX_OUT_OF_RANGE: IndexOutOfRangeError,
     RuntimeErrorType.INTEGER_OVERFLOW: IntegerOverflowError,
     RuntimeErrorType.INTEGER_UNDERFLOW: IntegerUnderflowError,

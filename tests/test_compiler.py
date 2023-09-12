@@ -11,7 +11,7 @@ from ape_vyper.compiler import RuntimeErrorType
 from ape_vyper.exceptions import (
     FallbackNotDefinedError,
     IntegerOverflowError,
-    InvalidCalldataOrValue,
+    InvalidCalldataOrValueError,
     NonPayableError,
     VyperCompileError,
     VyperInstallError,
@@ -332,7 +332,7 @@ def test_enrich_error_int_overflow(geth_provider, traceback_contract, account):
 def test_enrich_error_non_payable_check(geth_provider, traceback_contract, account):
     if traceback_contract.contract_type.name.endswith("0310rc3"):
         # NOTE: Nonpayable error is combined with calldata check now.
-        with pytest.raises(InvalidCalldataOrValue):
+        with pytest.raises(InvalidCalldataOrValueError):
             traceback_contract.addBalance(123, sender=account, value=1)
 
     else:
