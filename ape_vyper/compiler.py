@@ -656,7 +656,11 @@ class VyperCompiler(CompilerAPI):
         return SourceTraceback.parse_obj([])
 
     def _get_traceback(
-        self, contract_src: ContractSource, trace: Iterator[TraceFrame], calldata: HexBytes
+        self,
+        contract_src: ContractSource,
+        trace: Iterator[TraceFrame],
+        calldata: HexBytes,
+        previous_depth: Optional[int] = None,
     ) -> SourceTraceback:
         traceback = SourceTraceback.parse_obj([])
         method_id = HexBytes(calldata[:4])
@@ -671,7 +675,9 @@ class VyperCompiler(CompilerAPI):
                     ext = Path(called_contract.source_id).suffix
                     if ext.endswith(".vy"):
                         # Called another Vyper contract.
-                        sub_trace = self._get_traceback(called_contract, trace, sub_calldata)
+                        sub_trace = self._get_traceback(
+                            called_contract, trace, sub_calldata, previous_depth=frame.depth
+                        )
                         traceback.extend(sub_trace)
 
                     else:
@@ -699,7 +705,9 @@ class VyperCompiler(CompilerAPI):
                     continue
 
             elif frame.op in _RETURN_OPCODES:
-                completed = True
+                # For the base CALL, don't mark as completed until trace is gone.
+                # This helps in cases where we failed to detect a subcall properly.
+                completed = previous_depth is not None
 
             pcs_to_try_adding = set()
             if "PUSH" in frame.op and frame.pc in contract_src.pcmap:
