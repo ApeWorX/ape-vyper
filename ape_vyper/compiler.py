@@ -669,7 +669,12 @@ class VyperCompiler(CompilerAPI):
                 called_contract, sub_calldata = self._create_contract_from_call(frame)
                 if called_contract:
                     ext = Path(called_contract.source_id).suffix
-                    if not ext.endswith(".vy"):
+                    if ext.endswith(".vy"):
+                        # Called another Vyper contract.
+                        sub_trace = self._get_traceback(called_contract, trace, sub_calldata)
+                        traceback.extend(sub_trace)
+
+                    else:
                         # Not a Vyper contract!
                         compiler = self.compiler_manager.registered_compilers[ext]
                         try:
@@ -684,11 +689,6 @@ class VyperCompiler(CompilerAPI):
                                     break
 
                             continue
-
-                    else:
-                        # Called another Vyper contract.
-                        sub_trace = self._get_traceback(called_contract, trace, sub_calldata)
-                        traceback.extend(sub_trace)
 
                 else:
                     # Contract not found. Fast forward out of this call.
