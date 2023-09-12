@@ -198,7 +198,7 @@ class VyperCompiler(CompilerAPI):
                     continue
 
                 else:
-                    # Not a 403.
+                    # This is a different error.
                     raise VyperInstallError(str(err)) from err
 
             # Succeeded.
