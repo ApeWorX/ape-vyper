@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 import time
+from base64 import b64encode
 from fnmatch import fnmatch
 from importlib import import_module
 from pathlib import Path
@@ -13,7 +14,7 @@ from ape.api.compiler import CompilerAPI
 from ape.exceptions import ContractLogicError
 from ape.logging import logger
 from ape.types import ContractSourceCoverage, ContractType, SourceTraceback, TraceFrame
-from ape.utils import cached_property, get_relative_path
+from ape.utils import GithubClient, cached_property, get_relative_path
 from eth_utils import is_0x_prefixed
 from ethpm_types import ASTNode, HexBytes, PackageManifest, PCMap, SourceMapItem
 from ethpm_types.ast import ASTClassification
@@ -173,10 +174,14 @@ class VyperCompiler(CompilerAPI):
         buffer = 1
         times_tried = 0
         result = []
+        headers = None
+        if token := os.environ.get(GithubClient.TOKEN_KEY):
+            auth = b64encode(token.encode()).decode()
+            headers = {"Authorization": f"Basic {auth}"}
 
         while times_tried < max_retries:
             try:
-                result = vvm.get_installable_vyper_versions()
+                result = vvm.get_installable_vyper_versions(headers=headers)
             except ConnectionError as err:
                 if "API rate limit exceeded" in str(err):
                     if times_tried == max_retries:
