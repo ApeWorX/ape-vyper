@@ -42,6 +42,7 @@ CONTRACT_VERSION_GEN_MAP = {
     "": (
         "0.3.7",
         "0.3.9",
+        "0.3.10rc3",
     ),
     "sub_reverts": ALL_VERSIONS,
 }
