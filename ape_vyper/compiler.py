@@ -366,11 +366,10 @@ class VyperCompiler(CompilerAPI):
 
         # Sort contract_filepaths to promote consistent, reproduce-able behavior
         for path in sorted(contract_filepaths):
-            pragma = get_pragma_spec(path.read_text())
-            if not pragma:
-                source_paths_without_pragma.add(path)
-            else:
+            if pragma := get_pragma_spec(path.read_text()):
                 _safe_append(source_path_by_pragma_spec, pragma, path)
+            else:
+                source_paths_without_pragma.add(path)
 
         # Install all requires versions *before* building map
         for pragma_spec, path_set in source_path_by_pragma_spec.items():
