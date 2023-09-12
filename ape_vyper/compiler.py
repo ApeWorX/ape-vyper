@@ -893,6 +893,13 @@ def _get_pcmap(bytecode: Dict, src_map: List[SourceMapItem], opcodes: List[str])
         elif "fallback function" in error_type:
             error_str = RuntimeErrorType.FALLBACK_NOT_DEFINED.value
             use_loc = False
+        elif "bad calldatasize or callvalue" in error_type:
+            # Only on >=0.3.10rc3.
+            # NOTE: We are no longer able to get Nonpayable checks errors since they
+            # are now combined.
+            error_str = RuntimeErrorType.INVALID_CALLDATA_OR_VALUE.value
+        elif "nonpayable check" in error_type:
+            error_str = RuntimeErrorType.NONPAYABLE_CHECK.value
         else:
             error_str = ""
             error_type_name = error_type.upper().replace(" ", "_")

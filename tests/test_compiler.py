@@ -11,6 +11,7 @@ from ape_vyper.compiler import RuntimeErrorType
 from ape_vyper.exceptions import (
     FallbackNotDefinedError,
     IntegerOverflowError,
+    InvalidCalldataOrValue,
     NonPayableError,
     VyperCompileError,
     VyperInstallError,
@@ -267,7 +268,13 @@ def test_pc_map(compiler, project, src, vers):
 
     # Verify non-payable checks.
     nonpayable_checks = _all(RuntimeErrorType.NONPAYABLE_CHECK)
-    assert len(nonpayable_checks) >= 1
+    if nonpayable_checks:
+        assert len(nonpayable_checks) >= 1
+    else:
+        # NOTE: Vyper 0.3.10rc3 doesn't have these anymore.
+        # But they do have a new error type instead.
+        checks = _all(RuntimeErrorType.INVALID_CALLDATA_OR_VALUE)
+        assert len(checks) >= 1
 
     # Verify integer overflow checks
     overflows = _all(RuntimeErrorType.INTEGER_OVERFLOW)
@@ -324,7 +331,9 @@ def test_enrich_error_int_overflow(geth_provider, traceback_contract, account):
 
 def test_enrich_error_non_payable_check(geth_provider, traceback_contract, account):
     if traceback_contract.contract_type.name.endswith("0310rc3"):
-        pytest.skip("Vyper 0.3.10rc3 is missing the non-payable check.")
+        # NOTE: Nonpayable error is combined with calldata check now.
+        with pytest.raises(InvalidCalldataOrValue):
+            traceback_contract.addBalance(123, sender=account, value=1)
 
     else:
         with pytest.raises(NonPayableError):

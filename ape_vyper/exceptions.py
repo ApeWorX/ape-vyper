@@ -40,6 +40,7 @@ class VyperCompileError(VyperCompilerPluginError):
 
 class RuntimeErrorType(Enum):
     NONPAYABLE_CHECK = "Cannot send ether to non-payable function"
+    INVALID_CALLDATA_OR_VALUE = "Invalid calldata or value"
     INDEX_OUT_OF_RANGE = "Index out of range"
     INTEGER_OVERFLOW = "Integer overflow"
     INTEGER_UNDERFLOW = "Integer underflow"
@@ -81,6 +82,15 @@ class NonPayableError(VyperRuntimeError):
 
     def __init__(self, **kwargs):
         super().__init__(RuntimeErrorType.NONPAYABLE_CHECK, **kwargs)
+
+
+class InvalidCalldataOrValue(VyperRuntimeError):
+    """
+    Raises on Vyper versions >= 0.3.10rc3 in place of NonPayableError.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(RuntimeErrorType.INVALID_CALLDATA_OR_VALUE, **kwargs)
 
 
 class IndexOutOfRangeError(VyperRuntimeError, IndexError):
@@ -149,6 +159,7 @@ class FallbackNotDefinedError(VyperRuntimeError):
 
 RUNTIME_ERROR_MAP: Dict[RuntimeErrorType, Type[ContractLogicError]] = {
     RuntimeErrorType.NONPAYABLE_CHECK: NonPayableError,
+    RuntimeErrorType.INVALID_CALLDATA_OR_VALUE: InvalidCalldataOrValue,
     RuntimeErrorType.INDEX_OUT_OF_RANGE: IndexOutOfRangeError,
     RuntimeErrorType.INTEGER_OVERFLOW: IntegerOverflowError,
     RuntimeErrorType.INTEGER_UNDERFLOW: IntegerUnderflowError,
