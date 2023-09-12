@@ -798,6 +798,15 @@ class VyperCompiler(CompilerAPI):
                         name = error_type.name.lower()
                         full_name = name
 
+                    if (
+                        dev == RuntimeErrorType.INVALID_CALLDATA_OR_VALUE.value
+                        and len(traceback.source_statements) > 0
+                    ):
+                        # NOTE: Skip adding invalid calldata / value checks when
+                        # we have already hit source statements. The reason for this
+                        # is because of misleading Vyper optimizations sharing revert PCs.
+                        continue
+
                     # Empty source (is builtin)
                     traceback.add_builtin_jump(
                         name,
