@@ -147,9 +147,11 @@ class VyperCompiler(CompilerAPI):
             # Make sure we have the compiler available to compile this
             version_spec = get_pragma_spec(source)
             if version_spec:
-                matching_versions = list(version_spec.filter(self.available_versions))
+                matching_versions = sorted(
+                    list(version_spec.filter(self.available_versions)), reverse=True
+                )
                 if matching_versions:
-                    versions.add(str(matching_versions[-1]))
+                    versions.add(str(matching_versions[0]))
 
         return versions
 
@@ -339,24 +341,31 @@ class VyperCompiler(CompilerAPI):
             if list(pragma_spec.filter(self.installed_versions)):
                 continue
 
-            versions_can_install = list(pragma_spec.filter(self.available_versions))
+            versions_can_install = sorted(
+                list(pragma_spec.filter(self.available_versions)), reverse=True
+            )
             if versions_can_install:
-                available_vyper_version = versions_can_install[-1]
-                if available_vyper_version != self.package_version:
-                    _install_vyper(available_vyper_version)
-                elif available_vyper_version:
-                    raise VyperInstallError(
-                        f"Unable to install vyper version '{available_vyper_version}'."
-                    )
+                did_install = False
+                for version in versions_can_install:
+                    if version == self.package_version:
+                        break
+                    else:
+                        _install_vyper(version)
+                        did_install = True
+                        break
+
+                if not did_install:
+                    versions_str = ", ".join([f"{v}" for v in versions_can_install])
+                    raise VyperInstallError(f"Unable to install vyper version(s) '{versions_str}'.")
             else:
                 raise VyperInstallError("No available version to install.")
 
         # By this point, all the of necessary versions will be installed.
         # Thus, we will select only the best versions to use per source set.
         for pragma_spec, path_set in source_path_by_pragma_spec.items():
-            versions = list(pragma_spec.filter(self.installed_versions))
+            versions = sorted(list(pragma_spec.filter(self.installed_versions)), reverse=True)
             if versions:
-                _safe_append(version_map, versions[-1], path_set)
+                _safe_append(version_map, versions[0], path_set)
 
         if not self.installed_versions:
             # If we have no installed versions by this point, we need to install one.
