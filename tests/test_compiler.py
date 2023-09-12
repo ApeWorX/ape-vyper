@@ -323,8 +323,12 @@ def test_enrich_error_int_overflow(geth_provider, traceback_contract, account):
 
 
 def test_enrich_error_non_payable_check(geth_provider, traceback_contract, account):
-    with pytest.raises(NonPayableError):
-        traceback_contract.addBalance(123, sender=account, value=1)
+    if traceback_contract.contract_type.name.endswith("0310rc3"):
+        pytest.skip("Vyper 0.3.10rc3 is missing the non-payable check.")
+
+    else:
+        with pytest.raises(NonPayableError):
+            traceback_contract.addBalance(123, sender=account, value=1)
 
 
 def test_enrich_error_fallback(geth_provider, traceback_contract, account):

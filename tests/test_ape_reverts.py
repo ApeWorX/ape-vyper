@@ -10,7 +10,7 @@ def older_reverts_contract(account, project, geth_provider, request):
     return container.deploy(sender=account)
 
 
-@pytest.fixture(params=("037", "039"))
+@pytest.fixture(params=("037", "039", "0310rc3"))
 def reverts_contract_instance(account, project, geth_provider, request):
     sub_reverts_container = project.get_contract(f"sub_reverts_{request.param}")
     sub_reverts = sub_reverts_container.deploy(sender=account)
