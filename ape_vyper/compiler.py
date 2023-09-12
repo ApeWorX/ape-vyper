@@ -68,7 +68,7 @@ def _install_vyper(version: Version):
         ) from err
 
 
-def get_pragma_spec(source: str) -> Optional[SpecifierSet]:
+def get_pragma_spec(source: Union[str, Path]) -> Optional[SpecifierSet]:
     """
     Extracts pragma information from Vyper source code.
 
@@ -78,7 +78,8 @@ def get_pragma_spec(source: str) -> Optional[SpecifierSet]:
     Returns:
         ``packaging.specifiers.SpecifierSet``, or None if no valid pragma is found.
     """
-    pragma_match = next(re.finditer(r"(?:\n|^)\s*#\s*@version\s*([^\n]*)", source), None)
+    source_str = source if isinstance(source, str) else source.read_text()
+    pragma_match = next(re.finditer(r"(?:\n|^)\s*#\s*@version\s*([^\n]*)", source_str), None)
     if pragma_match is None:
         return None  # Try compiling with latest
 
@@ -144,13 +145,11 @@ class VyperCompiler(CompilerAPI):
     def get_versions(self, all_paths: List[Path]) -> Set[str]:
         versions = set()
         for path in all_paths:
-            source = path.read_text()
-
-            # Make sure we have the compiler available to compile this
-            version_spec = get_pragma_spec(source)
-            if version_spec:
+            if version_spec := get_pragma_spec(path):
                 try:
+                    # Make sure we have the best compiler available to compile this
                     version_iter = version_spec.filter(self.available_versions)
+
                 except VyperInstallError:
                     # Possible internet issues. Try to stick to installed versions.
                     version_iter = version_spec.filter(self.installed_versions)
@@ -370,7 +369,7 @@ class VyperCompiler(CompilerAPI):
 
         # Sort contract_filepaths to promote consistent, reproduce-able behavior
         for path in sorted(contract_filepaths):
-            if pragma := get_pragma_spec(path.read_text()):
+            if pragma := get_pragma_spec(path):
                 _safe_append(source_path_by_pragma_spec, pragma, path)
             else:
                 source_paths_without_pragma.add(path)
