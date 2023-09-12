@@ -295,7 +295,7 @@ class VyperCompiler(CompilerAPI):
                     pcmap = (
                         _get_legacy_pcmap(ast, src_map, opcodes)
                         if vyper_version <= Version("0.3.7")
-                        else _get_pcmap(bytecode, src_map, opcodes)
+                        else _get_pcmap(bytecode)
                     )
 
                     # Find content-specified dev messages.
@@ -865,7 +865,7 @@ def _has_empty_revert(opcodes: List[str]) -> bool:
     )
 
 
-def _get_pcmap(bytecode: Dict, src_map: List[SourceMapItem], opcodes: List[str]) -> PCMap:
+def _get_pcmap(bytecode: Dict) -> PCMap:
     # Find the non payable value check.
     src_info = bytecode["sourceMapFull"]
     pc_data = {pc: {"location": ln} for pc, ln in src_info["pc_pos_map"].items()}
