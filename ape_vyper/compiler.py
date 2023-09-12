@@ -149,9 +149,13 @@ class VyperCompiler(CompilerAPI):
             # Make sure we have the compiler available to compile this
             version_spec = get_pragma_spec(source)
             if version_spec:
-                matching_versions = sorted(
-                    list(version_spec.filter(self.available_versions)), reverse=True
-                )
+                try:
+                    version_iter = version_spec.filter(self.available_versions)
+                except VyperInstallError:
+                    # Possible internet issues. Try to stick to installed versions.
+                    version_iter = version_spec.filter(self.installed_versions)
+
+                matching_versions = sorted(list(version_iter))
                 if matching_versions:
                     versions.add(str(matching_versions[0]))
 
