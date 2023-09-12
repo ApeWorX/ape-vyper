@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 from fnmatch import fnmatch
+from importlib import import_module
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union, cast
 
@@ -9,6 +10,7 @@ import vvm  # type: ignore
 from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
 from ape.exceptions import ContractLogicError
+from ape.logging import logger
 from ape.types import ContractSourceCoverage, ContractType, SourceTraceback, TraceFrame
 from ape.utils import cached_property, get_relative_path
 from eth_utils import is_0x_prefixed
@@ -17,7 +19,8 @@ from ethpm_types.ast import ASTClassification
 from ethpm_types.contract_type import SourceMap
 from ethpm_types.source import ContractSource, Function, SourceLocation
 from evm_trace.enums import CALL_OPCODES
-from semantic_version import NpmSpec, Version  # type: ignore
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
+from packaging.version import Version
 from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper.exceptions import (
@@ -63,27 +66,29 @@ def _install_vyper(version: Version):
         ) from err
 
 
-def get_pragma_spec(source: str) -> Optional[NpmSpec]:
+def get_pragma_spec(source: str) -> Optional[SpecifierSet]:
     """
     Extracts pragma information from Vyper source code.
 
     Args:
-        source: Vyper source code
+        source (str): Vyper source code
 
     Returns:
-        NpmSpec object or None, if no valid pragma is found
+        ``packaging.specifiers.SpecifierSet``, or None if no valid pragma is found.
     """
     pragma_match = next(re.finditer(r"(?:\n|^)\s*#\s*@version\s*([^\n]*)", source), None)
     if pragma_match is None:
         return None  # Try compiling with latest
 
-    pragma_string = pragma_match.groups()[0]
-    pragma_string = " ".join(pragma_string.split())
+    raw_pragma = pragma_match.groups()[0]
+    pragma_str = " ".join(raw_pragma.split()).replace("^", "~=")
+    if pragma_str and pragma_str[0].isnumeric():
+        pragma_str = f"=={pragma_str}"
 
     try:
-        return NpmSpec(pragma_string)
-
-    except ValueError:
+        return SpecifierSet(pragma_str)
+    except InvalidSpecifier:
+        logger.warning(f"Invalid pragma spec: '{raw_pragma}'. Trying latest.")
         return None
 
 
@@ -142,21 +147,21 @@ class VyperCompiler(CompilerAPI):
             # Make sure we have the compiler available to compile this
             version_spec = get_pragma_spec(source)
             if version_spec:
-                versions.add(str(version_spec.select(self.available_versions)))
+                matching_versions = list(version_spec.filter(self.available_versions))
+                if matching_versions:
+                    versions.add(str(matching_versions[-1]))
 
         return versions
 
     @cached_property
     def package_version(self) -> Optional[Version]:
         try:
-            import vyper  # type: ignore
-
-        except ImportError:
+            vyper = import_module("vyper")
+        except ModuleNotFoundError:
             return None
 
-        # Strip off parts from source-installation
-        version = Version.coerce(vyper.__version__)
-        return Version(major=version.major, minor=version.minor, patch=version.patch)
+        version_str = getattr(vyper, "__version__", None)
+        return Version(version_str) if version_str else None
 
     @cached_property
     def available_versions(self) -> List[Version]:
@@ -167,9 +172,9 @@ class VyperCompiler(CompilerAPI):
     def installed_versions(self) -> List[Version]:
         # Doing this so it prefers package version
         package_version = self.package_version
-        package_version = [package_version] if package_version else []
+        versions = [package_version] if package_version else []
         # currently package version is [] this should be ok
-        return package_version + vvm.get_installed_vyper_versions()
+        return versions + vvm.get_installed_vyper_versions()
 
     @cached_property
     def vyper_json(self):
@@ -318,39 +323,40 @@ class VyperCompiler(CompilerAPI):
         self, contract_filepaths: List[Path], base_path: Optional[Path] = None
     ) -> Dict[Version, Set[Path]]:
         version_map: Dict[Version, Set[Path]] = {}
-        source_path_by_pragma_spec: Dict[NpmSpec, Set[Path]] = {}
+        source_path_by_pragma_spec: Dict[SpecifierSet, Set[Path]] = {}
         source_paths_without_pragma = set()
 
         # Sort contract_filepaths to promote consistent, reproduce-able behavior
         for path in sorted(contract_filepaths):
-            pragma_spec = get_pragma_spec(path.read_text())
-            if not pragma_spec:
+            pragma = get_pragma_spec(path.read_text())
+            if not pragma:
                 source_paths_without_pragma.add(path)
             else:
-                _safe_append(source_path_by_pragma_spec, pragma_spec, path)
+                _safe_append(source_path_by_pragma_spec, pragma, path)
 
         # Install all requires versions *before* building map
         for pragma_spec, path_set in source_path_by_pragma_spec.items():
-            can_install = pragma_spec.select(self.installed_versions)
-            if can_install:
+            if list(pragma_spec.filter(self.installed_versions)):
                 continue
 
-            available_vyper_version = pragma_spec.select(self.available_versions)
-            if available_vyper_version and available_vyper_version != self.package_version:
-                _install_vyper(available_vyper_version)
-
-            elif available_vyper_version:
-                raise VyperInstallError(
-                    f"Unable to install vyper version '{available_vyper_version}'."
-                )
+            versions_can_install = list(pragma_spec.filter(self.available_versions))
+            if versions_can_install:
+                available_vyper_version = versions_can_install[-1]
+                if available_vyper_version != self.package_version:
+                    _install_vyper(available_vyper_version)
+                elif available_vyper_version:
+                    raise VyperInstallError(
+                        f"Unable to install vyper version '{available_vyper_version}'."
+                    )
             else:
                 raise VyperInstallError("No available version to install.")
 
         # By this point, all the of necessary versions will be installed.
         # Thus, we will select only the best versions to use per source set.
         for pragma_spec, path_set in source_path_by_pragma_spec.items():
-            version = pragma_spec.select(self.installed_versions)
-            _safe_append(version_map, version, path_set)
+            versions = list(pragma_spec.filter(self.installed_versions))
+            if versions:
+                _safe_append(version_map, versions[-1], path_set)
 
         if not self.installed_versions:
             # If we have no installed versions by this point, we need to install one.
@@ -831,7 +837,7 @@ class VyperCompiler(CompilerAPI):
         return traceback
 
 
-def _safe_append(data: Dict, version: Union[Version, NpmSpec], paths: Union[Path, Set]):
+def _safe_append(data: Dict, version: Union[Version, SpecifierSet], paths: Union[Path, Set]):
     if isinstance(paths, Path):
         paths = {paths}
     if version in data:
