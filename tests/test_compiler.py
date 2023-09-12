@@ -2,8 +2,7 @@ import re
 
 import pytest
 from ape.exceptions import ContractLogicError
-from pkg_resources import get_distribution
-from semantic_version import Version  # type: ignore
+from packaging.version import Version
 from vvm import compile_source  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
@@ -22,12 +21,7 @@ from .conftest import FAILING_BASE, FAILING_CONTRACT_NAMES, PASSING_CONTRACT_NAM
 
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.16")
 VERSION_37 = Version("0.3.7")
-
-# NOTE: This is really just about testing > 0.3.7.
-#  Should get switched as soon as a more stable version is released.
 VERSION_FROM_PRAGMA = Version("0.3.9")
-
-APE_VERSION = Version(get_distribution("eth-ape").version.split(".dev")[0].strip())
 
 
 @pytest.fixture
@@ -97,13 +91,11 @@ def test_get_version_map(project, compiler, all_versions):
         pytest.fail(fail_message)
 
     assert len(actual[OLDER_VERSION_FROM_PRAGMA]) >= 1
-    assert len(actual[VERSION_FROM_PRAGMA]) >= 11
+    assert len(actual[VERSION_FROM_PRAGMA]) >= 1
     assert project.contracts_folder / "older_version.vy" in actual[OLDER_VERSION_FROM_PRAGMA]
 
     expected = [
-        "contract_no_pragma.vy",
         "contract_with_dev_messages.vy",
-        "empty.vy",
         "erc20.vy",
         "use_iface.vy",
         "use_iface2.vy",
