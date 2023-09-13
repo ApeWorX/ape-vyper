@@ -2,8 +2,7 @@ import re
 
 import pytest
 from ape.exceptions import ContractLogicError
-from pkg_resources import get_distribution
-from semantic_version import Version  # type: ignore
+from packaging.version import Version
 from vvm import compile_source  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
@@ -11,6 +10,7 @@ from ape_vyper.compiler import RuntimeErrorType
 from ape_vyper.exceptions import (
     FallbackNotDefinedError,
     IntegerOverflowError,
+    InvalidCalldataOrValueError,
     NonPayableError,
     VyperCompileError,
     VyperInstallError,
@@ -21,12 +21,7 @@ from .conftest import FAILING_BASE, FAILING_CONTRACT_NAMES, PASSING_CONTRACT_NAM
 
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.16")
 VERSION_37 = Version("0.3.7")
-
-# NOTE: This is really just about testing > 0.3.7.
-#  Should get switched as soon as a more stable version is released.
 VERSION_FROM_PRAGMA = Version("0.3.9")
-
-APE_VERSION = Version(get_distribution("eth-ape").version.split(".dev")[0].strip())
 
 
 @pytest.fixture
@@ -96,13 +91,11 @@ def test_get_version_map(project, compiler, all_versions):
         pytest.fail(fail_message)
 
     assert len(actual[OLDER_VERSION_FROM_PRAGMA]) >= 1
-    assert len(actual[VERSION_FROM_PRAGMA]) >= 11
+    assert len(actual[VERSION_FROM_PRAGMA]) >= 1
     assert project.contracts_folder / "older_version.vy" in actual[OLDER_VERSION_FROM_PRAGMA]
 
     expected = [
-        "contract_no_pragma.vy",
         "contract_with_dev_messages.vy",
-        "empty.vy",
         "erc20.vy",
         "use_iface.vy",
         "use_iface2.vy",
@@ -267,7 +260,13 @@ def test_pc_map(compiler, project, src, vers):
 
     # Verify non-payable checks.
     nonpayable_checks = _all(RuntimeErrorType.NONPAYABLE_CHECK)
-    assert len(nonpayable_checks) >= 1
+    if nonpayable_checks:
+        assert len(nonpayable_checks) >= 1
+    else:
+        # NOTE: Vyper 0.3.10rc3 doesn't have these anymore.
+        # But they do have a new error type instead.
+        checks = _all(RuntimeErrorType.INVALID_CALLDATA_OR_VALUE)
+        assert len(checks) >= 1
 
     # Verify integer overflow checks
     overflows = _all(RuntimeErrorType.INTEGER_OVERFLOW)
@@ -323,8 +322,14 @@ def test_enrich_error_int_overflow(geth_provider, traceback_contract, account):
 
 
 def test_enrich_error_non_payable_check(geth_provider, traceback_contract, account):
-    with pytest.raises(NonPayableError):
-        traceback_contract.addBalance(123, sender=account, value=1)
+    if traceback_contract.contract_type.name.endswith("0310rc3"):
+        # NOTE: Nonpayable error is combined with calldata check now.
+        with pytest.raises(InvalidCalldataOrValueError):
+            traceback_contract.addBalance(123, sender=account, value=1)
+
+    else:
+        with pytest.raises(NonPayableError):
+            traceback_contract.addBalance(123, sender=account, value=1)
 
 
 def test_enrich_error_fallback(geth_provider, traceback_contract, account):

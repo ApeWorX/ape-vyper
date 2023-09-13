@@ -1,7 +1,10 @@
 import os
 import re
 import shutil
+import time
+from base64 import b64encode
 from fnmatch import fnmatch
+from importlib import import_module
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union, cast
 
@@ -9,15 +12,17 @@ import vvm  # type: ignore
 from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
 from ape.exceptions import ContractLogicError
+from ape.logging import logger
 from ape.types import ContractSourceCoverage, ContractType, SourceTraceback, TraceFrame
-from ape.utils import cached_property, get_relative_path
+from ape.utils import GithubClient, cached_property, get_relative_path
 from eth_utils import is_0x_prefixed
 from ethpm_types import ASTNode, HexBytes, PackageManifest, PCMap, SourceMapItem
 from ethpm_types.ast import ASTClassification
 from ethpm_types.contract_type import SourceMap
 from ethpm_types.source import ContractSource, Function, SourceLocation
 from evm_trace.enums import CALL_OPCODES
-from semantic_version import NpmSpec, Version  # type: ignore
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
+from packaging.version import Version
 from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper.exceptions import (
@@ -63,27 +68,30 @@ def _install_vyper(version: Version):
         ) from err
 
 
-def get_pragma_spec(source: str) -> Optional[NpmSpec]:
+def get_pragma_spec(source: Union[str, Path]) -> Optional[SpecifierSet]:
     """
     Extracts pragma information from Vyper source code.
 
     Args:
-        source: Vyper source code
+        source (str): Vyper source code
 
     Returns:
-        NpmSpec object or None, if no valid pragma is found
+        ``packaging.specifiers.SpecifierSet``, or None if no valid pragma is found.
     """
-    pragma_match = next(re.finditer(r"(?:\n|^)\s*#\s*@version\s*([^\n]*)", source), None)
+    source_str = source if isinstance(source, str) else source.read_text()
+    pragma_match = next(re.finditer(r"(?:\n|^)\s*#\s*@version\s*([^\n]*)", source_str), None)
     if pragma_match is None:
         return None  # Try compiling with latest
 
-    pragma_string = pragma_match.groups()[0]
-    pragma_string = " ".join(pragma_string.split())
+    raw_pragma = pragma_match.groups()[0]
+    pragma_str = " ".join(raw_pragma.split()).replace("^", "~=")
+    if pragma_str and pragma_str[0].isnumeric():
+        pragma_str = f"=={pragma_str}"
 
     try:
-        return NpmSpec(pragma_string)
-
-    except ValueError:
+        return SpecifierSet(pragma_str)
+    except InvalidSpecifier:
+        logger.warning(f"Invalid pragma spec: '{raw_pragma}'. Trying latest.")
         return None
 
 
@@ -137,39 +145,82 @@ class VyperCompiler(CompilerAPI):
     def get_versions(self, all_paths: List[Path]) -> Set[str]:
         versions = set()
         for path in all_paths:
-            source = path.read_text()
+            if version_spec := get_pragma_spec(path):
+                try:
+                    # Make sure we have the best compiler available to compile this
+                    version_iter = version_spec.filter(self.available_versions)
 
-            # Make sure we have the compiler available to compile this
-            version_spec = get_pragma_spec(source)
-            if version_spec:
-                versions.add(str(version_spec.select(self.available_versions)))
+                except VyperInstallError as err:
+                    # Possible internet issues. Try to stick to installed versions.
+                    logger.error(
+                        "Error checking available versions, possibly due to Internet problems. "
+                        "Attempting to use the best installed version. "
+                        f"Error: {err}"
+                    )
+                    version_iter = version_spec.filter(self.installed_versions)
+
+                matching_versions = sorted(list(version_iter))
+                if matching_versions:
+                    versions.add(str(matching_versions[0]))
 
         return versions
 
     @cached_property
     def package_version(self) -> Optional[Version]:
         try:
-            import vyper  # type: ignore
-
-        except ImportError:
+            vyper = import_module("vyper")
+        except ModuleNotFoundError:
             return None
 
-        # Strip off parts from source-installation
-        version = Version.coerce(vyper.__version__)
-        return Version(major=version.major, minor=version.minor, patch=version.patch)
+        version_str = getattr(vyper, "__version__", None)
+        return Version(version_str) if version_str else None
 
     @cached_property
     def available_versions(self) -> List[Version]:
         # NOTE: Package version should already be included in available versions
-        return vvm.get_installable_vyper_versions()
+        max_retries = 10
+        buffer = 1
+        times_tried = 0
+        result = []
+        headers = None
+        if token := os.environ.get(GithubClient.TOKEN_KEY):
+            auth = b64encode(token.encode()).decode()
+            headers = {"Authorization": f"Basic {auth}"}
+
+        while times_tried < max_retries:
+            try:
+                result = vvm.get_installable_vyper_versions(headers=headers)
+            except ConnectionError as err:
+                if "API rate limit exceeded" in str(err):
+                    if times_tried == max_retries:
+                        raise VyperInstallError(str(err)) from err
+
+                    # Retry
+                    logger.warning(
+                        f"GitHub throttled requests. Retrying in '{buffer}' seconds. "
+                        f"Tries left={max_retries - times_tried}"
+                    )
+                    time.sleep(buffer)
+                    buffer += 1
+                    times_tried += 1
+                    continue
+
+                else:
+                    # This is a different error.
+                    raise VyperInstallError(str(err)) from err
+
+            # Succeeded.
+            break
+
+        return result
 
     @property
     def installed_versions(self) -> List[Version]:
         # Doing this so it prefers package version
         package_version = self.package_version
-        package_version = [package_version] if package_version else []
+        versions = [package_version] if package_version else []
         # currently package version is [] this should be ok
-        return package_version + vvm.get_installed_vyper_versions()
+        return versions + vvm.get_installed_vyper_versions()
 
     @cached_property
     def vyper_json(self):
@@ -288,7 +339,7 @@ class VyperCompiler(CompilerAPI):
                     pcmap = (
                         _get_legacy_pcmap(ast, src_map, opcodes)
                         if vyper_version <= Version("0.3.7")
-                        else _get_pcmap(bytecode, src_map, opcodes)
+                        else _get_pcmap(bytecode)
                     )
 
                     # Find content-specified dev messages.
@@ -318,39 +369,47 @@ class VyperCompiler(CompilerAPI):
         self, contract_filepaths: List[Path], base_path: Optional[Path] = None
     ) -> Dict[Version, Set[Path]]:
         version_map: Dict[Version, Set[Path]] = {}
-        source_path_by_pragma_spec: Dict[NpmSpec, Set[Path]] = {}
+        source_path_by_pragma_spec: Dict[SpecifierSet, Set[Path]] = {}
         source_paths_without_pragma = set()
 
         # Sort contract_filepaths to promote consistent, reproduce-able behavior
         for path in sorted(contract_filepaths):
-            pragma_spec = get_pragma_spec(path.read_text())
-            if not pragma_spec:
-                source_paths_without_pragma.add(path)
+            if pragma := get_pragma_spec(path):
+                _safe_append(source_path_by_pragma_spec, pragma, path)
             else:
-                _safe_append(source_path_by_pragma_spec, pragma_spec, path)
+                source_paths_without_pragma.add(path)
 
         # Install all requires versions *before* building map
         for pragma_spec, path_set in source_path_by_pragma_spec.items():
-            can_install = pragma_spec.select(self.installed_versions)
-            if can_install:
+            if list(pragma_spec.filter(self.installed_versions)):
+                # Already met.
                 continue
 
-            available_vyper_version = pragma_spec.select(self.available_versions)
-            if available_vyper_version and available_vyper_version != self.package_version:
-                _install_vyper(available_vyper_version)
+            versions_can_install = sorted(
+                list(pragma_spec.filter(self.available_versions)), reverse=True
+            )
+            if versions_can_install:
+                did_install = False
+                for version in versions_can_install:
+                    if version == self.package_version:
+                        break
+                    else:
+                        _install_vyper(version)
+                        did_install = True
+                        break
 
-            elif available_vyper_version:
-                raise VyperInstallError(
-                    f"Unable to install vyper version '{available_vyper_version}'."
-                )
+                if not did_install:
+                    versions_str = ", ".join([f"{v}" for v in versions_can_install])
+                    raise VyperInstallError(f"Unable to install vyper version(s) '{versions_str}'.")
             else:
                 raise VyperInstallError("No available version to install.")
 
         # By this point, all the of necessary versions will be installed.
         # Thus, we will select only the best versions to use per source set.
         for pragma_spec, path_set in source_path_by_pragma_spec.items():
-            version = pragma_spec.select(self.installed_versions)
-            _safe_append(version_map, version, path_set)
+            versions = sorted(list(pragma_spec.filter(self.installed_versions)), reverse=True)
+            if versions:
+                _safe_append(version_map, versions[0], path_set)
 
         if not self.installed_versions:
             # If we have no installed versions by this point, we need to install one.
@@ -640,7 +699,11 @@ class VyperCompiler(CompilerAPI):
         return SourceTraceback.parse_obj([])
 
     def _get_traceback(
-        self, contract_src: ContractSource, trace: Iterator[TraceFrame], calldata: HexBytes
+        self,
+        contract_src: ContractSource,
+        trace: Iterator[TraceFrame],
+        calldata: HexBytes,
+        previous_depth: Optional[int] = None,
     ) -> SourceTraceback:
         traceback = SourceTraceback.parse_obj([])
         method_id = HexBytes(calldata[:4])
@@ -653,7 +716,14 @@ class VyperCompiler(CompilerAPI):
                 called_contract, sub_calldata = self._create_contract_from_call(frame)
                 if called_contract:
                     ext = Path(called_contract.source_id).suffix
-                    if not ext.endswith(".vy"):
+                    if ext.endswith(".vy"):
+                        # Called another Vyper contract.
+                        sub_trace = self._get_traceback(
+                            called_contract, trace, sub_calldata, previous_depth=frame.depth
+                        )
+                        traceback.extend(sub_trace)
+
+                    else:
                         # Not a Vyper contract!
                         compiler = self.compiler_manager.registered_compilers[ext]
                         try:
@@ -669,11 +739,6 @@ class VyperCompiler(CompilerAPI):
 
                             continue
 
-                    else:
-                        # Called another Vyper contract.
-                        sub_trace = self._get_traceback(called_contract, trace, sub_calldata)
-                        traceback.extend(sub_trace)
-
                 else:
                     # Contract not found. Fast forward out of this call.
                     for fr in trace:
@@ -683,7 +748,9 @@ class VyperCompiler(CompilerAPI):
                     continue
 
             elif frame.op in _RETURN_OPCODES:
-                completed = True
+                # For the base CALL, don't mark as completed until trace is gone.
+                # This helps in cases where we failed to detect a subcall properly.
+                completed = previous_depth is not None
 
             pcs_to_try_adding = set()
             if "PUSH" in frame.op and frame.pc in contract_src.pcmap:
@@ -774,6 +841,15 @@ class VyperCompiler(CompilerAPI):
                         name = error_type.name.lower()
                         full_name = name
 
+                    if (
+                        dev == RuntimeErrorType.INVALID_CALLDATA_OR_VALUE.value
+                        and len(traceback.source_statements) > 0
+                    ):
+                        # NOTE: Skip adding invalid calldata / value checks when
+                        # we have already hit source statements. The reason for this
+                        # is because of misleading Vyper optimizations sharing revert PCs.
+                        continue
+
                     # Empty source (is builtin)
                     traceback.add_builtin_jump(
                         name,
@@ -831,7 +907,7 @@ class VyperCompiler(CompilerAPI):
         return traceback
 
 
-def _safe_append(data: Dict, version: Union[Version, NpmSpec], paths: Union[Path, Set]):
+def _safe_append(data: Dict, version: Union[Version, SpecifierSet], paths: Union[Path, Set]):
     if isinstance(paths, Path):
         paths = {paths}
     if version in data:
@@ -850,7 +926,7 @@ def _has_empty_revert(opcodes: List[str]) -> bool:
     )
 
 
-def _get_pcmap(bytecode: Dict, src_map: List[SourceMapItem], opcodes: List[str]) -> PCMap:
+def _get_pcmap(bytecode: Dict) -> PCMap:
     # Find the non payable value check.
     src_info = bytecode["sourceMapFull"]
     pc_data = {pc: {"location": ln} for pc, ln in src_info["pc_pos_map"].items()}
@@ -878,6 +954,13 @@ def _get_pcmap(bytecode: Dict, src_map: List[SourceMapItem], opcodes: List[str])
         elif "fallback function" in error_type:
             error_str = RuntimeErrorType.FALLBACK_NOT_DEFINED.value
             use_loc = False
+        elif "bad calldatasize or callvalue" in error_type:
+            # Only on >=0.3.10rc3.
+            # NOTE: We are no longer able to get Nonpayable checks errors since they
+            # are now combined.
+            error_str = RuntimeErrorType.INVALID_CALLDATA_OR_VALUE.value
+        elif "nonpayable check" in error_type:
+            error_str = RuntimeErrorType.NONPAYABLE_CHECK.value
         else:
             error_str = ""
             error_type_name = error_type.upper().replace(" ", "_")

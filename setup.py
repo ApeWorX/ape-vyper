@@ -61,7 +61,7 @@ setup(
         "eth-ape>=0.6.19,<0.7",
         "ethpm-types",  # Use same version as eth-ape
         "tqdm",  # Use same version as eth-ape
-        "vvm>=0.1.0,<0.2",
+        "vvm>=0.2.0,<0.3",
     ],
     python_requires=">=3.8,<4",
     extras_require=extras_require,
