@@ -15,8 +15,9 @@ from ape.exceptions import ContractLogicError
 from ape.logging import logger
 from ape.types import ContractSourceCoverage, ContractType, SourceTraceback, TraceFrame
 from ape.utils import GithubClient, cached_property, get_relative_path
+from eth_pydantic_types import HexBytes
 from eth_utils import is_0x_prefixed
-from ethpm_types import ASTNode, HexBytes, PackageManifest, PCMap, SourceMapItem
+from ethpm_types import ASTNode, PackageManifest, PCMap, SourceMapItem
 from ethpm_types.ast import ASTClassification
 from ethpm_types.contract_type import SourceMap
 from ethpm_types.source import ContractSource, Function, SourceLocation
@@ -266,7 +267,9 @@ class VyperCompiler(CompilerAPI):
                 dependencies[remapping] = dependency
 
             for name, ct in (dependency.contract_types or {}).items():
-                interfaces[f"{key}/{name}.json"] = {"abi": [x.dict() for x in ct.abi]}
+                interfaces[f"{key}/{name}.json"] = {
+                    "abi": [x.model_dump(mode="json") for x in ct.abi]
+                }
 
         return interfaces
 
@@ -316,7 +319,7 @@ class VyperCompiler(CompilerAPI):
                 }
                 for name, output in output_items.items():
                     # De-compress source map to get PC POS map.
-                    ast = ASTNode.parse_obj(result["sources"][source_id]["ast"])
+                    ast = ASTNode.model_validate(result["sources"][source_id]["ast"])
                     classify_ast(ast)
 
                     # Track function offsets.
@@ -333,7 +336,7 @@ class VyperCompiler(CompilerAPI):
                     evm = output["evm"]
                     bytecode = evm["deployedBytecode"]
                     opcodes = bytecode["opcodes"].split(" ")
-                    compressed_src_map = SourceMap(__root__=bytecode["sourceMap"])
+                    compressed_src_map = SourceMap(root=bytecode["sourceMap"])
                     src_map = list(compressed_src_map.parse())[1:]
 
                     pcmap = (
@@ -501,7 +504,7 @@ class VyperCompiler(CompilerAPI):
         # function_name -> (pc, location)
         pending_statements: Dict[str, List[Tuple[int, SourceLocation]]] = {}
 
-        for pc, item in contract_source.pcmap.__root__.items():
+        for pc, item in contract_source.pcmap.root.items():
             pc_int = int(pc)
             if pc_int < 0:
                 continue
@@ -531,8 +534,7 @@ class VyperCompiler(CompilerAPI):
                 continue
 
             if location:
-                function = contract_source.lookup_function(location)
-                if not function:
+                if not (function := contract_source.lookup_function(location)):
                     # Not sure if this happens.
                     continue
 
@@ -696,7 +698,7 @@ class VyperCompiler(CompilerAPI):
         if source_contract_type := self.project_manager._create_contract_source(contract_type):
             return self._get_traceback(source_contract_type, trace, calldata)
 
-        return SourceTraceback.parse_obj([])
+        return SourceTraceback.model_validate([])
 
     def _get_traceback(
         self,
@@ -705,10 +707,10 @@ class VyperCompiler(CompilerAPI):
         calldata: HexBytes,
         previous_depth: Optional[int] = None,
     ) -> SourceTraceback:
-        traceback = SourceTraceback.parse_obj([])
+        traceback = SourceTraceback.model_validate([])
         method_id = HexBytes(calldata[:4])
         completed = False
-        pcmap = PCMap.parse_obj({})
+        pcmap = PCMap.model_validate({})
 
         for frame in trace:
             if frame.op in CALL_OPCODES:
@@ -767,7 +769,7 @@ class VyperCompiler(CompilerAPI):
                 is_non_payable_hit = False
                 if next_frame and next_frame.op == "SSTORE":
                     push_location = tuple(loc["location"])  # type: ignore
-                    pcmap = PCMap.parse_obj({next_frame.pc: {"location": push_location}})
+                    pcmap = PCMap.model_validate({next_frame.pc: {"location": push_location}})
 
                 elif next_frame and next_frame.op in _RETURN_OPCODES:
                     completed = True
@@ -931,7 +933,7 @@ def _get_pcmap(bytecode: Dict) -> PCMap:
     src_info = bytecode["sourceMapFull"]
     pc_data = {pc: {"location": ln} for pc, ln in src_info["pc_pos_map"].items()}
     if not pc_data:
-        return PCMap.parse_obj({})
+        return PCMap.model_validate({})
 
     # Apply other errors.
     errors = src_info["error_map"]
@@ -988,7 +990,7 @@ def _get_pcmap(bytecode: Dict) -> PCMap:
         else:
             pc_data[err_pc] = {"dev": f"dev: {error_str}", "location": location}
 
-    return PCMap.parse_obj(pc_data)
+    return PCMap.model_validate(pc_data)
 
 
 def _get_legacy_pcmap(ast: ASTNode, src_map: List[SourceMapItem], opcodes: List[str]):
@@ -1078,7 +1080,7 @@ def _get_legacy_pcmap(ast: ASTNode, src_map: List[SourceMapItem], opcodes: List[
                     item["dev"] = f"dev: {RuntimeErrorType.USER_ASSERT.value}"
                     break
 
-    return PCMap.parse_obj(dict(pc_map_list))
+    return PCMap.model_validate(dict(pc_map_list))
 
 
 def _find_non_payable_check(src_map: List[SourceMapItem], opcodes: List[str]) -> Optional[int]:
@@ -1140,7 +1142,7 @@ def _extend_return(function: Function, traceback: SourceTraceback, last_pc: int,
     location = return_ast.line_numbers
 
     last_lineno = max(0, location[2] - 1)
-    for frameset in traceback.__root__[::-1]:
+    for frameset in traceback.root[::-1]:
         if frameset.end_lineno is not None:
             last_lineno = frameset.end_lineno
             break
