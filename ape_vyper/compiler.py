@@ -100,7 +100,7 @@ def get_version_pragma_spec(source: Union[str, Path]) -> Optional[SpecifierSet]:
         return None
 
 
-def get_optimization_pragma(source: Union[str, Path]) -> Optional[str | bool]:
+def get_optimization_pragma(source: Union[str, Path]) -> str | bool | None:
     """
     Extracts optimization pragma information from Vyper source code.
 
