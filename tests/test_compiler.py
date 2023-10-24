@@ -144,7 +144,7 @@ def test_compiler_data_in_manifest(project):
 
     assert len(vyper_latest.contractTypes) >= 9
     assert len(vyper_028.contractTypes) >= 1
-    assert "contract_039" in vyper_latest.contractTypes
+    assert "contract_0310" in vyper_latest.contractTypes
     assert "older_version" in vyper_028.contractTypes
     for compiler in (vyper_latest, vyper_028):
         assert compiler.settings["evmVersion"] == "istanbul"
