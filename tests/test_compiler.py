@@ -102,6 +102,7 @@ def test_get_version_map(project, compiler, all_versions):
         "use_iface2.vy",
         "contract_no_pragma.vy",  # no pragma should compile with latest version
         "empty.vy",  # empty file still compiles with latest version
+        "pragma_with_space.vy",
     ]
 
     # Add the 0.3.10 contracts.

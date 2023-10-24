@@ -83,7 +83,7 @@ def get_version_pragma_spec(source: Union[str, Path]) -> Optional[SpecifierSet]:
     if pragma_match is None:
         # support new pragma syntax
         pragma_match = next(
-            re.finditer(r"(?:\n|^)\s*#pragma\s+version\s*([^\n]*)", source_str), None
+            re.finditer(r"(?:\n|^)\s*#\s*pragma\s+version\s*([^\n]*)", source_str), None
         )
         if pragma_match is None:
             return None  # Try compiling with latest
@@ -100,19 +100,20 @@ def get_version_pragma_spec(source: Union[str, Path]) -> Optional[SpecifierSet]:
         return None
 
 
-def get_optimization_pragma(source: Union[str, Path]) -> Union[str, bool]:
+def get_optimization_pragma(source: Union[str, Path]) -> Optional[str]:
     """
     Extracts optimization pragma information from Vyper source code.
 
     Args:
         source (str): Vyper source code
+
     Returns:
         ``str``, or True if no valid pragma is found (for backwards compatibility).
     """
     source_str = source if isinstance(source, str) else source.read_text()
     pragma_match = next(re.finditer(r"(?:\n|^)\s*#pragma\s+optimize\s+([^\n]*)", source_str), None)
     if pragma_match is None:
-        return True
+        return None
     return pragma_match.groups()[0]
 
 
@@ -307,7 +308,7 @@ class VyperCompiler(CompilerAPI):
 
             for optimization, source_paths in optimizations_map.items():
                 settings: Dict[str, Any] = version_settings.copy()
-                settings["optimize"] = optimization
+                settings["optimize"] = optimization or True
                 path_args = {
                     str(get_relative_path(p.absolute(), base_path)): p for p in source_paths
                 }
