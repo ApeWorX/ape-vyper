@@ -1,5 +1,4 @@
 import re
-import pprint
 
 import pytest
 from ape.exceptions import ContractLogicError
@@ -81,9 +80,7 @@ def test_get_version_map(project, compiler, all_versions):
         x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
     ]
     actual = compiler.get_version_map(vyper_files)
-    pprint.pprint(actual)
     expected_versions = [Version(v) for v in all_versions]
-    pprint.pprint(expected_versions)
 
     for version, sources in actual.items():
         if version in expected_versions:
@@ -103,8 +100,8 @@ def test_get_version_map(project, compiler, all_versions):
         "use_iface.vy",
         "optimize_codesize.vy",
         "use_iface2.vy",
-        "contract_no_pragma.vy", # no pragma should compile with latest version
-        "empty.vy", # empty file still compiles with latest version
+        "contract_no_pragma.vy",  # no pragma should compile with latest version
+        "empty.vy",  # empty file still compiles with latest version
     ]
 
     # Add the 0.3.10 contracts.
