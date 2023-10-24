@@ -72,20 +72,18 @@ Import the voting contract types like this:
 import voting.ballot as ballot
 ```
 
-
 ### Pragmas
 
 Ape-Vyper supports Vyper 0.3.10's [new pragma formats](https://github.com/vyperlang/vyper/pull/3493)
 
 #### Version Pragma
 
-``` python
+```python
 #pragma version 0.3.10
 ```
 
 #### Optimization Pragma
 
-``` python
+```python
 #pragma optimize codesize
 ```
-
