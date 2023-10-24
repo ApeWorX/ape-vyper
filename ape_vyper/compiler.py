@@ -402,10 +402,10 @@ class VyperCompiler(CompilerAPI):
         base_path = base_path or self.config_manager.contracts_folder
         optimization_pragma_map: Dict[Union[str, bool], Set[Path]] = {}
         for path in contract_filepaths:
-            if pragma := get_optimization_pragma(path):
-                if pragma not in optimization_pragma_map:
-                    optimization_pragma_map[pragma] = set()
-                optimization_pragma_map[pragma].add(path)
+            pragma = get_optimization_pragma(path) or True
+            if pragma not in optimization_pragma_map:
+                optimization_pragma_map[pragma] = set()
+            optimization_pragma_map[pragma].add(path)
 
         return optimization_pragma_map
 
