@@ -82,7 +82,9 @@ def get_version_pragma_spec(source: Union[str, Path]) -> Optional[SpecifierSet]:
     pragma_match = next(re.finditer(r"(?:\n|^)\s*#\s*@version\s*([^\n]*)", source_str), None)
     if pragma_match is None:
         # support new pragma syntax
-        pragma_match = next(re.finditer(r"(?:\n|^)\s*#pragma\s+version\s*([^\n]*)", source_str), None)
+        pragma_match = next(
+            re.finditer(r"(?:\n|^)\s*#pragma\s+version\s*([^\n]*)", source_str), None
+        )
         if pragma_match is None:
             return None  # Try compiling with latest
 
@@ -96,6 +98,7 @@ def get_version_pragma_spec(source: Union[str, Path]) -> Optional[SpecifierSet]:
     except InvalidSpecifier:
         logger.warning(f"Invalid pragma spec: '{raw_pragma}'. Trying latest.")
         return None
+
 
 def get_optimization_pragma(source: Union[str, Path]) -> Optional[str | bool]:
     """
@@ -111,7 +114,6 @@ def get_optimization_pragma(source: Union[str, Path]) -> Optional[str | bool]:
     if pragma_match is None:
         return True
     return pragma_match.groups()[0]
-
 
 
 class VyperCompiler(CompilerAPI):
