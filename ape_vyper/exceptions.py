@@ -86,7 +86,7 @@ class NonPayableError(VyperRuntimeError):
 
 class InvalidCalldataOrValueError(VyperRuntimeError):
     """
-    Raises on Vyper versions >= 0.3.10rc3 in place of NonPayableError.
+    Raises on Vyper versions >= 0.3.10 in place of NonPayableError.
     """
 
     def __init__(self, **kwargs):

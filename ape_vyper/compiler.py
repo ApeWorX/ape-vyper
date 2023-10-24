@@ -994,7 +994,7 @@ def _get_pcmap(bytecode: Dict) -> PCMap:
             error_str = RuntimeErrorType.FALLBACK_NOT_DEFINED.value
             use_loc = False
         elif "bad calldatasize or callvalue" in error_type:
-            # Only on >=0.3.10rc3.
+            # Only on >=0.3.10.
             # NOTE: We are no longer able to get Nonpayable checks errors since they
             # are now combined.
             error_str = RuntimeErrorType.INVALID_CALLDATA_OR_VALUE.value
