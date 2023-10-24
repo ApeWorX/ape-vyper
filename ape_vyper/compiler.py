@@ -302,21 +302,22 @@ class VyperCompiler(CompilerAPI):
         all_settings = self.get_compiler_settings(sources, base_path=base_path)
 
         for vyper_version, source_paths in version_map.items():
-            settings = all_settings.get(vyper_version, {})
+            version_settings = all_settings.get(vyper_version, {})
             optimizations_map = self.get_optimization_pragma_map(list(source_paths))
 
             for optimization, source_paths in optimizations_map.items():
+                settings: Dict[str, Any] = version_settings.copy()
+                settings["optimize"] = optimization
                 path_args = {
                     str(get_relative_path(p.absolute(), base_path)): p for p in source_paths
                 }
+                settings["outputSelection"] = {s: ["*"] for s in path_args}
                 input_json = {
                     "language": "Vyper",
                     "settings": settings,
                     "sources": {s: {"content": p.read_text()} for s, p in path_args.items()},
                 }
 
-                input_json["settings"]["optimize"] = optimization
-                input_json["settings"]["outputSelection"] = {s: ["*"] for s in path_args}
                 if interfaces := self.import_remapping:
                     input_json["interfaces"] = interfaces
 
@@ -396,9 +397,9 @@ class VyperCompiler(CompilerAPI):
 
     def get_optimization_pragma_map(
         self, contract_filepaths: List[Path], base_path: Optional[Path] = None
-    ) -> Dict[str, Set[Path]]:
+    ) -> Dict[Union[str, bool], Set[Path]]:
         base_path = base_path or self.config_manager.contracts_folder
-        optimization_pragma_map: Dict[str, Set[Path]] = {}
+        optimization_pragma_map: Dict[Union[str, bool], Set[Path]] = {}
         for path in contract_filepaths:
             if pragma := get_optimization_pragma(path):
                 if pragma not in optimization_pragma_map:
