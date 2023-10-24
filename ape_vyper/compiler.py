@@ -303,10 +303,12 @@ class VyperCompiler(CompilerAPI):
 
         for vyper_version, source_paths in version_map.items():
             settings = all_settings.get(vyper_version, {})
-            path_args = {str(get_relative_path(p.absolute(), base_path)): p for p in source_paths}
             optimizations_map = self.get_optimization_pragma_map(list(source_paths))
 
-            for optimization, paths in optimizations_map.items():
+            for optimization, source_paths in optimizations_map.items():
+                path_args = {
+                    str(get_relative_path(p.absolute(), base_path)): p for p in source_paths
+                }
                 input_json = {
                     "language": "Vyper",
                     "settings": settings,
@@ -314,6 +316,7 @@ class VyperCompiler(CompilerAPI):
                 }
 
                 input_json["settings"]["optimize"] = optimization
+                input_json["settings"]["outputSelection"] = {s: ["*"] for s in path_args}
                 if interfaces := self.import_remapping:
                     input_json["interfaces"] = interfaces
 
@@ -480,10 +483,6 @@ class VyperCompiler(CompilerAPI):
                 continue
 
             version_settings: Dict = {"optimize": True}
-            path_args = {
-                str(get_relative_path(p.absolute(), contracts_path)): p for p in source_paths
-            }
-            version_settings["outputSelection"] = {s: ["*"] for s in path_args}
             if evm_version := data.get("evm_version"):
                 version_settings["evmVersion"] = evm_version
 
