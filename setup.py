@@ -14,6 +14,7 @@ extras_require = {
         "black>=23.3.0,<24",  # Auto-formatter and linter
         "mypy>=0.991,<1",  # Static type analyzer
         "types-setuptools",  # Needed due to mypy typeshed
+        "pydantic<2.0",  # Needed for successful type check. TODO: Remove after full v2 support.
         "flake8>=6.0.0,<7",  # Style linter
         "isort>=5.10.1",  # Import sorting linter
         "mdformat>=0.7.16",  # Auto-formatter for markdown
