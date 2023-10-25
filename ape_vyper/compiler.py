@@ -78,26 +78,25 @@ def get_version_pragma_spec(source: Union[str, Path]) -> Optional[SpecifierSet]:
     Returns:
         ``packaging.specifiers.SpecifierSet``, or None if no valid pragma is found.
     """
+    version_pragma_patterns = [
+        r"(?:\n|^)\s*#\s*@version\s*([^\n]*)",
+        r"(?:\n|^)\s*#\s*pragma\s+version\s*([^\n]*)",
+    ]
+
     source_str = source if isinstance(source, str) else source.read_text()
-    pragma_match = next(re.finditer(r"(?:\n|^)\s*#\s*@version\s*([^\n]*)", source_str), None)
-    if pragma_match is None:
-        # support new pragma syntax
-        pragma_match = next(
-            re.finditer(r"(?:\n|^)\s*#\s*pragma\s+version\s*([^\n]*)", source_str), None
-        )
-        if pragma_match is None:
-            return None  # Try compiling with latest
+    for pattern in version_pragma_patterns:
+        for match in re.finditer(pattern, source_str):
+            raw_pragma = match.groups()[0]
+            pragma_str = " ".join(raw_pragma.split()).replace("^", "~=")
+            if pragma_str and pragma_str[0].isnumeric():
+                pragma_str = f"=={pragma_str}"
 
-    raw_pragma = pragma_match.groups()[0]
-    pragma_str = " ".join(raw_pragma.split()).replace("^", "~=")
-    if pragma_str and pragma_str[0].isnumeric():
-        pragma_str = f"=={pragma_str}"
-
-    try:
-        return SpecifierSet(pragma_str)
-    except InvalidSpecifier:
-        logger.warning(f"Invalid pragma spec: '{raw_pragma}'. Trying latest.")
-        return None
+            try:
+                return SpecifierSet(pragma_str)
+            except InvalidSpecifier:
+                logger.warning(f"Invalid pragma spec: '{raw_pragma}'. Trying latest.")
+                return None
+    return None
 
 
 def get_optimization_pragma(source: Union[str, Path]) -> Optional[str]:
