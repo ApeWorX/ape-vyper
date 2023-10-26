@@ -35,14 +35,14 @@ ALL_VERSIONS = (
     "0.3.4",
     "0.3.7",
     "0.3.9",
-    "0.3.10rc3",
+    "0.3.10",
 )
 
 CONTRACT_VERSION_GEN_MAP = {
     "": (
         "0.3.7",
         "0.3.9",
-        "0.3.10rc3",
+        "0.3.10",
     ),
     "sub_reverts": ALL_VERSIONS,
 }
@@ -188,7 +188,7 @@ def account():
     return ape.accounts.test_accounts[0]
 
 
-@pytest.fixture(params=("037", "039", "0310rc3"))
+@pytest.fixture(params=("037", "039", "0310"))
 def traceback_contract(request, account, project, geth_provider):
     return _get_tb_contract(request.param, project, account)
 

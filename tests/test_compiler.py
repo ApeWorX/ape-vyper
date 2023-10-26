@@ -21,7 +21,7 @@ from .conftest import FAILING_BASE, FAILING_CONTRACT_NAMES, PASSING_CONTRACT_NAM
 
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.16")
 VERSION_37 = Version("0.3.7")
-VERSION_FROM_PRAGMA = Version("0.3.9")
+VERSION_FROM_PRAGMA = Version("0.3.10")
 
 
 @pytest.fixture
@@ -98,12 +98,16 @@ def test_get_version_map(project, compiler, all_versions):
         "contract_with_dev_messages.vy",
         "erc20.vy",
         "use_iface.vy",
+        "optimize_codesize.vy",
         "use_iface2.vy",
+        "contract_no_pragma.vy",  # no pragma should compile with latest version
+        "empty.vy",  # empty file still compiles with latest version
+        "pragma_with_space.vy",
     ]
 
-    # Add the 0.3.9 contracts.
+    # Add the 0.3.10 contracts.
     for template in TEMPLATES:
-        expected.append(f"{template}_039.vy")
+        expected.append(f"{template}_0310.vy")
 
     names = [x.name for x in actual[VERSION_FROM_PRAGMA]]
     failures = []
@@ -141,7 +145,7 @@ def test_compiler_data_in_manifest(project):
 
     assert len(vyper_latest.contractTypes) >= 9
     assert len(vyper_028.contractTypes) >= 1
-    assert "contract_039" in vyper_latest.contractTypes
+    assert "contract_0310" in vyper_latest.contractTypes
     assert "older_version" in vyper_028.contractTypes
     for compiler in (vyper_latest, vyper_028):
         assert compiler.settings["evmVersion"] == "istanbul"
@@ -263,7 +267,7 @@ def test_pc_map(compiler, project, src, vers):
     if nonpayable_checks:
         assert len(nonpayable_checks) >= 1
     else:
-        # NOTE: Vyper 0.3.10rc3 doesn't have these anymore.
+        # NOTE: Vyper 0.3.10 doesn't have these anymore.
         # But they do have a new error type instead.
         checks = _all(RuntimeErrorType.INVALID_CALLDATA_OR_VALUE)
         assert len(checks) >= 1
@@ -322,7 +326,7 @@ def test_enrich_error_int_overflow(geth_provider, traceback_contract, account):
 
 
 def test_enrich_error_non_payable_check(geth_provider, traceback_contract, account):
-    if traceback_contract.contract_type.name.endswith("0310rc3"):
+    if traceback_contract.contract_type.name.endswith("0310"):
         # NOTE: Nonpayable error is combined with calldata check now.
         with pytest.raises(InvalidCalldataOrValueError):
             traceback_contract.addBalance(123, sender=account, value=1)
