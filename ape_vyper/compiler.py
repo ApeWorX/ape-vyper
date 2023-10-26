@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union, cast
 
 import vvm  # type: ignore
+from ape._pydantic_compat import validator
 from ape.api import PluginConfig
 from ape.api.compiler import CompilerAPI
 from ape.exceptions import ContractLogicError
@@ -23,6 +24,7 @@ from ethpm_types.source import ContractSource, Function, SourceLocation
 from evm_trace.enums import CALL_OPCODES
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import Version
+from vvm import compile_standard as vvm_compile_standard
 from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper.exceptions import (
@@ -42,7 +44,16 @@ _NON_PAYABLE_STR = f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}"
 
 
 class VyperConfig(PluginConfig):
+    version: Optional[SpecifierSet] = None
+    """
+    Configure a version to use for all files,
+    regardless of pragma.
+    """
+
     evm_version: Optional[str] = None
+    """
+    The evm-version or hard-fork name.
+    """
 
     import_remapping: List[str] = []
     """
@@ -57,6 +68,10 @@ class VyperConfig(PluginConfig):
             - "dep_b=dependency"  # Uses only version. Will raise if more than 1.
 
     """
+
+    @validator("version", pre=True)
+    def validate_version(cls, value):
+        return SpecifierSet(_version_to_specifier(value)) if isinstance(value, str) else value
 
 
 def _install_vyper(version: Version):
@@ -113,6 +128,7 @@ def get_optimization_pragma(source: Union[str, Path]) -> Optional[str]:
     pragma_match = next(re.finditer(r"(?:\n|^)\s*#pragma\s+optimize\s+([^\n]*)", source_str), None)
     if pragma_match is None:
         return None
+
     return pragma_match.groups()[0]
 
 
@@ -253,6 +269,13 @@ class VyperCompiler(CompilerAPI):
             return None
 
     @property
+    def config_version_pragma(self) -> Optional[SpecifierSet]:
+        if version := self.config.version:
+            return version
+
+        return None
+
+    @property
     def import_remapping(self) -> Dict[str, Dict]:
         """
         Configured interface imports from dependencies.
@@ -330,7 +353,7 @@ class VyperCompiler(CompilerAPI):
 
                 vyper_binary = compiler_data[vyper_version]["vyper_binary"]
                 try:
-                    result = vvm.compile_standard(
+                    result = vvm_compile_standard(
                         input_json,
                         base_path=base_path,
                         vyper_version=vyper_version,
@@ -412,18 +435,20 @@ class VyperCompiler(CompilerAPI):
         self, contract_filepaths: List[Path], base_path: Optional[Path] = None
     ) -> Dict[Version, Set[Path]]:
         version_map: Dict[Version, Set[Path]] = {}
-        source_path_by_pragma_spec: Dict[SpecifierSet, Set[Path]] = {}
+        source_path_by_version_spec: Dict[SpecifierSet, Set[Path]] = {}
         source_paths_without_pragma = set()
 
         # Sort contract_filepaths to promote consistent, reproduce-able behavior
         for path in sorted(contract_filepaths):
-            if pragma := get_version_pragma_spec(path):
-                _safe_append(source_path_by_pragma_spec, pragma, path)
+            if config_spec := self.config_version_pragma:
+                _safe_append(source_path_by_version_spec, config_spec, path)
+            elif pragma := get_version_pragma_spec(path):
+                _safe_append(source_path_by_version_spec, pragma, path)
             else:
                 source_paths_without_pragma.add(path)
 
         # Install all requires versions *before* building map
-        for pragma_spec, path_set in source_path_by_pragma_spec.items():
+        for pragma_spec, path_set in source_path_by_version_spec.items():
             if list(pragma_spec.filter(self.installed_versions)):
                 # Already met.
                 continue
@@ -449,7 +474,7 @@ class VyperCompiler(CompilerAPI):
 
         # By this point, all the of necessary versions will be installed.
         # Thus, we will select only the best versions to use per source set.
-        for pragma_spec, path_set in source_path_by_pragma_spec.items():
+        for pragma_spec, path_set in source_path_by_version_spec.items():
             versions = sorted(list(pragma_spec.filter(self.installed_versions)), reverse=True)
             if versions:
                 _safe_append(version_map, versions[0], path_set)
@@ -1201,3 +1226,11 @@ def _is_fallback_check(opcodes: List[str], op: str) -> bool:
         and opcodes[6] == "SHR"
         and opcodes[5] == "0xE0"
     )
+
+
+def _version_to_specifier(version: str) -> str:
+    pragma_str = " ".join(version.split()).replace("^", "~=")
+    if pragma_str and pragma_str[0].isnumeric():
+        return f"=={pragma_str}"
+
+    return pragma_str

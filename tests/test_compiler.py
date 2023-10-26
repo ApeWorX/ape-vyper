@@ -445,3 +445,17 @@ def test_trace_source_default_method(geth_provider, account, project):
     actual = str(src_tb[-1][-1]).lstrip()  # Last line in traceback (without indent).
     expected = "8     log NotPayment(msg.sender)"
     assert actual == expected
+
+
+def test_compile_with_version_set(config, projects_path, compiler, mocker):
+    path = projects_path / "version_in_config"
+    version_from_config = "0.3.7"
+    spy = mocker.patch("ape_vyper.compiler.vvm_compile_standard")
+    with config.using_project(path) as project:
+        contract = project.contracts_folder / "v_contract.vy"
+        settings = compiler.get_compiler_settings((contract,))
+        assert str(list(settings.keys())[0]) == version_from_config
+
+        # Show it uses this version in the compiler.
+        project.load_contracts(use_cache=False)
+        assert str(spy.call_args[1]["vyper_version"]) == version_from_config
