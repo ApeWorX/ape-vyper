@@ -104,10 +104,10 @@ def get_optimization_pragma(source: Union[str, Path]) -> Optional[str]:
     Extracts optimization pragma information from Vyper source code.
 
     Args:
-        source (str): Vyper source code
+        source (Union[str, Path]): Vyper source code
 
     Returns:
-        ``str``, or True if no valid pragma is found (for backwards compatibility).
+        ``str``, or None if no valid pragma is found.
     """
     source_str = source if isinstance(source, str) else source.read_text()
     pragma_match = next(re.finditer(r"(?:\n|^)\s*#pragma\s+optimize\s+([^\n]*)", source_str), None)
@@ -291,6 +291,13 @@ class VyperCompiler(CompilerAPI):
 
         return interfaces
 
+    def classify_ast(self, _node: ASTNode):
+        if _node.ast_type in _FUNCTION_AST_TYPES:
+            _node.classification = ASTClassification.FUNCTION
+
+        for child in _node.children:
+            self.classify_ast(child)
+
     def compile(
         self, contract_filepaths: List[Path], base_path: Optional[Path] = None
     ) -> List[ContractType]:
@@ -332,13 +339,6 @@ class VyperCompiler(CompilerAPI):
                 except VyperError as err:
                     raise VyperCompileError(err) from err
 
-                def classify_ast(_node: ASTNode):
-                    if _node.ast_type in _FUNCTION_AST_TYPES:
-                        _node.classification = ASTClassification.FUNCTION
-
-                    for child in _node.children:
-                        classify_ast(child)
-
                 for source_id, output_items in result["contracts"].items():
                     content = {
                         i + 1: ln
@@ -347,7 +347,7 @@ class VyperCompiler(CompilerAPI):
                     for name, output in output_items.items():
                         # De-compress source map to get PC POS map.
                         ast = ASTNode.parse_obj(result["sources"][source_id]["ast"])
-                        classify_ast(ast)
+                        self.classify_ast(ast)
 
                         # Track function offsets.
                         function_offsets = []
