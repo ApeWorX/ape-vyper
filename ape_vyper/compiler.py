@@ -132,18 +132,31 @@ def get_optimization_pragma(source: Union[str, Path]) -> Optional[str]:
     return pragma_match.groups()[0]
 
 
-class VyperCompiler(CompilerAPI):
-    @property
-    def config(self) -> VyperConfig:
-        return cast(VyperConfig, self.config_manager.get_config("vyper"))
+def get_optimization_pragma_map(
+    contract_filepaths: List[Path],
+) -> Dict[Union[str, bool], Set[Path]]:
+    optimization_pragma_map: Dict[Union[str, bool], Set[Path]] = {}
+    for path in contract_filepaths:
+        pragma = get_optimization_pragma(path) or True
+        if pragma not in optimization_pragma_map:
+            optimization_pragma_map[pragma] = set()
+        optimization_pragma_map[pragma].add(path)
 
+    return optimization_pragma_map
+
+
+class VyperCompiler(CompilerAPI):
     @property
     def name(self) -> str:
         return "vyper"
 
     @property
+    def settings(self) -> VyperConfig:
+        return cast(VyperConfig, super().settings)
+
+    @property
     def evm_version(self) -> Optional[str]:
-        return self.config.evm_version
+        return self.settings.evm_version
 
     def get_imports(
         self, contract_filepaths: List[Path], base_path: Optional[Path] = None
@@ -270,7 +283,7 @@ class VyperCompiler(CompilerAPI):
 
     @property
     def config_version_pragma(self) -> Optional[SpecifierSet]:
-        if version := self.config.version:
+        if version := self.settings.version:
             return version
 
         return None
@@ -284,7 +297,7 @@ class VyperCompiler(CompilerAPI):
         interfaces = {}
         dependencies: Dict[str, PackageManifest] = {}
 
-        for remapping in self.config.import_remapping:
+        for remapping in self.settings.import_remapping:
             key, value = remapping.split("=")
 
             if remapping in dependencies:
@@ -333,7 +346,7 @@ class VyperCompiler(CompilerAPI):
 
         for vyper_version, source_paths in version_map.items():
             version_settings = all_settings.get(vyper_version, {})
-            optimizations_map = self.get_optimization_pragma_map(list(source_paths))
+            optimizations_map = get_optimization_pragma_map(list(source_paths))
 
             for optimization, source_paths in optimizations_map.items():
                 settings: Dict[str, Any] = version_settings.copy()

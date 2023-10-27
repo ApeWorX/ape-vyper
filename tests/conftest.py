@@ -137,8 +137,13 @@ def project_folder():
 
 
 @pytest.fixture
-def compiler():
-    return ape.compilers.vyper
+def compiler_manager():
+    return ape.compilers
+
+
+@pytest.fixture
+def compiler(compiler_manager):
+    return compiler_manager.vyper
 
 
 @pytest.fixture

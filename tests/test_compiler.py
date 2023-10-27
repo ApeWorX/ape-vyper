@@ -448,7 +448,7 @@ def test_trace_source_default_method(geth_provider, account, project):
     assert actual == expected
 
 
-def test_compile_with_version_set(config, projects_path, compiler, mocker):
+def test_compile_with_version_set_in_config(config, projects_path, compiler, mocker):
     path = projects_path / "version_in_config"
     version_from_config = "0.3.7"
     spy = mocker.patch("ape_vyper.compiler.vvm_compile_standard")
@@ -470,3 +470,15 @@ def test_compile_code(compiler, dev_revert_source):
     assert len(actual.abi) > 1
     assert len(actual.deployment_bytecode.bytecode) > 1
     assert len(actual.runtime_bytecode.bytecode) > 1
+
+
+def test_compile_with_version_set_in_settings_dict(config, compiler_manager, projects_path):
+    path = projects_path / "version_in_config"
+    contract = path / "contracts" / "v_contract.vy"
+
+    with config.using_project(path):
+        expected = (
+            '.*Version specification "0.3.10" is not compatible with compiler version "0.3.3"'
+        )
+        with pytest.raises(VyperCompileError, match=expected):
+            compiler_manager.compile([contract], settings={"version": "0.3.3"})
