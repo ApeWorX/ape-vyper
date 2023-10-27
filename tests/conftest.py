@@ -10,8 +10,6 @@ import ape
 import pytest
 import vvm  # type: ignore
 
-from ape_vyper.compiler import VyperCompiler
-
 # NOTE: Ensure that we don't use local paths for these
 DATA_FOLDER = Path(mkdtemp()).resolve()
 PROJECT_FOLDER = Path(mkdtemp()).resolve()
@@ -140,7 +138,7 @@ def project_folder():
 
 @pytest.fixture
 def compiler():
-    return VyperCompiler()
+    return ape.compilers.vyper
 
 
 @pytest.fixture

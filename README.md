@@ -38,6 +38,16 @@ ape compile
 
 The `.vy` files in your project will compile into `ContractTypes` that you can deploy and interact with in Ape.
 
+### Compiler Version
+
+By default, the `ape-vyper` plugin uses version pragma for version specification.
+However, you can also configure the version directly in your `ape-config.yaml` file:
+
+```yaml
+vyper:
+  version: 0.3.7
+```
+
 ### Interfaces
 
 You can not compile interface source files directly.
