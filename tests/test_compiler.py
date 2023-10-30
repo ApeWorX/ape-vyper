@@ -2,6 +2,7 @@ import re
 
 import pytest
 from ape.exceptions import ContractLogicError
+from ethpm_types import ContractType
 from packaging.version import Version
 from vvm import compile_source  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
@@ -459,3 +460,13 @@ def test_compile_with_version_set(config, projects_path, compiler, mocker):
         # Show it uses this version in the compiler.
         project.load_contracts(use_cache=False)
         assert str(spy.call_args[1]["vyper_version"]) == version_from_config
+
+
+def test_compile_code(compiler, dev_revert_source):
+    code = dev_revert_source.read_text()
+    actual = compiler.compile_code(code, contractName="MyContract")
+    assert isinstance(actual, ContractType)
+    assert actual.name == "MyContract"
+    assert len(actual.abi) > 1
+    assert len(actual.deployment_bytecode.bytecode) > 1
+    assert len(actual.runtime_bytecode.bytecode) > 1
