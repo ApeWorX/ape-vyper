@@ -418,10 +418,24 @@ class VyperCompiler(CompilerAPI):
 
         return contract_types
 
+    def compile_code(self, code: str, base_path: Optional[Path] = None, **kwargs) -> ContractType:
+        base_path = base_path or self.project_manager.contracts_folder
+        try:
+            result = vvm.compile_source(code, base_path=base_path)
+        except Exception as err:
+            raise VyperCompileError(str(err)) from err
+
+        output = result.get("<stdin>", {})
+        return ContractType(
+            abi=output["abi"],
+            deploymentBytecode={"bytecode": output["bytecode"]},
+            runtimeBytecode={"bytecode": output["bytecode_runtime"]},
+            **kwargs,
+        )
+
     def get_optimization_pragma_map(
-        self, contract_filepaths: List[Path], base_path: Optional[Path] = None
+        self, contract_filepaths: List[Path]
     ) -> Dict[Union[str, bool], Set[Path]]:
-        base_path = base_path or self.config_manager.contracts_folder
         optimization_pragma_map: Dict[Union[str, bool], Set[Path]] = {}
         for path in contract_filepaths:
             pragma = get_optimization_pragma(path) or True
