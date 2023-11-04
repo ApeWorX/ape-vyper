@@ -2,6 +2,12 @@ ethereum:
   local:
     default_provider: geth
 
+geth:
+  ethereum:
+    local:
+      # Connect to node running from other tests.
+      uri: "http://127.0.0.1:5550"
+
 test:
   coverage:
     exclude:
