@@ -48,6 +48,20 @@ vyper:
   version: 0.3.7
 ```
 
+### EVM Versioning
+
+By default, `ape-vyper` will use whatever version of EVM rules are set as default in the compiler version that gets used,
+or based on what the `#pragma evm-version ...` pragma comment specifies (available post-`v0.3.10`).
+Sometimes, you might want to use a different version, such as deploying on Arbitrum or Optimism where new opcodes are not supported yet.
+If you want to require a different version of EVM rules to use in the configuration of the compiler, set it in your `ape-config.yaml` like this:
+
+```yaml
+vyper:
+  evm_version: paris
+```
+
+**NOTE**: The config value chosen will not override if a pragma is set in a contract.
+
 ### Interfaces
 
 You can not compile interface source files directly.
@@ -90,6 +104,12 @@ Ape-Vyper supports Vyper 0.3.10's [new pragma formats](https://github.com/vyperl
 
 ```python
 #pragma version 0.3.10
+```
+
+#### EVM Version Pragma
+
+```python
+#pragma evm-version paris
 ```
 
 #### Optimization Pragma
