@@ -11,10 +11,9 @@ extras_require = {
         "hypothesis>=6.2.0,<7.0",  # Strategy-based fuzzer
     ],
     "lint": [
-        "black>=23.10.1,<24",  # Auto-formatter and linter
-        "mypy>=1.6.1",  # Static type analyzer
+        "black>=23.12.0,<24",  # Auto-formatter and linter
+        "mypy>=1.7.1",  # Static type analyzer
         "types-setuptools",  # Needed due to mypy typeshed
-        "pydantic<2.0",  # Needed for successful type check. TODO: Remove after full v2 support.
         "flake8>=6.1.0,<7",  # Style linter
         "isort>=5.10.1",  # Import sorting linter
         "mdformat>=0.7.17",  # Auto-formatter for markdown
@@ -59,7 +58,7 @@ setup(
     url="https://github.com/ApeWorX/ape-vyper",
     include_package_data=True,
     install_requires=[
-        "eth-ape>=0.6.23,<0.7",
+        "eth-ape>=0.7,<0.8",
         "ethpm-types",  # Use same version as eth-ape
         "tqdm",  # Use same version as eth-ape
         "vvm>=0.2.0,<0.3",
