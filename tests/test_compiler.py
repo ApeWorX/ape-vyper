@@ -139,7 +139,11 @@ def test_compiler_data_in_manifest(project):
         all_latest = [c for c in manifest.compilers if str(c.version) == str(VERSION_FROM_PRAGMA)]
         codesize_latest = [c for c in all_latest if c.settings["optimize"] == "codesize"][0]
         evm_latest = [c for c in all_latest if c.settings["evmVersion"] == "paris"][0]
-        true_latest = [c for c in all_latest if c.settings["optimize"] is True][0]
+        true_latest = [
+            c
+            for c in all_latest
+            if c.settings["optimize"] is True and c.settings["evmVersion"] != "paris"
+        ][0]
         vyper_028 = [
             c for c in manifest.compilers if str(c.version) == str(OLDER_VERSION_FROM_PRAGMA)
         ][0]
@@ -163,7 +167,8 @@ def test_compiler_data_in_manifest(project):
         for compiler in (true_latest, vyper_028):
             assert compiler.settings["optimize"] is True
 
-    project.load_contracts()
+    project.local_project.update_manifest(compilers=[])
+    project.load_contracts(use_cache=False)
     run_test(project.local_project.manifest)
     man = project.extract_manifest()
     run_test(man)
