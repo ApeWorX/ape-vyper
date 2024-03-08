@@ -408,9 +408,10 @@ class VyperCompiler(CompilerAPI):
 
                 vyper_binary = compiler_data[vyper_version]["vyper_binary"]
                 try:
+                    search_path = f"./{get_relative_path(base_path, self.project_manager.path)}"
                     result = vvm_compile_standard(
                         input_json,
-                        base_path=base_path,
+                        base_path=search_path,
                         vyper_version=vyper_version,
                         vyper_binary=vyper_binary,
                     )
@@ -518,8 +519,9 @@ class VyperCompiler(CompilerAPI):
 
     def compile_code(self, code: str, base_path: Optional[Path] = None, **kwargs) -> ContractType:
         base_path = base_path or self.project_manager.contracts_folder
+        search_path = f"./{get_relative_path(base_path, self.project_manager.path)}"
         try:
-            result = vvm.compile_source(code, base_path=base_path)
+            result = vvm.compile_source(code, base_path=search_path)
         except Exception as err:
             raise VyperCompileError(str(err)) from err
 
