@@ -8,7 +8,7 @@ from packaging.version import Version
 from vvm import compile_source  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
-from ape_vyper.compiler import RuntimeErrorType
+from ape_vyper.compiler import RuntimeErrorType, get_version_pragma_spec
 from ape_vyper.exceptions import (
     FallbackNotDefinedError,
     IntegerOverflowError,
@@ -524,7 +524,17 @@ def test_compile_with_version_set_in_settings_dict(config, compiler_manager, pro
         "pragma_with_space.vy",
     ],
 )
-def test_flatten_contract(project, contract_name, compiler):
+def test_flatten_contract(all_versions, project, contract_name, compiler):
     path = project.contracts_folder / contract_name
     source = compiler.flatten_contract(path)
+
+    # Ensure the correct compiler version is installed
+    version_spec = get_version_pragma_spec(str(source))
+
+    if version_spec is None:
+        version = all_versions[-1]
+    else:
+        version = next(version_spec.filter(all_versions))
+
+    vvm.install_vyper(str(version))
     vvm.compile_source(str(source), base_path=project.contracts_folder)
