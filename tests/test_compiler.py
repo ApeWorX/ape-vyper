@@ -1,6 +1,7 @@
 import re
 
 import pytest
+import vvm  # type: ignore
 from ape.exceptions import ContractLogicError
 from ethpm_types import ContractType
 from packaging.version import Version
@@ -105,6 +106,7 @@ def test_get_version_map(project, compiler, all_versions):
         "contract_no_pragma.vy",  # no pragma should compile with latest version
         "empty.vy",  # empty file still compiles with latest version
         "pragma_with_space.vy",
+        "flatten_me.vy",
     ]
 
     # Add the 0.3.10 contracts.
@@ -503,3 +505,26 @@ def test_compile_with_version_set_in_settings_dict(config, compiler_manager, pro
         )
         with pytest.raises(VyperCompileError, match=expected):
             compiler_manager.compile([contract], settings={"version": "0.3.3"})
+
+
+@pytest.mark.parametrize(
+    "contract_name",
+    [
+        # This first one has most known edge cases
+        "flatten_me.vy",
+        # Test on the below for general compatibility.
+        "contract_with_dev_messages.vy",
+        "erc20.vy",
+        "use_iface.vy",
+        "optimize_codesize.vy",
+        "evm_pragma.vy",
+        "use_iface2.vy",
+        "contract_no_pragma.vy",  # no pragma should compile with latest version
+        "empty.vy",  # empty file still compiles with latest version
+        "pragma_with_space.vy",
+    ],
+)
+def test_flatten_contract(project, contract_name, compiler):
+    path = project.contracts_folder / contract_name
+    source = compiler.flatten_contract(path)
+    vvm.compile_source(str(source), base_path=project.contracts_folder)
