@@ -226,6 +226,7 @@ def test_pc_map(compiler, project, src, vers):
     result = compiler.compile([path], base_path=project.contracts_folder)[0]
     actual = result.pcmap.root
     code = path.read_text()
+    vvm.install_vyper(vers)
     compile_result = vvm.compile_source(code, vyper_version=vers, evm_version=compiler.evm_version)[
         "<stdin>"
     ]
