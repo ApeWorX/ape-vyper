@@ -537,8 +537,14 @@ class VyperCompiler(CompilerAPI):
 
     def compile_code(self, code: str, base_path: Optional[Path] = None, **kwargs) -> ContractType:
         base_path = base_path or self.project_manager.contracts_folder
+
+        # Figure out what compiler version we need for this contract...
+        version = self._source_vyper_version(code)
+        # ...and install it if necessary
+        _install_vyper(version)
+
         try:
-            result = vvm.compile_source(code, base_path=base_path)
+            result = vvm.compile_source(code, base_path=base_path, vyper_version=version)
         except Exception as err:
             raise VyperCompileError(str(err)) from err
 
@@ -549,6 +555,23 @@ class VyperCompiler(CompilerAPI):
             runtimeBytecode={"bytecode": output["bytecode_runtime"]},
             **kwargs,
         )
+
+    def _source_vyper_version(self, code: str) -> Version:
+        """Given source code, figure out which Vyper version to use"""
+        version_spec = get_version_pragma_spec(code)
+
+        def first_full_release(versions: Iterable[Version]) -> Optional[Version]:
+            for vers in versions:
+                if not vers.is_devrelease and not vers.is_postrelease and not vers.is_prerelease:
+                    return vers
+            return None
+
+        if version_spec is None:
+            if version := first_full_release(self.available_versions):
+                return version
+            raise VyperInstallError("No available version.")
+
+        return next(version_spec.filter(self.available_versions))
 
     def _flatten_source(
         self, path: Path, base_path: Optional[Path] = None, raw_import_name: Optional[str] = None

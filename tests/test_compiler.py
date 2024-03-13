@@ -5,7 +5,6 @@ import vvm  # type: ignore
 from ape.exceptions import ContractLogicError
 from ethpm_types import ContractType
 from packaging.version import Version
-from vvm import compile_source  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper.compiler import RuntimeErrorType, get_version_pragma_spec
@@ -227,7 +226,7 @@ def test_pc_map(compiler, project, src, vers):
     result = compiler.compile([path], base_path=project.contracts_folder)[0]
     actual = result.pcmap.root
     code = path.read_text()
-    compile_result = compile_source(code, vyper_version=vers, evm_version=compiler.evm_version)[
+    compile_result = vvm.compile_source(code, vyper_version=vers, evm_version=compiler.evm_version)[
         "<stdin>"
     ]
     src_map = compile_result["source_map"]
@@ -527,14 +526,7 @@ def test_compile_with_version_set_in_settings_dict(config, compiler_manager, pro
 def test_flatten_contract(all_versions, project, contract_name, compiler):
     path = project.contracts_folder / contract_name
     source = compiler.flatten_contract(path)
-
-    # Ensure the correct compiler version is installed
-    version_spec = get_version_pragma_spec(str(source))
-
-    if version_spec is None:
-        version = all_versions[-1]
-    else:
-        version = next(version_spec.filter(all_versions))
-
+    source_code = str(source)
+    version = compiler._source_vyper_version(source_code)
     vvm.install_vyper(str(version))
-    vvm.compile_source(str(source), base_path=project.contracts_folder)
+    vvm.compile_source(source_code, base_path=project.contracts_folder, vyper_version=version)
