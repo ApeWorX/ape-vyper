@@ -9,6 +9,7 @@ from typing import List
 import ape
 import pytest
 import vvm  # type: ignore
+from click.testing import CliRunner
 
 # NOTE: Ensure that we don't use local paths for these
 DATA_FOLDER = Path(mkdtemp()).resolve()
@@ -209,6 +210,11 @@ def traceback_contract_039(account, project, geth_provider):
 @pytest.fixture
 def all_versions():
     return ALL_VERSIONS
+
+
+@pytest.fixture
+def cli_runner():
+    return CliRunner()
 
 
 def _get_tb_contract(version: str, project, account):
