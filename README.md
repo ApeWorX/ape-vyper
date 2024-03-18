@@ -48,8 +48,8 @@ You can do so with a command like this:
 ape vyper flatten contracts/MyContract.vy build/MyContractFlattened.vy
 ```
 
-[!WARNING]
-This feature is experimental. Please [report any bugs](https://github.com/ApeWorX/ape-tokens/issues/new?assignees=&labels=bug&projects=&template=bug.md) you find when trying it out.
+> \[!WARNING\]
+> This feature is experimental. Please [report any bugs](https://github.com/ApeWorX/ape-tokens/issues/new?assignees=&labels=bug&projects=&template=bug.md) you find when trying it out.
 
 ### Compiler Version
 
