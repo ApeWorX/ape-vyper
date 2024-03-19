@@ -665,7 +665,7 @@ class VyperCompiler(CompilerAPI):
         Returns the flattened contract suitable for compilation or verification as a single file
         """
         source = self._flatten_source(path, base_path, path.name)
-        return Content({i: ln for i, ln in enumerate(source.split("\n"))})
+        return Content({i: ln for i, ln in enumerate(source.splitlines())})
 
     def get_version_map(
         self, contract_filepaths: Sequence[Path], base_path: Optional[Path] = None
