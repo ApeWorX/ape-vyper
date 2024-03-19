@@ -19,7 +19,7 @@ def flatten(cli_ctx, contract: Path, outfile: Path):
     Flatten a contract into a single file.
     """
     with Path(outfile).open("w") as fout:
-        content = ape.compilers.flatten_contract(
+        content = ape.compilers.vyper.flatten_contract(
             Path(contract), base_path=ape.project.contracts_folder
         )
         fout.write(str(content))
