@@ -40,7 +40,7 @@ The `.vy` files in your project will compile into `ContractTypes` that you can d
 
 ### Contract Flattening
 
-For ease of pubulishing, validation, and some other cases it's sometimes useful to "flatten" your contract into a single file.
+For ease of publishing, validation, and some other cases it's sometimes useful to "flatten" your contract into a single file.
 This combines your contract and any imported interfaces together in a way the compiler can understand.
 You can do so with a command like this:
 
