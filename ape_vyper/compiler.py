@@ -609,7 +609,7 @@ class VyperCompiler(CompilerAPI):
         for import_path in sorted(imports):
             import_file = base_path / import_path
 
-            # Vyper imported interface names come form their file names
+            # Vyper imported interface names come from their file names
             file_name = iface_name_from_file(import_file)
             # If we have a known alias, ("import X as Y"), use the alias as interface name
             iface_name = aliases[file_name] if file_name in aliases else file_name
