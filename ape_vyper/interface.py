@@ -41,7 +41,7 @@ def abi_to_type(iface: Dict[str, Any]) -> Optional[ABI]:
     return None
 
 
-def generate_interface(abi: Union[List[Dict[str, Any]], List[ABI]], iface_name) -> str:
+def generate_interface(abi: Union[List[Dict[str, Any]], List[ABI]], iface_name: str) -> str:
     """
     Generate a Vyper interface source code from an ABI spec
 
