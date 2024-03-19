@@ -126,7 +126,7 @@ def extract_import_aliases(source: str) -> Dict[str, str]:
     Extract import aliases from import lines
 
     Returns:
-        - Dict[str, str]: {import: alias}
+        Dict[str, str]: {import: alias}
     """
     aliases = {}
     for line in source.splitlines():
