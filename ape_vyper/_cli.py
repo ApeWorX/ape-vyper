@@ -16,7 +16,7 @@ def cli():
 @click.argument("OUTFILE", type=click.Path(exists=False, resolve_path=True, writable=True))
 def flatten(cli_ctx, contract: Path, outfile: Path):
     """
-    Flatten a contract into a single file.
+    Flatten a contract into a single file
     """
     with Path(outfile).open("w") as fout:
         content = ape.compilers.vyper.flatten_contract(
