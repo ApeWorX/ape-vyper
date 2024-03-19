@@ -624,7 +624,7 @@ class VyperCompiler(CompilerAPI):
                 return None
 
             if matched_source := _match_source(import_path):
-                if matched_source.contract_types is None:
+                if not matched_source.contract_types:
                     continue
 
                 abis = [
