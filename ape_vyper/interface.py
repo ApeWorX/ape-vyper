@@ -83,7 +83,7 @@ def extract_meta(source_code: str) -> Tuple[Optional[str], str]:
 
     Both are valid until 0.4 where the latter may be deprecated
     """
-    for line in source_code.split("\n"):
+    for line in source_code.splitlines():
         if line.startswith("#") and (
             ("pragma version" in line or "@version" in line) and version_pragma is None
         ):
@@ -105,7 +105,7 @@ def extract_imports(source: str) -> Tuple[str, str, str]:
     stdlib_import_lines = []
     cleaned_source_lines = []
 
-    for line in source.split("\n"):
+    for line in source.splitlines():
         if line.startswith("import ") or (line.startswith("from ") and " import " in line):
             if "vyper.interfaces" in line:
                 stdlib_import_lines.append(line)
@@ -129,7 +129,7 @@ def extract_import_aliases(source: str) -> Dict[str, str]:
         - Dict[str, str]: {import: alias}
     """
     aliases = {}
-    for line in source.split("\n"):
+    for line in source.splitlines():
         if (
             line.startswith("import ") or (line.startswith("from ") and " import " in line)
         ) and " as " in line:
