@@ -99,7 +99,7 @@ def extract_imports(source: str) -> Tuple[str, str, str]:
     Extract import lines from the source, return them and the source without imports
 
     Returns:
-     - Tuple[str, str, str]: (stdlib_import_lines, interface_import_lines, cleaned_source)
+     Tuple[str, str, str]: (stdlib_import_lines, interface_import_lines, cleaned_source)
     """
     interface_import_lines = []
     stdlib_import_lines = []
