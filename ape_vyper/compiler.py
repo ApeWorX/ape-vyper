@@ -567,7 +567,7 @@ class VyperCompiler(CompilerAPI):
             return None
 
         if version_spec is None:
-            if version := first_full_release(self.available_versions):
+            if version := first_full_release(self.installed_versions + self.available_versions):
                 return version
             raise VyperInstallError("No available version.")
 
