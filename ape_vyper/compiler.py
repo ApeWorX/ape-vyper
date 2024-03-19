@@ -635,7 +635,7 @@ class VyperCompiler(CompilerAPI):
                 interfaces_source += generate_interface(abis, iface_name)
                 continue
 
-            # Vyper imported interface names come form their file names
+            # Vyper imported interface names come from their file names
             file_name = iface_name_from_file(import_file)
             # Generate an ABI from the source code
             abis = source_to_abi(import_file.read_text())
