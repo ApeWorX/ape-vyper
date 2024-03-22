@@ -58,14 +58,20 @@ setup(
     url="https://github.com/ApeWorX/ape-vyper",
     include_package_data=True,
     install_requires=[
-        "eth-ape>=0.7,<0.8",
+        "eth-ape>=0.7.13,<0.8",
         "ethpm-types",  # Use same version as eth-ape
         "tqdm",  # Use same version as eth-ape
         "vvm>=0.2.0,<0.3",
+        "vyper~=0.3.7",
     ],
     python_requires=">=3.8,<4",
     extras_require=extras_require,
     py_modules=["ape_vyper"],
+    entry_points={
+        "ape_cli_subcommands": [
+            "ape_vyper=ape_vyper._cli:cli",
+        ],
+    },
     license="Apache-2.0",
     zip_safe=False,
     keywords="ethereum",

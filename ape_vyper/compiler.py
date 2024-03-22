@@ -6,7 +6,7 @@ from base64 import b64encode
 from fnmatch import fnmatch
 from importlib import import_module
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Sequence, Set, Tuple, Union, cast
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tuple, Union, cast
 
 import vvm  # type: ignore
 from ape.api import PluginConfig
@@ -20,7 +20,7 @@ from eth_utils import is_0x_prefixed
 from ethpm_types import ASTNode, PackageManifest, PCMap, SourceMapItem
 from ethpm_types.ast import ASTClassification
 from ethpm_types.contract_type import SourceMap
-from ethpm_types.source import Compiler, ContractSource, Function, SourceLocation
+from ethpm_types.source import Compiler, Content, ContractSource, Function, SourceLocation
 from evm_trace.enums import CALL_OPCODES
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import Version
@@ -28,12 +28,20 @@ from pydantic import field_serializer, field_validator
 from vvm import compile_standard as vvm_compile_standard
 from vvm.exceptions import VyperError  # type: ignore
 
+from ape_vyper.ast import source_to_abi
 from ape_vyper.exceptions import (
     RUNTIME_ERROR_MAP,
     IntegerBoundsCheck,
     RuntimeErrorType,
     VyperCompileError,
     VyperInstallError,
+)
+from ape_vyper.interface import (
+    extract_import_aliases,
+    extract_imports,
+    extract_meta,
+    generate_interface,
+    iface_name_from_file,
 )
 
 DEV_MSG_PATTERN = re.compile(r".*\s*#\s*(dev:.+)")
@@ -333,12 +341,11 @@ class VyperCompiler(CompilerAPI):
         return None
 
     @property
-    def import_remapping(self) -> Dict[str, Dict]:
+    def remapped_manifests(self) -> Dict[str, PackageManifest]:
         """
-        Configured interface imports from dependencies.
+        Interface import manifests.
         """
 
-        interfaces = {}
         dependencies: Dict[str, PackageManifest] = {}
 
         for remapping in self.settings.import_remapping:
@@ -366,7 +373,19 @@ class VyperCompiler(CompilerAPI):
                 dependency = dependency_versions[version].compile()
                 dependencies[remapping] = dependency
 
-            for name, ct in (dependency.contract_types or {}).items():
+        return dependencies
+
+    @property
+    def import_remapping(self) -> Dict[str, Dict]:
+        """
+        Configured interface imports from dependencies.
+        """
+
+        interfaces = {}
+
+        for remapping in self.settings.import_remapping:
+            key, _ = remapping.split("=")
+            for name, ct in (self.remapped_manifests[remapping].contract_types or {}).items():
                 interfaces[f"{key}/{name}.json"] = {
                     "abi": [x.model_dump(mode="json", by_alias=True) for x in ct.abi]
                 }
@@ -518,8 +537,14 @@ class VyperCompiler(CompilerAPI):
 
     def compile_code(self, code: str, base_path: Optional[Path] = None, **kwargs) -> ContractType:
         base_path = base_path or self.project_manager.contracts_folder
+
+        # Figure out what compiler version we need for this contract...
+        version = self._source_vyper_version(code)
+        # ...and install it if necessary
+        _install_vyper(version)
+
         try:
-            result = vvm.compile_source(code, base_path=base_path)
+            result = vvm.compile_source(code, base_path=base_path, vyper_version=version)
         except Exception as err:
             raise VyperCompileError(str(err)) from err
 
@@ -530,6 +555,117 @@ class VyperCompiler(CompilerAPI):
             runtimeBytecode={"bytecode": output["bytecode_runtime"]},
             **kwargs,
         )
+
+    def _source_vyper_version(self, code: str) -> Version:
+        """Given source code, figure out which Vyper version to use"""
+        version_spec = get_version_pragma_spec(code)
+
+        def first_full_release(versions: Iterable[Version]) -> Optional[Version]:
+            for vers in versions:
+                if not vers.is_devrelease and not vers.is_postrelease and not vers.is_prerelease:
+                    return vers
+            return None
+
+        if version_spec is None:
+            if version := first_full_release(self.installed_versions + self.available_versions):
+                return version
+            raise VyperInstallError("No available version.")
+
+        return next(version_spec.filter(self.available_versions))
+
+    def _flatten_source(
+        self, path: Path, base_path: Optional[Path] = None, raw_import_name: Optional[str] = None
+    ) -> str:
+        base_path = base_path or self.config_manager.contracts_folder
+
+        # Get the non stdlib import paths for our contracts
+        imports = list(
+            filter(
+                lambda x: not x.startswith("vyper/"),
+                [y for x in self.get_imports([path], base_path).values() for y in x],
+            )
+        )
+
+        dependencies: Dict[str, PackageManifest] = {}
+        for key, manifest in self.remapped_manifests.items():
+            package = key.split("=")[0]
+
+            if manifest.sources is None:
+                continue
+
+            for source_id in manifest.sources.keys():
+                import_match = f"{package}/{source_id}"
+                dependencies[import_match] = manifest
+
+        flattened_source = ""
+        interfaces_source = ""
+        og_source = (base_path / path).read_text()
+
+        # Get info about imports and source meta
+        aliases = extract_import_aliases(og_source)
+        pragma, source_without_meta = extract_meta(og_source)
+        stdlib_imports, _, source_without_imports = extract_imports(source_without_meta)
+
+        for import_path in sorted(imports):
+            import_file = base_path / import_path
+
+            # Vyper imported interface names come from their file names
+            file_name = iface_name_from_file(import_file)
+            # If we have a known alias, ("import X as Y"), use the alias as interface name
+            iface_name = aliases[file_name] if file_name in aliases else file_name
+
+            # We need to compare without extensions because sometimes they're made up for some
+            # reason.  TODO: Cleaner way to deal with this?
+            def _match_source(import_path: str) -> Optional[PackageManifest]:
+                import_path_name = ".".join(import_path.split(".")[:-1])
+                for source_path in dependencies.keys():
+                    if source_path.startswith(import_path_name):
+                        return dependencies[source_path]
+                return None
+
+            if matched_source := _match_source(import_path):
+                if not matched_source.contract_types:
+                    continue
+
+                abis = [
+                    el
+                    for k in matched_source.contract_types.keys()
+                    for el in matched_source.contract_types[k].abi
+                ]
+                interfaces_source += generate_interface(abis, iface_name)
+                continue
+
+            # Vyper imported interface names come from their file names
+            file_name = iface_name_from_file(import_file)
+            # Generate an ABI from the source code
+            abis = source_to_abi(import_file.read_text())
+            interfaces_source += generate_interface(abis, iface_name)
+
+        def no_nones(it: Iterable[Optional[str]]) -> Iterable[str]:
+            # Type guard like generator to remove Nones and make mypy happy
+            for el in it:
+                if el is not None:
+                    yield el
+
+        # Join all the OG and generated parts back together
+        flattened_source = "\n\n".join(
+            no_nones((pragma, stdlib_imports, interfaces_source, source_without_imports))
+        )
+
+        # TODO: Replace this nonsense with a real code formatter
+        def format_source(source: str) -> str:
+            while "\n\n\n\n" in source:
+                source = source.replace("\n\n\n\n", "\n\n\n")
+            return source
+
+        return format_source(flattened_source)
+
+    def flatten_contract(self, path: Path, base_path: Optional[Path] = None) -> Content:
+        """
+        Returns the flattened contract suitable for compilation or verification as a single file
+        """
+        source = self._flatten_source(path, base_path, path.name)
+        return Content({i: ln for i, ln in enumerate(source.splitlines())})
 
     def get_version_map(
         self, contract_filepaths: Sequence[Path], base_path: Optional[Path] = None

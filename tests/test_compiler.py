@@ -1,10 +1,10 @@
 import re
 
 import pytest
+import vvm  # type: ignore
 from ape.exceptions import ContractLogicError
 from ethpm_types import ContractType
 from packaging.version import Version
-from vvm import compile_source  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper.compiler import RuntimeErrorType
@@ -105,6 +105,7 @@ def test_get_version_map(project, compiler, all_versions):
         "contract_no_pragma.vy",  # no pragma should compile with latest version
         "empty.vy",  # empty file still compiles with latest version
         "pragma_with_space.vy",
+        "flatten_me.vy",
     ]
 
     # Add the 0.3.10 contracts.
@@ -225,7 +226,8 @@ def test_pc_map(compiler, project, src, vers):
     result = compiler.compile([path], base_path=project.contracts_folder)[0]
     actual = result.pcmap.root
     code = path.read_text()
-    compile_result = compile_source(code, vyper_version=vers, evm_version=compiler.evm_version)[
+    vvm.install_vyper(vers)
+    compile_result = vvm.compile_source(code, vyper_version=vers, evm_version=compiler.evm_version)[
         "<stdin>"
     ]
     src_map = compile_result["source_map"]
@@ -503,3 +505,29 @@ def test_compile_with_version_set_in_settings_dict(config, compiler_manager, pro
         )
         with pytest.raises(VyperCompileError, match=expected):
             compiler_manager.compile([contract], settings={"version": "0.3.3"})
+
+
+@pytest.mark.parametrize(
+    "contract_name",
+    [
+        # This first one has most known edge cases
+        "flatten_me.vy",
+        # Test on the below for general compatibility.
+        "contract_with_dev_messages.vy",
+        "erc20.vy",
+        "use_iface.vy",
+        "optimize_codesize.vy",
+        "evm_pragma.vy",
+        "use_iface2.vy",
+        "contract_no_pragma.vy",  # no pragma should compile with latest version
+        "empty.vy",  # empty file still compiles with latest version
+        "pragma_with_space.vy",
+    ],
+)
+def test_flatten_contract(all_versions, project, contract_name, compiler):
+    path = project.contracts_folder / contract_name
+    source = compiler.flatten_contract(path)
+    source_code = str(source)
+    version = compiler._source_vyper_version(source_code)
+    vvm.install_vyper(str(version))
+    vvm.compile_source(source_code, base_path=project.contracts_folder, vyper_version=version)
