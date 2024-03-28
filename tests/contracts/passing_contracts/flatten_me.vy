@@ -4,7 +4,7 @@ from vyper.interfaces import ERC20
 
 from interfaces import IFace2 as IFaceTwo
 import interfaces.IFace as IFace
-import exampledep.Dependency as Dep
+import exampledependency.Dependency as Dep
 
 
 @external
