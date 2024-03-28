@@ -1,5 +1,6 @@
 import os
 import shutil
+import tempfile
 from contextlib import contextmanager
 from distutils.dir_util import copy_tree
 from pathlib import Path
@@ -10,12 +11,6 @@ import ape
 import pytest
 import vvm  # type: ignore
 from click.testing import CliRunner
-
-# NOTE: Ensure that we don't use local paths for these
-DATA_FOLDER = Path(mkdtemp()).resolve()
-PROJECT_FOLDER = Path(mkdtemp()).resolve()
-ape.config.DATA_FOLDER = DATA_FOLDER
-ape.config.PROJECT_FOLDER = PROJECT_FOLDER
 
 BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
 TEMPLATES_PATH = BASE_CONTRACTS_PATH / "templates"
@@ -45,6 +40,17 @@ CONTRACT_VERSION_GEN_MAP = {
     ),
     "sub_reverts": ALL_VERSIONS,
 }
+
+
+@pytest.fixture(scope="session", autouse=True)
+def config():
+    cfg = ape.config
+
+    # Ensure we don't persist any .ape data.
+    with tempfile.TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir).resolve()
+        cfg.DATA_FOLDER = path
+        yield cfg
 
 
 def contract_test_cases(passing: bool) -> List[str]:
@@ -147,28 +153,17 @@ def compiler(compiler_manager):
     return compiler_manager.vyper
 
 
-@pytest.fixture
-def config():
-    return ape.config
-
-
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def project(config):
     project_source_dir = Path(__file__).parent
-    project_dest_dir = config.PROJECT_FOLDER / project_source_dir.name
 
     # Delete build / .cache that may exist pre-copy
-    project_path = Path(__file__).parent
-    cache = project_path / ".build"
+    cache = project_source_dir / ".build"
+    shutil.rmtree(cache, ignore_errors=True)
 
-    if cache.is_dir():
-        shutil.rmtree(cache)
-
-    copy_tree(project_source_dir.as_posix(), project_dest_dir.as_posix())
-    with config.using_project(project_dest_dir) as project:
-        yield project
-        if project.local_project._cache_folder.is_dir():
-            shutil.rmtree(project.local_project._cache_folder)
+    root_project = ape.Project(project_source_dir)
+    with root_project.sandbox() as sandbox:
+        yield sandbox
 
 
 @pytest.fixture
