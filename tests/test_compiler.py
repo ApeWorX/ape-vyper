@@ -1,8 +1,10 @@
 import re
+from pathlib import Path
 
+import ape
 import pytest
 import vvm  # type: ignore
-from ape.exceptions import ContractLogicError
+from ape.exceptions import CompilerError, ContractLogicError
 from ethpm_types import ContractType
 from packaging.version import Version
 from vvm.exceptions import VyperError  # type: ignore
@@ -48,39 +50,42 @@ def test_compile_project(project):
     assert len(contracts) == len(
         [p.name for p in project.contracts_folder.glob("*.vy") if p.is_file()]
     )
-    assert contracts["contract_039"].source_id == "contract_039.vy"
-    assert contracts["contract_no_pragma"].source_id == "contract_no_pragma.vy"
-    assert contracts["older_version"].source_id == "older_version.vy"
+    prefix = "contracts/passing_contracts"
+    assert contracts["contract_039"].source_id == f"{prefix}/contract_039.vy"
+    assert contracts["contract_no_pragma"].source_id == f"{prefix}/contract_no_pragma.vy"
+    assert contracts["older_version"].source_id == f"{prefix}/older_version.vy"
 
 
 @pytest.mark.parametrize("contract_name", PASSING_CONTRACT_NAMES)
 def test_compile_individual_contracts(project, contract_name, compiler):
     path = project.contracts_folder / contract_name
-    assert list(compiler.compile([path]))
+    assert list(compiler.compile((path,), project=project))
 
 
 @pytest.mark.parametrize(
     "contract_name", [n for n in FAILING_CONTRACT_NAMES if n != "contract_unknown_pragma.vy"]
 )
 def test_compile_failures(contract_name, compiler):
+    failing_project = ape.Project(FAILING_BASE)
     path = FAILING_BASE / contract_name
     with pytest.raises(VyperCompileError, match=EXPECTED_FAIL_PATTERNS[path.stem]) as err:
-        list(compiler.compile([path], base_path=FAILING_BASE))
+        list(compiler.compile((path,), project=failing_project))
 
     assert isinstance(err.value.base_err, VyperError)
 
 
 def test_install_failure(compiler):
+    failing_project = ape.Project(FAILING_BASE)
     path = FAILING_BASE / "contract_unknown_pragma.vy"
     with pytest.raises(VyperInstallError, match="No available version to install."):
-        list(compiler.compile([path]))
+        list(compiler.compile((path,), project=failing_project))
 
 
 def test_get_version_map(project, compiler, all_versions):
     vyper_files = [
         x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
     ]
-    actual = compiler.get_version_map(vyper_files)
+    actual = compiler.get_version_map(vyper_files, project=project)
     expected_versions = [Version(v) for v in all_versions]
 
     for version, sources in actual.items():
@@ -157,23 +162,30 @@ def test_compiler_data_in_manifest(project):
         assert true_latest.settings["evmVersion"] == "shanghai"
 
         # There is only one contract with codesize pragma.
-        assert codesize_latest.contractTypes == ["optimize_codesize"]
+        assert codesize_latest.contractTypes == [
+            "contracts/passing_contracts/optimize_codesize.vy:optimize_codesize"
+        ]
         assert codesize_latest.settings["optimize"] == "codesize"
 
         # There is only one contract with evm-version pragma.
-        assert evm_latest.contractTypes == ["evm_pragma"]
+        assert evm_latest.contractTypes == ["contracts/passing_contracts/evm_pragma.vy:evm_pragma"]
         assert evm_latest.settings["evmVersion"] == "paris"
 
         assert len(true_latest.contractTypes) >= 9
         assert len(vyper_028.contractTypes) >= 1
-        assert "contract_0310" in true_latest.contractTypes
-        assert "older_version" in vyper_028.contractTypes
+        assert (
+            "contracts/passing_contracts/contract_0310.vy:contract_0310"
+            in true_latest.contractTypes
+        )
+        assert (
+            "contracts/passing_contracts/older_version.vy:older_version" in vyper_028.contractTypes
+        )
         for compiler in (true_latest, vyper_028):
             assert compiler.settings["optimize"] is True
 
-    project.local_project.update_manifest(compilers=[])
+    project.update_manifest(compilers=[])
     project.load_contracts(use_cache=False)
-    run_test(project.local_project.manifest)
+    run_test(project.manifest)
     man = project.extract_manifest()
     run_test(man)
 
@@ -185,7 +197,7 @@ def test_compile_parse_dev_messages(compiler, dev_revert_source, project):
     The compiler will output a map that maps dev messages to line numbers.
     See contract_with_dev_messages.vy for more information.
     """
-    result = list(compiler.compile([dev_revert_source], base_path=project.contracts_folder))
+    result = list(compiler.compile((dev_revert_source,), project=project))
 
     assert len(result) == 1
 
@@ -204,18 +216,19 @@ def test_get_imports(compiler, project):
     vyper_files = [
         x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
     ]
-    actual = compiler.get_imports(vyper_files)
+    actual = compiler.get_imports(vyper_files, project=project)
+    prefix = "contracts/passing_contracts"
     builtin_import = "vyper/interfaces/ERC20.json"
     local_import = "interfaces/IFace.vy"
     local_from_import = "interfaces/IFace2.vy"
-    dependency_import = "exampledep/Dependency.json"
-
-    assert len(actual["contract_037.vy"]) == 1
-    assert set(actual["contract_037.vy"]) == {builtin_import}
-    assert len(actual["use_iface.vy"]) == 3
-    assert set(actual["use_iface.vy"]) == {local_import, local_from_import, dependency_import}
-    assert len(actual["use_iface2.vy"]) == 1
-    assert set(actual["use_iface2.vy"]) == {local_import}
+    dependency_import = "exampledependency/contracts/Dependency.vy"
+    assert set(actual[f"{prefix}/contract_037.vy"]) == {builtin_import}
+    assert set(actual[f"{prefix}/use_iface.vy"]) == {
+        local_import,
+        local_from_import,
+        dependency_import,
+    }
+    assert set(actual[f"{prefix}/use_iface2.vy"]) == {local_import}
 
 
 @pytest.mark.parametrize("src,vers", [("contract_039", "0.3.9"), ("contract_037", "0.3.7")])
@@ -225,15 +238,16 @@ def test_pc_map(compiler, project, src, vers):
     from `compile_src()` which includes the uncompressed source map data.
     """
 
-    path = project.contracts_folder / f"{src}.vy"
-    result = list(compiler.compile([path], base_path=project.contracts_folder))[0]
+    path = project.sources.lookup(src)
+    result = list(compiler.compile((path,), project=project))[0]
     actual = result.pcmap.root
     code = path.read_text()
     vvm.install_vyper(vers)
-    compile_result = vvm.compile_source(code, vyper_version=vers, evm_version=compiler.evm_version)[
-        "<stdin>"
-    ]
-    src_map = compile_result["source_map"]
+    cfg = compiler.get_config(project=project)
+    evm_version = cfg.evm_version
+    compile_result = vvm.compile_source(code, vyper_version=vers, evm_version=evm_version)
+    std_result = compile_result["<stdin>"]
+    src_map = std_result["source_map"]
     lines = code.splitlines()
 
     # Use the old-fashioned way of gathering PCMap to ensure our creative way works
@@ -389,7 +403,7 @@ def test_enrich_error_handle_when_name(compiler, geth_provider, mocker):
 def test_trace_source(account, geth_provider, project, traceback_contract, arguments):
     receipt = traceback_contract.addBalance(*arguments, sender=account)
     actual = receipt.source_traceback
-    base_folder = project.contracts_folder
+    base_folder = Path(__file__).parent / "contracts" / "passing_contracts"
     contract_name = traceback_contract.contract_type.name
     expected = rf"""
 Traceback (most recent call last)
@@ -437,7 +451,7 @@ def test_trace_err_source(account, geth_provider, project, traceback_contract):
 
     receipt = geth_provider.get_receipt(txn.txn_hash.hex())
     actual = receipt.source_traceback
-    base_folder = project.contracts_folder
+    base_folder = Path(__file__).parent / "contracts" / "passing_contracts"
     contract_name = traceback_contract.contract_type.name
     version_key = contract_name.split("traceback_contract_")[-1]
     expected = rf"""
@@ -478,19 +492,20 @@ def test_compile_with_version_set_in_config(config, projects_path, compiler, moc
     path = projects_path / "version_in_config"
     version_from_config = "0.3.7"
     spy = mocker.patch("ape_vyper.compiler.vvm_compile_standard")
-    with config.using_project(path) as project:
-        contract = project.contracts_folder / "v_contract.vy"
-        settings = compiler.get_compiler_settings((contract,))
-        assert str(list(settings.keys())[0]) == version_from_config
+    project = ape.Project(path)
 
-        # Show it uses this version in the compiler.
-        project.load_contracts(use_cache=False)
-        assert str(spy.call_args[1]["vyper_version"]) == version_from_config
+    contract = project.contracts_folder / "v_contract.vy"
+    settings = compiler.get_compiler_settings((contract,), project=project)
+    assert str(list(settings.keys())[0]) == version_from_config
+
+    # Show it uses this version in the compiler.
+    project.load_contracts(use_cache=False)
+    assert str(spy.call_args[1]["vyper_version"]) == version_from_config
 
 
-def test_compile_code(compiler, dev_revert_source):
+def test_compile_code(project, compiler, dev_revert_source):
     code = dev_revert_source.read_text()
-    actual = compiler.compile_code(code, contractName="MyContract")
+    actual = compiler.compile_code(code, project=project, contractName="MyContract")
     assert isinstance(actual, ContractType)
     assert actual.name == "MyContract"
     assert len(actual.abi) > 1
@@ -501,13 +516,13 @@ def test_compile_code(compiler, dev_revert_source):
 def test_compile_with_version_set_in_settings_dict(config, compiler_manager, projects_path):
     path = projects_path / "version_in_config"
     contract = path / "contracts" / "v_contract.vy"
-
-    with config.using_project(path):
-        expected = (
-            '.*Version specification "0.3.10" is not compatible with compiler version "0.3.3"'
-        )
-        with pytest.raises(VyperCompileError, match=expected):
-            list(compiler_manager.compile([contract], settings={"version": "0.3.3"}))
+    project = ape.Project(path)
+    expected = '.*Version specification "0.3.10" is not compatible with compiler version "0.3.3"'
+    iterator = compiler_manager.compile(
+        (contract,), project=project, settings={"vyper": {"version": "0.3.3"}}
+    )
+    with pytest.raises(CompilerError, match=expected):
+        _ = list(iterator)
 
 
 @pytest.mark.parametrize(
@@ -529,7 +544,7 @@ def test_compile_with_version_set_in_settings_dict(config, compiler_manager, pro
 )
 def test_flatten_contract(all_versions, project, contract_name, compiler):
     path = project.contracts_folder / contract_name
-    source = compiler.flatten_contract(path)
+    source = compiler.flatten_contract(path, project=project)
     source_code = str(source)
     version = compiler._source_vyper_version(source_code)
     vvm.install_vyper(str(version))

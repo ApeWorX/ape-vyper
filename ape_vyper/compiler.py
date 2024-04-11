@@ -10,10 +10,11 @@ from pathlib import Path
 from typing import Any, Optional, Union, cast
 
 import vvm  # type: ignore
-from ape.api import PluginConfig
-from ape.api.compiler import CompilerAPI, TraceAPI
+from ape.api import PluginConfig, TraceAPI
+from ape.api.compiler import CompilerAPI
 from ape.exceptions import ContractLogicError
 from ape.logging import logger
+from ape.managers.project import ProjectManager
 from ape.types import ContractSourceCoverage, ContractType, SourceTraceback
 from ape.utils import (
     cached_property,
@@ -33,7 +34,7 @@ from evm_trace.enums import CALL_OPCODES
 from evm_trace.geth import create_call_node_data
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import Version
-from pydantic import field_serializer, field_validator
+from pydantic import field_serializer, field_validator, model_validator
 from vvm import compile_standard as vvm_compile_standard
 from vvm.exceptions import VyperError  # type: ignore
 
@@ -77,6 +78,38 @@ EVM_VERSION_DEFAULT = {
 }
 
 
+class Remapping(PluginConfig):
+    key: str
+    dependency_name: str
+    dependency_version: Optional[None] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_str(cls, value):
+        if isinstance(value, str):
+            parts = value.split("=")
+            key = parts[0].strip()
+            value = parts[1].strip()
+            if "@" in value:
+                value_parts = value.split("@")
+                dep_name = value_parts[0].strip()
+                dep_version = value_parts[1].strip()
+            else:
+                dep_name = value
+                dep_version = None
+
+            return {"key": key, "dependency_name": dep_name, "dependency_version": dep_version}
+
+        return value
+
+    def __str__(self) -> str:
+        value = self.dependency_name
+        if _version := self.dependency_version:
+            value = f"{value}@{_version}"
+
+        return f"{self.key}={value}"
+
+
 class VyperConfig(PluginConfig):
     version: Optional[SpecifierSet] = None
     """
@@ -89,7 +122,7 @@ class VyperConfig(PluginConfig):
     The evm-version or hard-fork name.
     """
 
-    import_remapping: list[str] = []
+    import_remapping: list[Remapping] = []
     """
     Configuration of an import name mapped to a dependency listing.
     To use a specific version of a dependency, specify using ``@`` symbol.
@@ -226,22 +259,17 @@ class VyperCompiler(CompilerAPI):
     def name(self) -> str:
         return "vyper"
 
-    @property
-    def settings(self) -> VyperConfig:
-        return cast(VyperConfig, super().settings)
-
-    @property
-    def evm_version(self) -> Optional[str]:
-        return self.settings.evm_version
-
     def get_imports(
-        self, contract_filepaths: Iterable[Path], base_path: Optional[Path] = None
+        self,
+        contract_filepaths: Iterable[Path],
+        project: Optional[ProjectManager] = None,
     ) -> dict[str, list[str]]:
-        base_path = (base_path or self.project_manager.contracts_folder).absolute()
+        pm = project or self.local_project
         import_map = {}
+        dependencies = self.get_dependencies(project=pm)
         for path in contract_filepaths:
             content = path.read_text().splitlines()
-            source_id = str(get_relative_path(path.absolute(), base_path.absolute()))
+            source_id = str(get_relative_path(path.absolute(), pm.path.absolute()))
             for line in content:
                 if line.startswith("import "):
                     import_line_parts = line.replace("import ", "").split(" ")
@@ -258,12 +286,40 @@ class VyperCompiler(CompilerAPI):
 
                 # NOTE: Defaults to JSON (assuming from input JSON or a local JSON),
                 #  unless a Vyper file exists.
-                ext = "vy" if (base_path / f"{suffix}.vy").is_file() else "json"
+                import_source_id = None
+                if (pm.interfaces_folder.parent / f"{suffix}.vy").is_file():
+                    import_source_id = f"{suffix}.vy"
 
-                import_source_id = f"{suffix}.{ext}"
-                if source_id not in import_map:
+                elif (pm.interfaces_folder.parent / f"{suffix}.json").is_file():
+                    import_source_id = f"{suffix}.json"
+
+                elif suffix.startswith(f"vyper{os.path.sep}"):
+                    # Vyper built-ins.
+                    import_source_id = f"{suffix}.json"
+
+                elif suffix.split(os.path.sep)[0] in dependencies:
+                    dependency_name = suffix.split(os.path.sep)[0]
+                    filestem = suffix.replace(f"{dependency_name}{os.path.sep}", "")
+                    for version_str, version_installed in pm.dependencies[dependency_name].items():
+                        dep_project = version_installed.project
+                        dependency_source_prefix = (
+                            f"{get_relative_path(dep_project.contracts_folder, dep_project.path)}"
+                        )
+                        source_id_stem = f"{dependency_source_prefix}{os.path.sep}{filestem}"
+                        for ext in (".vy", ".json"):
+                            if f"{source_id_stem}{ext}" in dep_project.sources:
+                                import_source_id = os.path.sep.join(
+                                    (dependency_name, version_str, f"{source_id_stem}{ext}")
+                                )
+                                break
+
+                else:
+                    logger.error(f"Unable to find dependency {suffix}")
+                    continue
+
+                if import_source_id and source_id not in import_map:
                     import_map[source_id] = [import_source_id]
-                elif import_source_id not in import_map[source_id]:
+                elif import_source_id and import_source_id not in import_map[source_id]:
                     import_map[source_id].append(import_source_id)
 
         return import_map
@@ -357,62 +413,74 @@ class VyperCompiler(CompilerAPI):
         except ImportError:
             return None
 
-    @property
-    def config_version_pragma(self) -> Optional[SpecifierSet]:
-        if version := self.settings.version:
-            return version
+    def get_dependencies(
+        self, project: Optional[ProjectManager] = None
+    ) -> dict[str, ProjectManager]:
+        pm = project or self.local_project
+        config = self.get_config(pm)
+        dependencies: dict[str, ProjectManager] = {}
+        handled: set[str] = set()
 
-        return None
-
-    @property
-    def remapped_manifests(self) -> dict[str, PackageManifest]:
-        """
-        Interface import manifests.
-        """
-
-        dependencies: dict[str, PackageManifest] = {}
-
-        for remapping in self.settings.import_remapping:
-            key, value = remapping.split("=")
-
-            if remapping in dependencies:
-                dependency = dependencies[remapping]
-            else:
-                parts = value.split("@")
-                dep_name = parts[0]
-                dependency_versions = self.project_manager.dependencies[dep_name]
-                if not dependency_versions:
-                    raise VyperCompileError(f"Missing dependency '{dep_name}'.")
-
-                elif len(parts) == 1 and len(dependency_versions) < 2:
-                    # Use only version.
-                    version = list(dependency_versions.keys())[0]
-
-                elif parts[1] not in dependency_versions:
-                    raise VyperCompileError(f"Missing dependency '{dep_name}'.")
-
+        # Add remappings from config.
+        for remapping in config.import_remapping:
+            name = remapping.dependency_name
+            if not (_version := remapping.dependency_version):
+                versions = pm.dependencies[name]
+                if len(versions) == 1:
+                    _version = versions[0]
                 else:
-                    version = parts[1]
+                    continue
 
-                dependency = dependency_versions[version].compile()
-                dependencies[remapping] = dependency
+            dependency = pm.dependencies.get_dependency(name, _version)
+            dep_id = f"{dependency.name}_{dependency.version}"
+            if dep_id in handled:
+                continue
+
+            handled.add(dep_id)
+
+            try:
+                dependency.compile()
+            except Exception:
+                logger.warning(
+                    f"Failed to compile dependency '{dependency.name}' @ '{dependency.version}'."
+                )
+                continue
+
+            dependencies[remapping.key] = dependency.project
+
+        # Add auto-remapped dependencies.
+        for dependency in pm.dependencies.specified:
+            dep_id = f"{dependency.name}_{dependency.version}"
+            if dep_id in handled:
+                continue
+
+            handled.add(dep_id)
+
+            try:
+                dependency.compile()
+            except Exception:
+                logger.warning(
+                    f"Failed to compile dependency '{dependency.name}' @ '{dependency.version}'."
+                )
+                continue
+
+            dependencies[dependency.name] = dependency.project
 
         return dependencies
 
-    @property
-    def import_remapping(self) -> dict[str, dict]:
+    def get_import_remapping(self, project: Optional[ProjectManager] = None) -> dict[str, dict]:
         """
         Configured interface imports from dependencies.
         """
-
-        interfaces = {}
-
-        for remapping in self.settings.import_remapping:
-            key, _ = remapping.split("=")
-            for name, ct in (self.remapped_manifests[remapping].contract_types or {}).items():
-                interfaces[f"{key}/{name}.json"] = {
-                    "abi": [x.model_dump(mode="json", by_alias=True) for x in ct.abi]
-                }
+        pm = project or self.local_project
+        dependencies = self.get_dependencies(project=pm)
+        interfaces: dict[str, dict] = {}
+        for key, dependency_project in dependencies.items():
+            manifest = dependency_project.manifest
+            for name, ct in (manifest.contract_types or {}).items():
+                filename = f"{key}/{name}.json"
+                abi_list = [x.model_dump(mode="json", by_alias=True) for x in ct.abi]
+                interfaces[filename] = {"abi": abi_list}
 
         return interfaces
 
@@ -424,36 +492,55 @@ class VyperCompiler(CompilerAPI):
             self.classify_ast(child)
 
     def compile(
-        self, contract_filepaths: Iterable[Path], base_path: Optional[Path] = None
+        self,
+        contract_filepaths: Iterable[Path],
+        project: Optional[ProjectManager] = None,
+        settings: Optional[dict] = None,
     ) -> Iterator[ContractType]:
-        contract_types = []
-        base_path = base_path or self.config_manager.contracts_folder
+        pm = project or self.local_project
+        settings = settings or {}
         sources = [p for p in contract_filepaths if p.parent.name != "interfaces"]
-        version_map = self.get_version_map(sources)
-        compiler_data = self._get_compiler_arguments(version_map, base_path)
-        all_settings = self.get_compiler_settings(sources, base_path=base_path)
+        contract_types: list[ContractType] = []
+        if version := settings.get("version", None):
+            version_map = {Version(version): set(sources)}
+        else:
+            version_map = self.get_version_map(sources, project=project)
+
+        compiler_data = self._get_compiler_arguments(version_map, project=pm)
+        all_settings: dict = self.get_compiler_settings(
+            sources, project=project, **(settings or {})
+        )
         contract_versions: dict[str, tuple[Version, str]] = {}
+        import_remapping = self.get_import_remapping(project=pm)
 
         for vyper_version, version_settings in all_settings.items():
-            for settings_key, settings in version_settings.items():
-                source_ids = settings["outputSelection"]
-                optimization_paths = {p: base_path / p for p in source_ids}
-                input_json = {
+            for settings_key, settings_set in version_settings.items():
+                source_ids = settings_set["outputSelection"]
+                optimization_paths = {p: pm.path / p for p in source_ids}
+                input_json: dict = {
                     "language": "Vyper",
-                    "settings": settings,
+                    "settings": settings_set,
                     "sources": {
                         s: {"content": p.read_text()} for s, p in optimization_paths.items()
                     },
                 }
 
-                if interfaces := self.import_remapping:
+                if interfaces := import_remapping:
                     input_json["interfaces"] = interfaces
+
+                # Output compiler details.
+                keys = (
+                    "\n\t".join(sorted([x for x in input_json.get("sources", {}).keys()]))
+                    or "No input."
+                )
+                log_str = f"Compiling using Vyper compiler '{vyper_version}'.\nInput:\n\t{keys}"
+                logger.info(log_str)
 
                 vyper_binary = compiler_data[vyper_version]["vyper_binary"]
                 try:
                     result = vvm_compile_standard(
                         input_json,
-                        base_path=base_path,
+                        base_path=pm.path,
                         vyper_version=vyper_version,
                         vyper_binary=vyper_binary,
                     )
@@ -463,7 +550,7 @@ class VyperCompiler(CompilerAPI):
                 for source_id, output_items in result["contracts"].items():
                     content = {
                         i + 1: ln
-                        for i, ln in enumerate((base_path / source_id).read_text().splitlines())
+                        for i, ln in enumerate((pm.path / source_id).read_text().splitlines())
                     }
                     for name, output in output_items.items():
                         # De-compress source map to get PC POS map.
@@ -513,6 +600,7 @@ class VyperCompiler(CompilerAPI):
                             dev_messages=dev_messages,
                         )
                         contract_types.append(contract_type)
+                        yield contract_type
                         contract_versions[name] = (vyper_version, settings_key)
                         yield contract_type
 
@@ -529,13 +617,14 @@ class VyperCompiler(CompilerAPI):
             if ct_version not in compilers_used:
                 compilers_used[ct_version] = {}
 
+            contract_id = f"{ct.source_id}:{ct.name}"
             if ct_settings_key in compilers_used[ct_version] and ct.name not in (
                 compilers_used[ct_version][ct_settings_key].contractTypes or []
             ):
                 # Add contractType to already-tracked compiler.
                 compilers_used[ct_version][ct_settings_key].contractTypes = [
                     *(compilers_used[ct_version][ct_settings_key].contractTypes or []),
-                    ct.name,
+                    contract_id,
                 ]
 
             elif ct_settings_key not in compilers_used[ct_version]:
@@ -543,7 +632,7 @@ class VyperCompiler(CompilerAPI):
                 compilers_used[ct_version][ct_settings_key] = Compiler(
                     name=self.name.lower(),
                     version=f"{ct_version}",
-                    contractTypes=[ct.name],
+                    contractTypes=[contract_id],
                     settings=settings,
                 )
 
@@ -556,10 +645,12 @@ class VyperCompiler(CompilerAPI):
 
         # NOTE: This method handles merging contractTypes and filtered out
         #   no longer used Compilers.
-        self.project_manager.local_project.add_compiler_data(compilers_ls)
+        pm.add_compiler_data(compilers_ls)
 
-    def compile_code(self, code: str, base_path: Optional[Path] = None, **kwargs) -> ContractType:
-        base_path = base_path or self.project_manager.contracts_folder
+    def compile_code(
+        self, code: str, project: Optional[ProjectManager] = None, **kwargs
+    ) -> ContractType:
+        pm = project or self.local_project
 
         # Figure out what compiler version we need for this contract...
         version = self._source_vyper_version(code)
@@ -567,7 +658,7 @@ class VyperCompiler(CompilerAPI):
         _install_vyper(version)
 
         try:
-            result = vvm.compile_source(code, base_path=base_path, vyper_version=version)
+            result = vvm.compile_source(code, base_path=pm.path, vyper_version=version)
         except Exception as err:
             raise VyperCompileError(str(err)) from err
 
@@ -587,42 +678,43 @@ class VyperCompiler(CompilerAPI):
             for vers in versions:
                 if not vers.is_devrelease and not vers.is_postrelease and not vers.is_prerelease:
                     return vers
+
             return None
 
         if version_spec is None:
             if version := first_full_release(self.installed_versions + self.available_versions):
                 return version
+
             raise VyperInstallError("No available version.")
 
         return next(version_spec.filter(self.available_versions))
 
-    def _flatten_source(
-        self, path: Path, base_path: Optional[Path] = None, raw_import_name: Optional[str] = None
-    ) -> str:
-        base_path = base_path or self.config_manager.contracts_folder
+    def _flatten_source(self, path: Path, project: Optional[ProjectManager] = None) -> str:
+        pm = project or self.local_project
 
         # Get the non stdlib import paths for our contracts
         imports = list(
             filter(
                 lambda x: not x.startswith("vyper/"),
-                [y for x in self.get_imports([path], base_path).values() for y in x],
+                [y for x in self.get_imports((path,), project=pm).values() for y in x],
             )
         )
 
         dependencies: dict[str, PackageManifest] = {}
-        for key, manifest in self.remapped_manifests.items():
+        dependency_projects = self.get_dependencies(project=pm)
+        for key, dependency_project in dependency_projects.items():
             package = key.split("=")[0]
-
+            base = dependency_project.path if hasattr(dependency_project, "path") else package
+            manifest = dependency_project.manifest
             if manifest.sources is None:
                 continue
 
             for source_id in manifest.sources.keys():
-                import_match = f"{package}/{source_id}"
+                import_match = f"{base}/{source_id}"
                 dependencies[import_match] = manifest
 
-        flattened_source = ""
         interfaces_source = ""
-        og_source = (base_path / path).read_text()
+        og_source = (pm.path / path).read_text()
 
         # Get info about imports and source meta
         aliases = extract_import_aliases(og_source)
@@ -630,20 +722,27 @@ class VyperCompiler(CompilerAPI):
         stdlib_imports, _, source_without_imports = extract_imports(source_without_meta)
 
         for import_path in sorted(imports):
-            import_file = base_path / import_path
+            import_file = None
+            for base in (pm.path, pm.interfaces_folder):
+                for opt in {import_path, import_path.replace(f"interfaces{os.path.sep}", "")}:
+                    try_import_file = base / opt
+                    if try_import_file.is_file():
+                        import_file = try_import_file
+                        break
+
+            if import_file is None:
+                import_file = pm.path / import_path
 
             # Vyper imported interface names come from their file names
             file_name = iface_name_from_file(import_file)
             # If we have a known alias, ("import X as Y"), use the alias as interface name
             iface_name = aliases[file_name] if file_name in aliases else file_name
 
-            # We need to compare without extensions because sometimes they're made up for some
-            # reason.  TODO: Cleaner way to deal with this?
-            def _match_source(import_path: str) -> Optional[PackageManifest]:
-                import_path_name = ".".join(import_path.split(".")[:-1])
+            def _match_source(imp_path: str) -> Optional[PackageManifest]:
                 for source_path in dependencies.keys():
-                    if source_path.startswith(import_path_name):
+                    if source_path.endswith(imp_path):
                         return dependencies[source_path]
+
                 return None
 
             if matched_source := _match_source(import_path):
@@ -658,11 +757,10 @@ class VyperCompiler(CompilerAPI):
                 interfaces_source += generate_interface(abis, iface_name)
                 continue
 
-            # Vyper imported interface names come from their file names
-            file_name = iface_name_from_file(import_file)
             # Generate an ABI from the source code
-            abis = source_to_abi(import_file.read_text())
-            interfaces_source += generate_interface(abis, iface_name)
+            elif import_file.is_file():
+                abis = source_to_abi(import_file.read_text())
+                interfaces_source += generate_interface(abis, iface_name)
 
         def no_nones(it: Iterable[Optional[str]]) -> Iterable[str]:
             # Type guard like generator to remove Nones and make mypy happy
@@ -683,23 +781,33 @@ class VyperCompiler(CompilerAPI):
 
         return format_source(flattened_source)
 
-    def flatten_contract(self, path: Path, base_path: Optional[Path] = None) -> Content:
+    def flatten_contract(
+        self,
+        path: Path,
+        project: Optional[ProjectManager] = None,
+        **kwargs,
+    ) -> Content:
         """
         Returns the flattened contract suitable for compilation or verification as a single file
         """
-        source = self._flatten_source(path, base_path, path.name)
+        pm = project or self.local_project
+        source = self._flatten_source(path, project=pm)
         return Content({i: ln for i, ln in enumerate(source.splitlines())})
 
     def get_version_map(
-        self, contract_filepaths: Iterable[Path], base_path: Optional[Path] = None
+        self,
+        contract_filepaths: Iterable[Path],
+        project: Optional[ProjectManager] = None,
     ) -> dict[Version, set[Path]]:
+        pm = project or self.local_project
+        config = self.get_config(pm)
         version_map: dict[Version, set[Path]] = {}
         source_path_by_version_spec: dict[SpecifierSet, set[Path]] = {}
         source_paths_without_pragma = set()
 
         # Sort contract_filepaths to promote consistent, reproduce-able behavior
         for path in sorted(contract_filepaths):
-            if config_spec := self.config_version_pragma:
+            if config_spec := config.version:
                 _safe_append(source_path_by_version_spec, config_spec, path)
             elif pragma := get_version_pragma_spec(path):
                 _safe_append(source_path_by_version_spec, pragma, path)
@@ -755,15 +863,22 @@ class VyperCompiler(CompilerAPI):
         return version_map
 
     def get_compiler_settings(
-        self, contract_filepaths: Iterable[Path], base_path: Optional[Path] = None
+        self,
+        contract_filepaths: Iterable[Path],
+        project: Optional[ProjectManager] = None,
+        **kwargs,
     ) -> dict[Version, dict]:
-        valid_paths = [p for p in contract_filepaths if get_full_extension(p) == ".vy"]
-        contracts_path = base_path or self.config_manager.contracts_folder
-        files_by_vyper_version = self.get_version_map(valid_paths, base_path=contracts_path)
+        pm = project or self.local_project
+        valid_paths = [p for p in contract_filepaths if p.suffix == ".vy"]
+        if version := kwargs.pop("version", None):
+            files_by_vyper_version = {Version(version): set(valid_paths)}
+        else:
+            files_by_vyper_version = self.get_version_map(valid_paths, project=pm)
+
         if not files_by_vyper_version:
             return {}
 
-        compiler_data = self._get_compiler_arguments(files_by_vyper_version, contracts_path)
+        compiler_data = self._get_compiler_arguments(files_by_vyper_version, project=pm)
         settings = {}
         for version, data in compiler_data.items():
             source_paths = list(files_by_vyper_version.get(version, []))
@@ -771,15 +886,11 @@ class VyperCompiler(CompilerAPI):
                 continue
 
             output_selection: dict[str, set[str]] = {}
-            optimizations_map = get_optimization_pragma_map(source_paths, contracts_path)
-            evm_version_map = get_evm_version_pragma_map(source_paths, contracts_path)
-            default_evm_version = (
-                data.get("evm_version")
-                or data.get("evmVersion")
-                or EVM_VERSION_DEFAULT.get(version.base_version)
-            )
+            optimizations_map = get_optimization_pragma_map(source_paths, pm.path)
+            evm_version_map = get_evm_version_pragma_map(source_paths, pm.path)
+            default_evm_version = data.get("evm_version", data.get("evmVersion"))
             for source_path in source_paths:
-                source_id = str(get_relative_path(source_path.absolute(), contracts_path))
+                source_id = str(get_relative_path(source_path.absolute(), pm.path))
                 optimization = optimizations_map.get(source_id, True)
                 evm_version = evm_version_map.get(source_id, default_evm_version)
                 settings_key = f"{optimization}%{evm_version}".lower()
@@ -985,15 +1096,18 @@ class VyperCompiler(CompilerAPI):
                 # Auto-getter found. Profile function without statements.
                 contract_coverage.include(method.name, method.selector)
 
-    def _get_compiler_arguments(self, version_map: dict, base_path: Path) -> dict[Version, dict]:
-        base_path = base_path or self.project_manager.contracts_folder
+    def _get_compiler_arguments(
+        self, version_map: dict, project: Optional[ProjectManager] = None
+    ) -> dict[Version, dict]:
+        pm = project or self.local_project
+        config = self.get_config(pm)
+        evm_version = config.evm_version
         arguments_map = {}
         for vyper_version, source_paths in version_map.items():
             bin_arg = self._get_vyper_bin(vyper_version)
             arguments_map[vyper_version] = {
-                "base_path": str(base_path),
-                "evm_version": self.evm_version
-                or EVM_VERSION_DEFAULT.get(vyper_version.base_version),
+                "base_path": f"{pm.path}",
+                "evm_version": evm_version,
                 "vyper_version": str(vyper_version),
                 "vyper_binary": bin_arg,
             }
@@ -1275,7 +1389,7 @@ class VyperCompiler(CompilerAPI):
             return None, calldata
 
         called_contract = self.chain_manager.contracts[address]
-        return self.project_manager._create_contract_source(called_contract), calldata
+        return self.local_project._create_contract_source(called_contract), calldata
 
 
 def _safe_append(data: dict, version: Union[Version, SpecifierSet], paths: Union[Path, set]):
