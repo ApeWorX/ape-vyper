@@ -29,8 +29,15 @@ class VyperCompileError(VyperCompilerPluginError):
             message = "\n\n".join(
                 f"{e['sourceLocation']['file']}\n{e['type']}:"
                 f"{e.get('formattedMessage', e['message'])}"
-                for e in err.error_dict
+                for e in (err.error_dict or {})
             )
+            # Try to find any indication of error.
+            message = message or getattr(err, "message", "")
+
+            # If is only the default, check stderr.
+            if message == "An error occurred during execution" and getattr(err, "stderr_data", ""):
+                message = err.stderr_data
+
         else:
             self.base_err = None
             message = str(err)

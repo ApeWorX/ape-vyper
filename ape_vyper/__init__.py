@@ -1,5 +1,6 @@
 from ape import plugins
 
+from ._utils import Extension
 from .compiler import VyperCompiler, VyperConfig
 
 
@@ -10,4 +11,4 @@ def config_class():
 
 @plugins.register(plugins.CompilerPlugin)
 def register_compiler():
-    return (".vy",), VyperCompiler
+    return tuple([e.value for e in Extension]), VyperCompiler

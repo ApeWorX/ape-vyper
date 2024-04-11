@@ -5,6 +5,7 @@ import time
 from base64 import b64encode
 from collections import defaultdict
 from collections.abc import Iterable, Iterator
+from enum import Enum
 from fnmatch import fnmatch
 from importlib import import_module
 from pathlib import Path
@@ -17,13 +18,9 @@ from ape.exceptions import ContractLogicError
 from ape.logging import logger
 from ape.managers.project import ProjectManager
 from ape.types import ContractSourceCoverage, ContractType, SourceTraceback
-from ape.utils import (
-    cached_property,
-    get_full_extension,
-    get_relative_path,
-    pragma_str_to_specifier_set,
-)
+from ape.utils import cached_property, get_relative_path, pragma_str_to_specifier_set
 from ape.utils._github import _GithubClient
+from ape.utils.os import get_full_extension
 from eth_pydantic_types import HexBytes
 from eth_utils import is_0x_prefixed
 from ethpm_types import ASTNode, PackageManifest, PCMap, SourceMapItem
@@ -76,7 +73,16 @@ EVM_VERSION_DEFAULT = {
     "0.3.8": "shanghai",
     "0.3.9": "shanghai",
     "0.3.10": "shanghai",
+    "0.4.0rc6": "shanghai",
 }
+
+
+class FileType(str, Enum):
+    SOURCE = ".vy"
+    INTERFACE = ".vyi"
+
+    def __str__(self) -> str:
+        return self.value
 
 
 class Remapping(PluginConfig):
@@ -266,61 +272,91 @@ class VyperCompiler(CompilerAPI):
         project: Optional[ProjectManager] = None,
     ) -> dict[str, list[str]]:
         pm = project or self.local_project
+        return self._get_imports(contract_filepaths, project=pm, handled=set())
+
+    def _get_imports(
+        self,
+        contract_filepaths: Iterable[Path],
+        project: Optional[ProjectManager] = None,
+        handled: Optional[set[str]] = None,
+    ):
+        pm = project or self.local_project
         import_map: defaultdict = defaultdict(list)
+        handled = handled or set()
         dependencies = self.get_dependencies(project=pm)
         for path in contract_filepaths:
+            if not path.is_file():
+                continue
+
             content = path.read_text().splitlines()
             source_id = str(get_relative_path(path.absolute(), pm.path.absolute()))
+            handled.add(source_id)
             for line in content:
                 if line.startswith("import "):
                     import_line_parts = line.replace("import ", "").split(" ")
-                    suffix = import_line_parts[0].strip().replace(".", os.path.sep)
+                    prefix = import_line_parts[0]
 
                 elif line.startswith("from ") and " import " in line:
-                    import_line_parts = line.replace("from ", "").split(" ")
-                    module_name = import_line_parts[0].strip().replace(".", os.path.sep)
-                    suffix = os.path.sep.join([module_name, import_line_parts[2].strip()])
+                    import_line_parts = line.replace("from ", "").strip().split(" ")
+                    module_name = import_line_parts[0].strip()
+                    prefix = os.path.sep.join([module_name, import_line_parts[2].strip()])
 
                 else:
                     # Not an import line
                     continue
 
+                dots = ""
+                while prefix.startswith("."):
+                    dots += prefix[0]
+                    prefix = prefix[1:]
+
+                # Replace rest of dots with slashes.
+                prefix = prefix.replace(".", os.path.sep)
+
+                full_path = (path.parent / dots / prefix.lstrip(os.path.sep)).resolve()
+                prefix = str(full_path).replace(f"{pm.path}", "").lstrip(os.path.sep)
+                import_source_id = None
+
                 # NOTE: Defaults to JSON (assuming from input JSON or a local JSON),
                 #  unless a Vyper file exists.
-                import_source_id = None
-                if (pm.interfaces_folder.parent / f"{suffix}.vy").is_file():
-                    import_source_id = f"{suffix}.vy"
-
-                elif (pm.interfaces_folder.parent / f"{suffix}.json").is_file():
-                    import_source_id = f"{suffix}.json"
-
-                elif suffix.startswith(f"vyper{os.path.sep}"):
-                    # Vyper built-ins.
-                    import_source_id = f"{suffix}.json"
-
-                elif suffix.split(os.path.sep)[0] in dependencies:
-                    dependency_name = suffix.split(os.path.sep)[0]
-                    filestem = suffix.replace(f"{dependency_name}{os.path.sep}", "")
-                    for version_str, dep_project in pm.dependencies[dependency_name].items():
-                        dependency = pm.dependencies.get_dependency(dependency_name, version_str)
-                        path_id = dependency.package_id.replace("/", "_")
-                        dependency_source_prefix = (
-                            f"{get_relative_path(dep_project.contracts_folder, dep_project.path)}"
-                        )
-                        source_id_stem = f"{dependency_source_prefix}{os.path.sep}{filestem}"
-                        for ext in (".vy", ".json"):
-                            if f"{source_id_stem}{ext}" in dep_project.sources:
-                                import_source_id = os.path.sep.join(
-                                    (path_id, version_str, f"{source_id_stem}{ext}")
-                                )
-                                break
-
+                if (pm.path / f"{prefix}{FileType.SOURCE}").is_file():
+                    ext = FileType.SOURCE.value
+                elif (pm.path / f"{prefix}{FileType.SOURCE}").is_file():
+                    ext = FileType.INTERFACE.value
+                elif (pm.path / f"{prefix}{FileType.INTERFACE}").is_file():
+                    ext = FileType.INTERFACE.value
                 else:
-                    logger.error(f"Unable to find dependency {suffix}")
-                    continue
+                    ext = ".json"
+                    dep_key = prefix.split(os.path.sep)[0]
+                    if dep_key in dependencies:
+                        dependency_name = prefix.split(os.path.sep)[0]
+                        filestem = prefix.replace(f"{dependency_name}{os.path.sep}", "")
+                        for version_str, dep_project in pm.dependencies[dependency_name].items():
+                            dependency = pm.dependencies.get_dependency(
+                                dependency_name, version_str
+                            )
+                            path_id = dependency.package_id.replace("/", "_")
+                            contracts_path = dep_project.contracts_folder
+                            dependency_source_prefix = (
+                                f"{get_relative_path(contracts_path, dep_project.path)}"
+                            )
+                            source_id_stem = f"{dependency_source_prefix}{os.path.sep}{filestem}"
+                            for ext in (".vy", ".json"):
+                                if f"{source_id_stem}{ext}" in dep_project.sources:
+                                    import_source_id = os.path.sep.join(
+                                        (path_id, version_str, f"{source_id_stem}{ext}")
+                                    )
+                                    break
 
+                if import_source_id is None:
+                    import_source_id = f"{prefix}{ext}"
                 if import_source_id and import_source_id not in import_map[source_id]:
                     import_map[source_id].append(import_source_id)
+
+                # Also include imports of imports.
+                sub_imports = self._get_imports((full_path,), project=project, handled=handled)
+                for sub_import_ls in sub_imports.values():
+                    import_map[source_id].extend(sub_import_ls)
 
         return dict(import_map)
 
@@ -500,31 +536,54 @@ class VyperCompiler(CompilerAPI):
         settings: Optional[dict] = None,
     ) -> Iterator[ContractType]:
         pm = project or self.local_project
-        settings = settings or {}
-        sources = [p for p in contract_filepaths if p.parent.name != "interfaces"]
+        self.compiler_settings = {**self.compiler_settings, **(settings or {})}
         contract_types: list[ContractType] = []
-        if version := settings.get("version", None):
-            version_map = {Version(version): set(sources)}
-        else:
-            version_map = self.get_version_map(sources, project=project)
-
-        compiler_data = self._get_compiler_arguments(version_map, project=pm)
-        all_settings: dict = self.get_compiler_settings(
-            sources, project=project, **(settings or {})
+        import_map = self.get_imports(contract_filepaths, project=pm)
+        config = self.get_config(pm)
+        version_map = self._get_version_map_from_import_map(
+            contract_filepaths,
+            import_map,
+            project=pm,
+            config=config,
         )
+        compiler_data = self._get_compiler_arguments(version_map, project=pm, config=config)
+        all_settings = self._get_compiler_settings_from_version_map(version_map, project=pm)
         contract_versions: dict[str, tuple[Version, str]] = {}
         import_remapping = self.get_import_remapping(project=pm)
 
         for vyper_version, version_settings in all_settings.items():
             for settings_key, settings_set in version_settings.items():
-                source_ids = settings_set["outputSelection"]
-                optimization_paths = {p: pm.path / p for p in source_ids}
+                if vyper_version >= Version("0.4.0rc1"):
+                    sources = settings_set.get("outputSelection", {})
+                    if not sources:
+                        continue
+
+                    # Vyper 0.4.0 seems to require absolute paths.
+                    src_dict = {p: {"content": Path(p).read_text()} for p in sources}
+                    for src in sources:
+                        src_id = f"{get_relative_path(Path(src), pm.path)}"
+                        if imports := import_map.get(src_id):
+                            for imp in imports:
+                                if imp not in src_dict:
+                                    imp_path = pm.path / imp
+                                    if imp_path.is_file():
+                                        src_dict[str(imp_path)] = {"content": imp_path.read_text()}
+
+                else:
+                    # NOTE: Pre vyper 0.4.0, interfaces CANNOT be in the source dict,
+                    # but post 0.4.0, they MUST be.
+                    src_dict = {
+                        s: {"content": p.read_text()}
+                        for s, p in {
+                            p: pm.path / p for p in settings_set["outputSelection"]
+                        }.items()
+                        if p.parent != pm.path / "interfaces"
+                    }
+
                 input_json: dict = {
                     "language": "Vyper",
                     "settings": settings_set,
-                    "sources": {
-                        s: {"content": p.read_text()} for s, p in optimization_paths.items()
-                    },
+                    "sources": src_dict,
                 }
 
                 if interfaces := import_remapping:
@@ -542,7 +601,6 @@ class VyperCompiler(CompilerAPI):
                 try:
                     result = vvm_compile_standard(
                         input_json,
-                        base_path=pm.path,
                         vyper_version=vyper_version,
                         vyper_binary=vyper_binary,
                     )
@@ -573,7 +631,17 @@ class VyperCompiler(CompilerAPI):
                         evm = output["evm"]
                         bytecode = evm["deployedBytecode"]
                         opcodes = bytecode["opcodes"].split(" ")
-                        compressed_src_map = SourceMap(root=bytecode["sourceMap"])
+
+                        src_map_raw = bytecode["sourceMap"]
+                        if isinstance(src_map_raw, str):
+                            # <0.4 range.
+                            compressed_src_map = SourceMap(root=src_map_raw)
+                        else:
+                            # >=0.4 range.
+                            compressed_src_map = SourceMap(
+                                root=src_map_raw["pc_pos_map_compressed"]
+                            )
+
                         src_map = list(compressed_src_map.parse())[1:]
 
                         pcmap = (
@@ -800,17 +868,32 @@ class VyperCompiler(CompilerAPI):
         project: Optional[ProjectManager] = None,
     ) -> dict[Version, set[Path]]:
         pm = project or self.local_project
-        config = self.get_config(pm)
+        import_map = self.get_imports(contract_filepaths, project=pm)
+        return self._get_version_map_from_import_map(contract_filepaths, import_map, project=pm)
+
+    def _get_version_map_from_import_map(
+        self,
+        contract_filepaths: Iterable[Path],
+        import_map: dict[str, list[str]],
+        project: Optional[ProjectManager] = None,
+        config: Optional[PluginConfig] = None,
+    ):
+        pm = project or self.local_project
+        self.compiler_settings = {**self.compiler_settings}
+        config = config or self.get_config(pm)
         version_map: dict[Version, set[Path]] = {}
         source_path_by_version_spec: dict[SpecifierSet, set[Path]] = {}
         source_paths_without_pragma = set()
 
         # Sort contract_filepaths to promote consistent, reproduce-able behavior
         for path in sorted(contract_filepaths):
+            src_id = f"{get_relative_path(path.absolute(), pm.path)}"
+            imports = [pm.path / imp for imp in import_map.get(src_id, [])]
+
             if config_spec := config.version:
-                _safe_append(source_path_by_version_spec, config_spec, path)
+                _safe_append(source_path_by_version_spec, config_spec, {path, *imports})
             elif pragma := get_version_pragma_spec(path):
-                _safe_append(source_path_by_version_spec, pragma, path)
+                _safe_append(source_path_by_version_spec, pragma, {path, *imports})
             else:
                 source_paths_without_pragma.add(path)
 
@@ -854,7 +937,7 @@ class VyperCompiler(CompilerAPI):
         # Handle no-pragma sources
         if source_paths_without_pragma:
             max_installed_vyper_version = (
-                max(version_map)
+                max(v for v in version_map if not v.pre)  # Require 'max' to be stable.
                 if version_map
                 else max(v for v in self.installed_versions if not v.pre)
             )
@@ -869,19 +952,27 @@ class VyperCompiler(CompilerAPI):
         **kwargs,
     ) -> dict[Version, dict]:
         pm = project or self.local_project
-        valid_paths = [p for p in contract_filepaths if p.suffix == ".vy"]
-        if version := kwargs.pop("version", None):
-            files_by_vyper_version = {Version(version): set(valid_paths)}
-        else:
-            files_by_vyper_version = self.get_version_map(valid_paths, project=pm)
+        # NOTE: Interfaces cannot be in the outputSelection
+        # (but are required in `sources` for the 0.4.0 range).
+        valid_paths = [
+            p
+            for p in contract_filepaths
+            if get_full_extension(p) == FileType.SOURCE
+            and not str(p).startswith(str(pm.path / "interfaces"))
+        ]
+        version_map = self.get_version_map(valid_paths, project=pm)
+        return self._get_compiler_settings_from_version_map(version_map, project=pm)
 
-        if not files_by_vyper_version:
-            return {}
-
-        compiler_data = self._get_compiler_arguments(files_by_vyper_version, project=pm)
+    def _get_compiler_settings_from_version_map(
+        self,
+        version_map: dict[Version, set[Path]],
+        project: Optional[ProjectManager] = None,
+    ):
+        pm = project or self.local_project
+        compiler_data = self._get_compiler_arguments(version_map, project=pm)
         settings = {}
         for version, data in compiler_data.items():
-            source_paths = list(files_by_vyper_version.get(version, []))
+            source_paths = list(version_map.get(version, []))
             if not source_paths:
                 continue
 
@@ -909,9 +1000,26 @@ class VyperCompiler(CompilerAPI):
                 elif optimization == "false":
                     optimization = False
 
+                if version >= Version("0.4.0rc6"):
+                    # Vyper 0.4.0 seems to require absolute paths.
+                    selection_dict = {
+                        (pm.path / s).as_posix(): ["*"]
+                        for s in selection
+                        if (pm.path / s).is_file()
+                        and f"interfaces{os.path.sep}" not in s
+                        and get_full_extension(pm.path / s) != FileType.INTERFACE
+                    }
+                else:
+                    selection_dict = {
+                        s: ["*"]
+                        for s in selection
+                        if (pm.path / s).is_file()
+                        if "interfaces" not in s
+                    }
+
                 version_settings[settings_key] = {
                     "optimize": optimization,
-                    "outputSelection": {s: ["*"] for s in selection},
+                    "outputSelection": selection_dict,
                 }
                 if evm_version and evm_version not in ("none", "null"):
                     version_settings[settings_key]["evmVersion"] = f"{evm_version}"
@@ -1099,10 +1207,13 @@ class VyperCompiler(CompilerAPI):
                 contract_coverage.include(method.name, method.selector)
 
     def _get_compiler_arguments(
-        self, version_map: dict, project: Optional[ProjectManager] = None
+        self,
+        version_map: dict,
+        project: Optional[ProjectManager] = None,
+        config: Optional[PluginConfig] = None,
     ) -> dict[Version, dict]:
         pm = project or self.local_project
-        config = self.get_config(pm)
+        config = config or self.get_config(pm)
         evm_version = config.evm_version
         arguments_map = {}
         for vyper_version, source_paths in version_map.items():
@@ -1186,7 +1297,7 @@ class VyperCompiler(CompilerAPI):
                 called_contract, sub_calldata = self._create_contract_from_call(frame)
                 if called_contract:
                     ext = get_full_extension(Path(called_contract.source_id))
-                    if ext.endswith(".vy"):
+                    if ext == ".vy":
                         # Called another Vyper contract.
                         sub_trace = self._get_traceback(
                             called_contract, frames, sub_calldata, previous_depth=frame["depth"]
@@ -1415,7 +1526,7 @@ def _has_empty_revert(opcodes: list[str]) -> bool:
 
 def _get_pcmap(bytecode: dict) -> PCMap:
     # Find the non payable value check.
-    src_info = bytecode["sourceMapFull"]
+    src_info = bytecode["sourceMapFull"] if "sourceMapFull" in bytecode else bytecode["sourceMap"]
     pc_data = {pc: {"location": ln} for pc, ln in src_info["pc_pos_map"].items()}
     if not pc_data:
         return PCMap.model_validate({})
