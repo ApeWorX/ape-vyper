@@ -205,7 +205,13 @@ def get_optimization_pragma(source: Union[str, Path]) -> Optional[str]:
     Returns:
         ``str``, or None if no valid pragma is found.
     """
-    source_str = source if isinstance(source, str) else source.read_text()
+    if isinstance(source, str):
+        source_str = source
+    elif not source.is_file():
+        return None
+    else:
+        source_str = source.read_text()
+
     if pragma_match := next(
         re.finditer(r"(?:\n|^)\s*#pragma\s+optimize\s+([^\n]*)", source_str), None
     ):
@@ -224,7 +230,13 @@ def get_evmversion_pragma(source: Union[str, Path]) -> Optional[str]:
     Returns:
         ``str``, or None if no valid pragma is found.
     """
-    source_str = source if isinstance(source, str) else source.read_text()
+    if isinstance(source, str):
+        source_str = source
+    elif not source.is_file():
+        return None
+    else:
+        source_str = source.read_text()
+
     if pragma_match := next(
         re.finditer(r"(?:\n|^)\s*#pragma\s+evm-version\s+([^\n]*)", source_str), None
     ):
