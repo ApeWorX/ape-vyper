@@ -1,7 +1,6 @@
 import os
 import shutil
 from contextlib import contextmanager
-from distutils.dir_util import copy_tree
 from pathlib import Path
 from tempfile import mkdtemp
 from typing import List
@@ -164,7 +163,7 @@ def project(config):
     if cache.is_dir():
         shutil.rmtree(cache)
 
-    copy_tree(project_source_dir.as_posix(), project_dest_dir.as_posix())
+    shutil.copytree(project_source_dir, project_dest_dir, dirs_exist_ok=True)
     with config.using_project(project_dest_dir) as project:
         yield project
         if project.local_project._cache_folder.is_dir():

@@ -52,7 +52,7 @@ def coverage_project(config, coverage_project_path):
     shutil.rmtree(build_dir, ignore_errors=True)
     with tempfile.TemporaryDirectory() as base_dir:
         # Copy Coverage project
-        project_dir = Path(base_dir) / "coverage_project"
+        project_dir = Path(base_dir).resolve() / "coverage_project"
         shutil.copytree(coverage_project_path, project_dir)
         with config.using_project(project_dir) as project:
             yield project
