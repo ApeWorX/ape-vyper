@@ -111,7 +111,7 @@ jobs:
 
         - name: Run Tests
           run: |
-            pytest tests/test_compiler.py -m "not fuzzing" -n 0 -s \
+            pytest -k "not test_coverage" -m "not fuzzing" -n 0 -s \
               --cov=ape_vyper \
               --cov-branch \
               --cov-report term \
