@@ -52,6 +52,21 @@ _EMPTY_REVERT_OFFSET = 18
 _NON_PAYABLE_STR = f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}"
 Optimization = Union[str, bool]
 
+EVM_VERSION_DEFAULT = {
+    "0.2.15": "berlin",
+    "0.2.16": "berlin",
+    "0.3.0": "berlin",
+    "0.3.1": "berlin",
+    "0.3.2": "berlin",
+    "0.3.3": "berlin",
+    "0.3.4": "berlin",
+    "0.3.6": "berlin",
+    "0.3.7": "paris",
+    "0.3.8": "shanghai",
+    "0.3.9": "shanghai",
+    "0.3.10": "shanghai",
+}
+
 
 class VyperConfig(PluginConfig):
     version: Optional[SpecifierSet] = None
@@ -723,7 +738,9 @@ class VyperCompiler(CompilerAPI):
         # Handle no-pragma sources
         if source_paths_without_pragma:
             max_installed_vyper_version = (
-                max(version_map) if version_map else max(self.installed_versions)
+                max(version_map)
+                if version_map
+                else max(v for v in self.installed_versions if not v.pre)
             )
             _safe_append(version_map, max_installed_vyper_version, source_paths_without_pragma)
 
@@ -748,7 +765,11 @@ class VyperCompiler(CompilerAPI):
             output_selection: Dict[str, Set[str]] = {}
             optimizations_map = get_optimization_pragma_map(source_paths, contracts_path)
             evm_version_map = get_evm_version_pragma_map(source_paths, contracts_path)
-            default_evm_version = data.get("evm_version", data.get("evmVersion"))
+            default_evm_version = (
+                data.get("evm_version")
+                or data.get("evmVersion")
+                or EVM_VERSION_DEFAULT.get(version.base_version)
+            )
             for source_path in source_paths:
                 source_id = str(get_relative_path(source_path.absolute(), contracts_path))
                 optimization = optimizations_map.get(source_id, True)
@@ -963,7 +984,8 @@ class VyperCompiler(CompilerAPI):
             bin_arg = self._get_vyper_bin(vyper_version)
             arguments_map[vyper_version] = {
                 "base_path": str(base_path),
-                "evm_version": self.evm_version,
+                "evm_version": self.evm_version
+                or EVM_VERSION_DEFAULT.get(vyper_version.base_version),
                 "vyper_version": str(vyper_version),
                 "vyper_binary": bin_arg,
             }

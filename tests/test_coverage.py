@@ -1,11 +1,11 @@
 import re
 import shutil
-import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import List
 
 import pytest
+from ape.utils import create_tempdir
 
 LINES_VALID = 8
 MISSES = 0
@@ -50,11 +50,9 @@ def coverage_project_path(projects_path):
 def coverage_project(config, coverage_project_path):
     build_dir = coverage_project_path / ".build"
     shutil.rmtree(build_dir, ignore_errors=True)
-    with tempfile.TemporaryDirectory() as base_dir:
-        # Copy Coverage project
-        project_dir = Path(base_dir) / "coverage_project"
-        shutil.copytree(coverage_project_path, project_dir)
-        with config.using_project(project_dir) as project:
+    with create_tempdir(name="coverage_project") as base_dir:
+        shutil.copytree(coverage_project_path, base_dir, dirs_exist_ok=True)
+        with config.using_project(base_dir) as project:
             yield project
 
     shutil.rmtree(build_dir, ignore_errors=True)

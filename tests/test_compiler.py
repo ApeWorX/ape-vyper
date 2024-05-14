@@ -151,7 +151,10 @@ def test_compiler_data_in_manifest(project):
 
         for compiler in (vyper_028, codesize_latest, true_latest):
             assert compiler.name == "vyper"
-            assert compiler.settings["evmVersion"] == "istanbul"
+
+        assert vyper_028.settings["evmVersion"] == "berlin"
+        assert codesize_latest.settings["evmVersion"] == "shanghai"
+        assert true_latest.settings["evmVersion"] == "shanghai"
 
         # There is only one contract with codesize pragma.
         assert codesize_latest.contractTypes == ["optimize_codesize"]

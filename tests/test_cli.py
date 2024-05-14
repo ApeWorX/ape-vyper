@@ -1,7 +1,5 @@
-from pathlib import Path
-from tempfile import NamedTemporaryFile
-
 import pytest
+from ape.utils import create_tempdir
 
 from ape_vyper._cli import cli
 
@@ -23,9 +21,10 @@ from ape_vyper._cli import cli
 )
 def test_cli_flatten(project, contract_name, expected, cli_runner):
     path = project.contracts_folder / contract_name
-    with NamedTemporaryFile() as tmpfile:
-        result = cli_runner.invoke(cli, ["flatten", str(path), tmpfile.name])
+    with create_tempdir() as tmpdir:
+        file = tmpdir / "flatten.vy"
+        result = cli_runner.invoke(cli, ("flatten", str(path), str(file)), catch_exceptions=False)
         assert result.exit_code == 0, result.stderr_bytes
-        output = Path(tmpfile.name).read_text()
+        output = file.read_text()
         for expect in expected:
             assert expect in output
