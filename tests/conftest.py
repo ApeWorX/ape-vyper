@@ -152,22 +152,20 @@ def config():
 
 
 @pytest.fixture(autouse=True)
-def project(config):
+def project(config, project_folder):
     project_source_dir = Path(__file__).parent
-    project_dest_dir = config.PROJECT_FOLDER / project_source_dir.name
+    project_dest_dir = project_folder / project_source_dir.name
+    shutil.rmtree(project_dest_dir, ignore_errors=True)
 
     # Delete build / .cache that may exist pre-copy
     project_path = Path(__file__).parent
     cache = project_path / ".build"
-
-    if cache.is_dir():
-        shutil.rmtree(cache)
+    shutil.rmtree(cache, ignore_errors=True)
 
     shutil.copytree(project_source_dir, project_dest_dir, dirs_exist_ok=True)
     with config.using_project(project_dest_dir) as project:
         yield project
-        if project.local_project._cache_folder.is_dir():
-            shutil.rmtree(project.local_project._cache_folder)
+        shutil.rmtree(project.local_project._cache_folder, ignore_errors=True)
 
 
 @pytest.fixture
