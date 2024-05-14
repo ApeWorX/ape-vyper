@@ -1,11 +1,10 @@
 import re
 import shutil
-import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import List
 
 import pytest
+from ape.utils import create_tempdir
 
 LINES_VALID = 8
 MISSES = 0
@@ -50,11 +49,9 @@ def coverage_project_path(projects_path):
 def coverage_project(config, coverage_project_path):
     build_dir = coverage_project_path / ".build"
     shutil.rmtree(build_dir, ignore_errors=True)
-    with tempfile.TemporaryDirectory() as base_dir:
-        # Copy Coverage project
-        project_dir = Path(base_dir) / "coverage_project"
-        shutil.copytree(coverage_project_path, project_dir)
-        with config.using_project(project_dir) as project:
+    with create_tempdir(name="coverage_project") as base_dir:
+        shutil.copytree(coverage_project_path, base_dir, dirs_exist_ok=True)
+        with config.using_project(base_dir) as project:
             yield project
 
     shutil.rmtree(build_dir, ignore_errors=True)
@@ -111,7 +108,7 @@ def test_coverage(geth_provider, setup_pytester, coverage_project, pytester):
     _assert_html(index)
 
 
-def _get_coverage_report(lines: List[str]) -> List[str]:
+def _get_coverage_report(lines: list[str]) -> list[str]:
     ret = []
     started = False
     for line in lines:
@@ -136,7 +133,7 @@ def _get_coverage_report(lines: List[str]) -> List[str]:
     return ret
 
 
-def _assert_coverage(actual: List[str], expected: List[str]):
+def _assert_coverage(actual: list[str], expected: list[str]):
     for idx, (a_line, e_line) in enumerate(zip(actual, expected)):
         message = f"Failed at index {idx}. Expected={e_line}, Actual={a_line}"
         assert re.match(e_line, a_line), message

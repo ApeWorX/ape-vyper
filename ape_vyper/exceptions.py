@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, Optional, Type, Union
+from typing import Optional, Union
 
 from ape.exceptions import CompilerError, ContractLogicError
 from ape.utils import USER_ASSERT_TAG
@@ -157,7 +157,7 @@ class FallbackNotDefinedError(VyperRuntimeError):
         super().__init__(RuntimeErrorType.FALLBACK_NOT_DEFINED, **kwargs)
 
 
-RUNTIME_ERROR_MAP: Dict[RuntimeErrorType, Type[ContractLogicError]] = {
+RUNTIME_ERROR_MAP: dict[RuntimeErrorType, type[ContractLogicError]] = {
     RuntimeErrorType.NONPAYABLE_CHECK: NonPayableError,
     RuntimeErrorType.INVALID_CALLDATA_OR_VALUE: InvalidCalldataOrValueError,
     RuntimeErrorType.INDEX_OUT_OF_RANGE: IndexOutOfRangeError,

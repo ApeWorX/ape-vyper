@@ -3,25 +3,34 @@ import re
 import shutil
 import time
 from base64 import b64encode
+from collections.abc import Iterable, Iterator
 from fnmatch import fnmatch
 from importlib import import_module
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tuple, Union, cast
+from typing import Any, Optional, Union, cast
 
 import vvm  # type: ignore
 from ape.api import PluginConfig
-from ape.api.compiler import CompilerAPI
+from ape.api.compiler import CompilerAPI, TraceAPI
 from ape.exceptions import ContractLogicError
 from ape.logging import logger
-from ape.types import ContractSourceCoverage, ContractType, SourceTraceback, TraceFrame
-from ape.utils import GithubClient, cached_property, get_relative_path, pragma_str_to_specifier_set
+from ape.types import ContractSourceCoverage, ContractType, SourceTraceback
+from ape.utils import (
+    cached_property,
+    get_full_extension,
+    get_relative_path,
+    pragma_str_to_specifier_set,
+)
+from ape.utils._github import _GithubClient
 from eth_pydantic_types import HexBytes
 from eth_utils import is_0x_prefixed
 from ethpm_types import ASTNode, PackageManifest, PCMap, SourceMapItem
 from ethpm_types.ast import ASTClassification
 from ethpm_types.contract_type import SourceMap
 from ethpm_types.source import Compiler, Content, ContractSource, Function, SourceLocation
+from evm_trace import TraceFrame
 from evm_trace.enums import CALL_OPCODES
+from evm_trace.geth import create_call_node_data
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import Version
 from pydantic import field_serializer, field_validator
@@ -52,6 +61,21 @@ _EMPTY_REVERT_OFFSET = 18
 _NON_PAYABLE_STR = f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}"
 Optimization = Union[str, bool]
 
+EVM_VERSION_DEFAULT = {
+    "0.2.15": "berlin",
+    "0.2.16": "berlin",
+    "0.3.0": "berlin",
+    "0.3.1": "berlin",
+    "0.3.2": "berlin",
+    "0.3.3": "berlin",
+    "0.3.4": "berlin",
+    "0.3.6": "berlin",
+    "0.3.7": "paris",
+    "0.3.8": "shanghai",
+    "0.3.9": "shanghai",
+    "0.3.10": "shanghai",
+}
+
 
 class VyperConfig(PluginConfig):
     version: Optional[SpecifierSet] = None
@@ -65,7 +89,7 @@ class VyperConfig(PluginConfig):
     The evm-version or hard-fork name.
     """
 
-    import_remapping: List[str] = []
+    import_remapping: list[str] = []
     """
     Configuration of an import name mapped to a dependency listing.
     To use a specific version of a dependency, specify using ``@`` symbol.
@@ -110,7 +134,7 @@ def get_version_pragma_spec(source: Union[str, Path]) -> Optional[SpecifierSet]:
     Returns:
         ``packaging.specifiers.SpecifierSet``, or None if no valid pragma is found.
     """
-    _version_pragma_patterns: Tuple[str, str] = (
+    _version_pragma_patterns: tuple[str, str] = (
         r"(?:\n|^)\s*#\s*@version\s*([^\n]*)",
         r"(?:\n|^)\s*#\s*pragma\s+version\s*([^\n]*)",
     )
@@ -170,9 +194,9 @@ def get_evmversion_pragma(source: Union[str, Path]) -> Optional[str]:
 
 
 def get_optimization_pragma_map(
-    contract_filepaths: Sequence[Path], base_path: Path
-) -> Dict[str, Optimization]:
-    pragma_map: Dict[str, Optimization] = {}
+    contract_filepaths: Iterable[Path], base_path: Path
+) -> dict[str, Optimization]:
+    pragma_map: dict[str, Optimization] = {}
 
     for path in contract_filepaths:
         pragma = get_optimization_pragma(path) or True
@@ -183,9 +207,9 @@ def get_optimization_pragma_map(
 
 
 def get_evm_version_pragma_map(
-    contract_filepaths: Sequence[Path], base_path: Path
-) -> Dict[str, str]:
-    pragmas: Dict[str, str] = {}
+    contract_filepaths: Iterable[Path], base_path: Path
+) -> dict[str, str]:
+    pragmas: dict[str, str] = {}
     for path in contract_filepaths:
         pragma = get_evmversion_pragma(path)
         if not pragma:
@@ -211,8 +235,8 @@ class VyperCompiler(CompilerAPI):
         return self.settings.evm_version
 
     def get_imports(
-        self, contract_filepaths: Sequence[Path], base_path: Optional[Path] = None
-    ) -> Dict[str, List[str]]:
+        self, contract_filepaths: Iterable[Path], base_path: Optional[Path] = None
+    ) -> dict[str, list[str]]:
         base_path = (base_path or self.project_manager.contracts_folder).absolute()
         import_map = {}
         for path in contract_filepaths:
@@ -244,7 +268,7 @@ class VyperCompiler(CompilerAPI):
 
         return import_map
 
-    def get_versions(self, all_paths: Sequence[Path]) -> Set[str]:
+    def get_versions(self, all_paths: Iterable[Path]) -> set[str]:
         versions = set()
         for path in all_paths:
             if version_spec := get_version_pragma_spec(path):
@@ -278,14 +302,14 @@ class VyperCompiler(CompilerAPI):
         return Version(version_str) if version_str else None
 
     @cached_property
-    def available_versions(self) -> List[Version]:
+    def available_versions(self) -> list[Version]:
         # NOTE: Package version should already be included in available versions
         max_retries = 10
         buffer = 1
         times_tried = 0
         result = []
         headers = None
-        if token := os.environ.get(GithubClient.TOKEN_KEY):
+        if token := os.environ.get(_GithubClient.TOKEN_KEY):
             auth = b64encode(token.encode()).decode()
             headers = {"Authorization": f"Basic {auth}"}
 
@@ -317,7 +341,7 @@ class VyperCompiler(CompilerAPI):
         return result
 
     @property
-    def installed_versions(self) -> List[Version]:
+    def installed_versions(self) -> list[Version]:
         # Doing this so it prefers package version
         package_version = self.package_version
         versions = [package_version] if package_version else []
@@ -341,12 +365,12 @@ class VyperCompiler(CompilerAPI):
         return None
 
     @property
-    def remapped_manifests(self) -> Dict[str, PackageManifest]:
+    def remapped_manifests(self) -> dict[str, PackageManifest]:
         """
         Interface import manifests.
         """
 
-        dependencies: Dict[str, PackageManifest] = {}
+        dependencies: dict[str, PackageManifest] = {}
 
         for remapping in self.settings.import_remapping:
             key, value = remapping.split("=")
@@ -376,7 +400,7 @@ class VyperCompiler(CompilerAPI):
         return dependencies
 
     @property
-    def import_remapping(self) -> Dict[str, Dict]:
+    def import_remapping(self) -> dict[str, dict]:
         """
         Configured interface imports from dependencies.
         """
@@ -400,15 +424,15 @@ class VyperCompiler(CompilerAPI):
             self.classify_ast(child)
 
     def compile(
-        self, contract_filepaths: Sequence[Path], base_path: Optional[Path] = None
-    ) -> List[ContractType]:
+        self, contract_filepaths: Iterable[Path], base_path: Optional[Path] = None
+    ) -> Iterator[ContractType]:
         contract_types = []
         base_path = base_path or self.config_manager.contracts_folder
         sources = [p for p in contract_filepaths if p.parent.name != "interfaces"]
         version_map = self.get_version_map(sources)
         compiler_data = self._get_compiler_arguments(version_map, base_path)
         all_settings = self.get_compiler_settings(sources, base_path=base_path)
-        contract_versions: Dict[str, Tuple[Version, str]] = {}
+        contract_versions: dict[str, tuple[Version, str]] = {}
 
         for vyper_version, version_settings in all_settings.items():
             for settings_key, settings in version_settings.items():
@@ -490,9 +514,10 @@ class VyperCompiler(CompilerAPI):
                         )
                         contract_types.append(contract_type)
                         contract_versions[name] = (vyper_version, settings_key)
+                        yield contract_type
 
         # Output compiler data used.
-        compilers_used: Dict[Version, Dict[str, Compiler]] = {}
+        compilers_used: dict[Version, dict[str, Compiler]] = {}
         for ct in contract_types:
             if not ct.name:
                 # Won't happen, but just for mypy.
@@ -532,8 +557,6 @@ class VyperCompiler(CompilerAPI):
         # NOTE: This method handles merging contractTypes and filtered out
         #   no longer used Compilers.
         self.project_manager.local_project.add_compiler_data(compilers_ls)
-
-        return contract_types
 
     def compile_code(self, code: str, base_path: Optional[Path] = None, **kwargs) -> ContractType:
         base_path = base_path or self.project_manager.contracts_folder
@@ -586,7 +609,7 @@ class VyperCompiler(CompilerAPI):
             )
         )
 
-        dependencies: Dict[str, PackageManifest] = {}
+        dependencies: dict[str, PackageManifest] = {}
         for key, manifest in self.remapped_manifests.items():
             package = key.split("=")[0]
 
@@ -668,10 +691,10 @@ class VyperCompiler(CompilerAPI):
         return Content({i: ln for i, ln in enumerate(source.splitlines())})
 
     def get_version_map(
-        self, contract_filepaths: Sequence[Path], base_path: Optional[Path] = None
-    ) -> Dict[Version, Set[Path]]:
-        version_map: Dict[Version, Set[Path]] = {}
-        source_path_by_version_spec: Dict[SpecifierSet, Set[Path]] = {}
+        self, contract_filepaths: Iterable[Path], base_path: Optional[Path] = None
+    ) -> dict[Version, set[Path]]:
+        version_map: dict[Version, set[Path]] = {}
+        source_path_by_version_spec: dict[SpecifierSet, set[Path]] = {}
         source_paths_without_pragma = set()
 
         # Sort contract_filepaths to promote consistent, reproduce-able behavior
@@ -723,16 +746,18 @@ class VyperCompiler(CompilerAPI):
         # Handle no-pragma sources
         if source_paths_without_pragma:
             max_installed_vyper_version = (
-                max(version_map) if version_map else max(self.installed_versions)
+                max(version_map)
+                if version_map
+                else max(v for v in self.installed_versions if not v.pre)
             )
             _safe_append(version_map, max_installed_vyper_version, source_paths_without_pragma)
 
         return version_map
 
     def get_compiler_settings(
-        self, contract_filepaths: Sequence[Path], base_path: Optional[Path] = None
-    ) -> Dict[Version, Dict]:
-        valid_paths = [p for p in contract_filepaths if p.suffix == ".vy"]
+        self, contract_filepaths: Iterable[Path], base_path: Optional[Path] = None
+    ) -> dict[Version, dict]:
+        valid_paths = [p for p in contract_filepaths if get_full_extension(p) == ".vy"]
         contracts_path = base_path or self.config_manager.contracts_folder
         files_by_vyper_version = self.get_version_map(valid_paths, base_path=contracts_path)
         if not files_by_vyper_version:
@@ -745,10 +770,14 @@ class VyperCompiler(CompilerAPI):
             if not source_paths:
                 continue
 
-            output_selection: Dict[str, Set[str]] = {}
+            output_selection: dict[str, set[str]] = {}
             optimizations_map = get_optimization_pragma_map(source_paths, contracts_path)
             evm_version_map = get_evm_version_pragma_map(source_paths, contracts_path)
-            default_evm_version = data.get("evm_version", data.get("evmVersion"))
+            default_evm_version = (
+                data.get("evm_version")
+                or data.get("evmVersion")
+                or EVM_VERSION_DEFAULT.get(version.base_version)
+            )
             for source_path in source_paths:
                 source_id = str(get_relative_path(source_path.absolute(), contracts_path))
                 optimization = optimizations_map.get(source_id, True)
@@ -759,7 +788,7 @@ class VyperCompiler(CompilerAPI):
                 else:
                     output_selection[settings_key].add(source_id)
 
-            version_settings: Dict[str, Dict] = {}
+            version_settings: dict[str, dict] = {}
             for settings_key, selection in output_selection.items():
                 optimization, evm_version = settings_key.split("%")
                 if optimization == "true":
@@ -825,7 +854,7 @@ class VyperCompiler(CompilerAPI):
         # Some statements are too difficult to know right away where they belong,
         # such as statement related to kwarg-default auto-generated implicit lookups.
         # function_name -> (pc, location)
-        pending_statements: Dict[str, List[Tuple[int, SourceLocation]]] = {}
+        pending_statements: dict[str, list[tuple[int, SourceLocation]]] = {}
 
         for pc, item in contract_source.pcmap.root.items():
             pc_int = int(pc)
@@ -907,7 +936,7 @@ class VyperCompiler(CompilerAPI):
                 ]
                 # Sort the autogenerated ABIs so we can loop through them in the correct order.
                 autogenerated_abis.sort(key=lambda a: len(a.inputs))
-                buckets: Dict[str, List[Tuple[int, SourceLocation]]] = {
+                buckets: dict[str, list[tuple[int, SourceLocation]]] = {
                     a.selector: [] for a in autogenerated_abis
                 }
                 selector_index = 0
@@ -956,14 +985,15 @@ class VyperCompiler(CompilerAPI):
                 # Auto-getter found. Profile function without statements.
                 contract_coverage.include(method.name, method.selector)
 
-    def _get_compiler_arguments(self, version_map: Dict, base_path: Path) -> Dict[Version, Dict]:
+    def _get_compiler_arguments(self, version_map: dict, base_path: Path) -> dict[Version, dict]:
         base_path = base_path or self.project_manager.contracts_folder
         arguments_map = {}
         for vyper_version, source_paths in version_map.items():
             bin_arg = self._get_vyper_bin(vyper_version)
             arguments_map[vyper_version] = {
                 "base_path": str(base_path),
-                "evm_version": self.evm_version,
+                "evm_version": self.evm_version
+                or EVM_VERSION_DEFAULT.get(vyper_version.base_version),
                 "vyper_version": str(vyper_version),
                 "vyper_binary": bin_arg,
             }
@@ -1004,7 +1034,7 @@ class VyperCompiler(CompilerAPI):
             return err
 
         runtime_error_cls = RUNTIME_ERROR_MAP[error_type]
-        tx_kwargs: Dict = {
+        tx_kwargs: dict = {
             "contract_address": err.contract_address,
             "source_traceback": err.source_traceback,
             "trace": err.trace,
@@ -1017,17 +1047,14 @@ class VyperCompiler(CompilerAPI):
         )
 
     def trace_source(
-        self, contract_type: ContractType, trace: Iterator[TraceFrame], calldata: HexBytes
+        self, contract_source: ContractSource, trace: TraceAPI, calldata: HexBytes
     ) -> SourceTraceback:
-        if source_contract_type := self.project_manager._create_contract_source(contract_type):
-            return self._get_traceback(source_contract_type, trace, calldata)
-
-        return SourceTraceback.model_validate([])
+        return self._get_traceback(contract_source, trace, calldata)
 
     def _get_traceback(
         self,
         contract_src: ContractSource,
-        trace: Iterator[TraceFrame],
+        trace: TraceAPI,
         calldata: HexBytes,
         previous_depth: Optional[int] = None,
     ) -> SourceTraceback:
@@ -1035,17 +1062,18 @@ class VyperCompiler(CompilerAPI):
         method_id = HexBytes(calldata[:4])
         completed = False
         pcmap = PCMap.model_validate({})
+        frames = trace.get_raw_frames()
 
-        for frame in trace:
-            if frame.op in CALL_OPCODES:
-                start_depth = frame.depth
+        for frame in frames:
+            if frame["op"] in CALL_OPCODES:
+                start_depth = frame["depth"]
                 called_contract, sub_calldata = self._create_contract_from_call(frame)
                 if called_contract:
-                    ext = Path(called_contract.source_id).suffix
+                    ext = get_full_extension(Path(called_contract.source_id))
                     if ext.endswith(".vy"):
                         # Called another Vyper contract.
                         sub_trace = self._get_traceback(
-                            called_contract, trace, sub_calldata, previous_depth=frame.depth
+                            called_contract, trace, sub_calldata, previous_depth=frame["depth"]
                         )
                         traceback.extend(sub_trace)
 
@@ -1059,43 +1087,43 @@ class VyperCompiler(CompilerAPI):
                             traceback.extend(sub_trace)
                         except NotImplementedError:
                             # Compiler not supported. Fast forward out of this call.
-                            for fr in trace:
-                                if fr.depth <= start_depth:
+                            for fr in frames:
+                                if fr["depth"] <= start_depth:
                                     break
 
                             continue
 
                 else:
                     # Contract not found. Fast forward out of this call.
-                    for fr in trace:
-                        if fr.depth <= start_depth:
+                    for fr in frames:
+                        if fr["depth"] <= start_depth:
                             break
 
                     continue
 
-            elif frame.op in _RETURN_OPCODES:
+            elif frame["op"] in _RETURN_OPCODES:
                 # For the base CALL, don't mark as completed until trace is gone.
                 # This helps in cases where we failed to detect a subcall properly.
                 completed = previous_depth is not None
 
             pcs_to_try_adding = set()
-            if "PUSH" in frame.op and frame.pc in contract_src.pcmap:
+            if "PUSH" in frame["op"] and frame["pc"] in contract_src.pcmap:
                 # Check if next op is SSTORE to properly use AST from push op.
-                next_frame: Optional[TraceFrame] = frame
-                loc = contract_src.pcmap[frame.pc]
-                pcs_to_try_adding.add(frame.pc)
+                next_frame: Optional[dict] = frame
+                loc = contract_src.pcmap[frame["pc"]]
+                pcs_to_try_adding.add(frame["pc"])
 
-                while next_frame and "PUSH" in next_frame.op:
-                    next_frame = next(trace, None)
-                    if next_frame and "PUSH" in next_frame.op:
-                        pcs_to_try_adding.add(next_frame.pc)
+                while next_frame and "PUSH" in next_frame["op"]:
+                    next_frame = next(frames, None)
+                    if next_frame and "PUSH" in next_frame["op"]:
+                        pcs_to_try_adding.add(next_frame["pc"])
 
                 is_non_payable_hit = False
-                if next_frame and next_frame.op == "SSTORE":
+                if next_frame and next_frame["op"] == "SSTORE":
                     push_location = tuple(loc["location"])  # type: ignore
-                    pcmap = PCMap.model_validate({next_frame.pc: {"location": push_location}})
+                    pcmap = PCMap.model_validate({next_frame["pc"]: {"location": push_location}})
 
-                elif next_frame and next_frame.op in _RETURN_OPCODES:
+                elif next_frame and next_frame["op"] in _RETURN_OPCODES:
                     completed = True
 
                 else:
@@ -1109,22 +1137,22 @@ class VyperCompiler(CompilerAPI):
             else:
                 pcmap = contract_src.pcmap
 
-            pcs_to_try_adding.add(frame.pc)
+            pcs_to_try_adding.add(frame["pc"])
             pcs_to_try_adding = {pc for pc in pcs_to_try_adding if pc in pcmap}
             if not pcs_to_try_adding:
                 if (
-                    frame.op == "REVERT"
-                    and frame.pc + 1 in pcmap
+                    frame["op"] == "REVERT"
+                    and frame["pc"] + 1 in pcmap
                     and RuntimeErrorType.USER_ASSERT.value
-                    in str(pcmap[frame.pc + 1].get("dev", ""))
+                    in str(pcmap[frame["pc"] + 1].get("dev", ""))
                 ):
                     # Not sure why this happens. Maybe an off-by-1 bug in Vyper.
-                    pcs_to_try_adding.add(frame.pc + 1)
+                    pcs_to_try_adding.add(frame["pc"] + 1)
 
-            pc_groups: List[List] = []
+            pc_groups: list[list] = []
             for pc in pcs_to_try_adding:
                 location = (
-                    cast(Tuple[int, int, int, int], tuple(pcmap[pc].get("location") or [])) or None
+                    cast(tuple[int, int, int, int], tuple(pcmap[pc].get("location") or [])) or None
                 )
                 dev_item = pcmap[pc].get("dev", "")
                 dev = str(dev_item).replace("dev: ", "")
@@ -1199,9 +1227,9 @@ class VyperCompiler(CompilerAPI):
                     or not isinstance(traceback.last.closure, Function)
                 ):
                     depth = (
-                        frame.depth + 1
-                        if traceback.last and traceback.last.depth == frame.depth
-                        else frame.depth
+                        frame["depth"] + 1
+                        if traceback.last and traceback.last.depth == frame["depth"]
+                        else frame["depth"]
                     )
 
                     traceback.add_jump(
@@ -1231,8 +1259,26 @@ class VyperCompiler(CompilerAPI):
 
         return traceback
 
+    def _create_contract_from_call(self, frame: dict) -> tuple[Optional[ContractSource], HexBytes]:
+        evm_frame = TraceFrame(**frame)
+        data = create_call_node_data(evm_frame)
+        calldata = data.get("calldata", HexBytes(""))
+        if not (address := (data.get("address", evm_frame.contract_address) or None)):
+            return None, calldata
 
-def _safe_append(data: Dict, version: Union[Version, SpecifierSet], paths: Union[Path, Set]):
+        try:
+            address = self.provider.network.ecosystem.decode_address(address)
+        except Exception:
+            return None, calldata
+
+        if address not in self.chain_manager.contracts:
+            return None, calldata
+
+        called_contract = self.chain_manager.contracts[address]
+        return self.project_manager._create_contract_source(called_contract), calldata
+
+
+def _safe_append(data: dict, version: Union[Version, SpecifierSet], paths: Union[Path, set]):
     if isinstance(paths, Path):
         paths = {paths}
     if version in data:
@@ -1245,13 +1291,13 @@ def _is_revert_jump(op: str, value: Optional[int], revert_pc: int) -> bool:
     return op == "JUMPI" and value is not None and value == revert_pc
 
 
-def _has_empty_revert(opcodes: List[str]) -> bool:
+def _has_empty_revert(opcodes: list[str]) -> bool:
     return (len(opcodes) > 12 and opcodes[-13] == "JUMPDEST" and opcodes[-9] == "REVERT") or (
         len(opcodes) > 4 and opcodes[-5] == "JUMPDEST" and opcodes[-1] == "REVERT"
     )
 
 
-def _get_pcmap(bytecode: Dict) -> PCMap:
+def _get_pcmap(bytecode: dict) -> PCMap:
     # Find the non payable value check.
     src_info = bytecode["sourceMapFull"]
     pc_data = {pc: {"location": ln} for pc, ln in src_info["pc_pos_map"].items()}
@@ -1316,13 +1362,13 @@ def _get_pcmap(bytecode: Dict) -> PCMap:
     return PCMap.model_validate(pc_data)
 
 
-def _get_legacy_pcmap(ast: ASTNode, src_map: List[SourceMapItem], opcodes: List[str]):
+def _get_legacy_pcmap(ast: ASTNode, src_map: list[SourceMapItem], opcodes: list[str]):
     """
     For Vyper versions <= 0.3.7, allows us to still get a PCMap.
     """
 
     pc = 0
-    pc_map_list: List[Tuple[int, Dict[str, Optional[Any]]]] = []
+    pc_map_list: list[tuple[int, dict[str, Optional[Any]]]] = []
     last_value = None
     revert_pc = -1
     if _has_empty_revert(opcodes):
@@ -1357,7 +1403,7 @@ def _get_legacy_pcmap(ast: ASTNode, src_map: List[SourceMapItem], opcodes: List[
             if stmt:
                 # Add located item.
                 line_nos = list(stmt.line_numbers)
-                item: Dict = {"location": line_nos}
+                item: dict = {"location": line_nos}
                 is_revert_jump = _is_revert_jump(op, last_value, revert_pc)
                 if op == "REVERT" or is_revert_jump:
                     dev = None
@@ -1407,7 +1453,7 @@ def _get_legacy_pcmap(ast: ASTNode, src_map: List[SourceMapItem], opcodes: List[
     return PCMap.model_validate(pcmap_data)
 
 
-def _find_non_payable_check(src_map: List[SourceMapItem], opcodes: List[str]) -> Optional[int]:
+def _find_non_payable_check(src_map: list[SourceMapItem], opcodes: list[str]) -> Optional[int]:
     pc = 0
     revert_pc = -1
     if _has_empty_revert(opcodes):
@@ -1428,7 +1474,7 @@ def _find_non_payable_check(src_map: List[SourceMapItem], opcodes: List[str]) ->
     return None
 
 
-def _is_non_payable_check(opcodes: List[str], op: str, revert_pc: int) -> bool:
+def _is_non_payable_check(opcodes: list[str], op: str, revert_pc: int) -> bool:
     return (
         len(opcodes) >= 3
         and op == "CALLVALUE"
@@ -1438,7 +1484,7 @@ def _is_non_payable_check(opcodes: List[str], op: str, revert_pc: int) -> bool:
     )
 
 
-def _get_revert_pc(opcodes: List[str]) -> int:
+def _get_revert_pc(opcodes: list[str]) -> int:
     """
     Starting in vyper 0.2.14, reverts without a reason string are optimized
     with a jump to the "end" of the bytecode.
@@ -1450,7 +1496,7 @@ def _get_revert_pc(opcodes: List[str]) -> int:
     )
 
 
-def _is_immutable_member_load(opcodes: List[str]):
+def _is_immutable_member_load(opcodes: list[str]):
     is_code_copy = len(opcodes) > 5 and opcodes[5] == "CODECOPY"
     return not is_code_copy and opcodes and is_0x_prefixed(opcodes[0])
 
@@ -1480,7 +1526,7 @@ def _extend_return(function: Function, traceback: SourceTraceback, last_pc: int,
         traceback.add_jump(location, function, 1, last_pcs, source_path=source_path)
 
 
-def _is_fallback_check(opcodes: List[str], op: str) -> bool:
+def _is_fallback_check(opcodes: list[str], op: str) -> bool:
     return (
         "JUMP" in op
         and len(opcodes) >= 7
@@ -1488,11 +1534,3 @@ def _is_fallback_check(opcodes: List[str], op: str) -> bool:
         and opcodes[6] == "SHR"
         and opcodes[5] == "0xE0"
     )
-
-
-# def _version_to_specifier(version: str) -> str:
-#     pragma_str = " ".join(version.split()).replace("^", "~=")
-#     if pragma_str and pragma_str[0].isnumeric():
-#         return f"=={pragma_str}"
-#
-#     return pragma_str
