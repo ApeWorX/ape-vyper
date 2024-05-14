@@ -7,8 +7,6 @@ dependencies:
     local: ./ExampleDependency
 
 vyper:
-  evm_version: istanbul
-
   # Allows importing dependencies.
   import_remapping:
     - "exampledep=ExampleDependency"

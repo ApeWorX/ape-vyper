@@ -3,9 +3,9 @@ import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import List
-from ape.utils import create_tempdir
 
 import pytest
+from ape.utils import create_tempdir
 
 LINES_VALID = 8
 MISSES = 0
