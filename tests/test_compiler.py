@@ -25,7 +25,7 @@ from .conftest import FAILING_BASE, FAILING_CONTRACT_NAMES, PASSING_CONTRACT_NAM
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.16")
 VERSION_37 = Version("0.3.7")
 VERSION_FROM_PRAGMA = Version("0.3.10")
-VERSION_04 = Version("0.4.0rc2")
+VERSION_04 = Version("0.4.0rc3")
 
 
 @pytest.fixture
