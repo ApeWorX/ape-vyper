@@ -56,7 +56,7 @@ def test_compile_project(project):
 @pytest.mark.parametrize("contract_name", PASSING_CONTRACT_NAMES)
 def test_compile_individual_contracts(project, contract_name, compiler):
     path = project.contracts_folder / contract_name
-    assert compiler.compile([path])
+    assert list(compiler.compile([path]))
 
 
 @pytest.mark.parametrize(
@@ -65,7 +65,7 @@ def test_compile_individual_contracts(project, contract_name, compiler):
 def test_compile_failures(contract_name, compiler):
     path = FAILING_BASE / contract_name
     with pytest.raises(VyperCompileError, match=EXPECTED_FAIL_PATTERNS[path.stem]) as err:
-        compiler.compile([path], base_path=FAILING_BASE)
+        list(compiler.compile([path], base_path=FAILING_BASE))
 
     assert isinstance(err.value.base_err, VyperError)
 
@@ -73,7 +73,7 @@ def test_compile_failures(contract_name, compiler):
 def test_install_failure(compiler):
     path = FAILING_BASE / "contract_unknown_pragma.vy"
     with pytest.raises(VyperInstallError, match="No available version to install."):
-        compiler.compile([path])
+        list(compiler.compile([path]))
 
 
 def test_get_version_map(project, compiler, all_versions):
@@ -185,7 +185,7 @@ def test_compile_parse_dev_messages(compiler, dev_revert_source, project):
     The compiler will output a map that maps dev messages to line numbers.
     See contract_with_dev_messages.vy for more information.
     """
-    result = compiler.compile([dev_revert_source], base_path=project.contracts_folder)
+    result = list(compiler.compile([dev_revert_source], base_path=project.contracts_folder))
 
     assert len(result) == 1
 
@@ -226,7 +226,7 @@ def test_pc_map(compiler, project, src, vers):
     """
 
     path = project.contracts_folder / f"{src}.vy"
-    result = compiler.compile([path], base_path=project.contracts_folder)[0]
+    result = list(compiler.compile([path], base_path=project.contracts_folder))[0]
     actual = result.pcmap.root
     code = path.read_text()
     vvm.install_vyper(vers)
@@ -507,7 +507,7 @@ def test_compile_with_version_set_in_settings_dict(config, compiler_manager, pro
             '.*Version specification "0.3.10" is not compatible with compiler version "0.3.3"'
         )
         with pytest.raises(VyperCompileError, match=expected):
-            compiler_manager.compile([contract], settings={"version": "0.3.3"})
+            list(compiler_manager.compile([contract], settings={"version": "0.3.3"}))
 
 
 @pytest.mark.parametrize(
