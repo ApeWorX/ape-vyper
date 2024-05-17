@@ -1,8 +1,8 @@
 ethereum:
   local:
-    default_provider: geth
+    default_provider: node
 
-geth:
+node:
   ethereum:
     local:
       # Connect to node running from other tests.
