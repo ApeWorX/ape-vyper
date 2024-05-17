@@ -1049,12 +1049,13 @@ class VyperCompiler(CompilerAPI):
     def trace_source(
         self, contract_source: ContractSource, trace: TraceAPI, calldata: HexBytes
     ) -> SourceTraceback:
-        return self._get_traceback(contract_source, trace, calldata)
+        frames = trace.get_raw_frames()
+        return self._get_traceback(contract_source, frames, calldata)
 
     def _get_traceback(
         self,
         contract_src: ContractSource,
-        trace: TraceAPI,
+        frames: Iterator[dict],
         calldata: HexBytes,
         previous_depth: Optional[int] = None,
     ) -> SourceTraceback:
@@ -1062,7 +1063,6 @@ class VyperCompiler(CompilerAPI):
         method_id = HexBytes(calldata[:4])
         completed = False
         pcmap = PCMap.model_validate({})
-        frames = trace.get_raw_frames()
 
         for frame in frames:
             if frame["op"] in CALL_OPCODES:
@@ -1073,7 +1073,7 @@ class VyperCompiler(CompilerAPI):
                     if ext.endswith(".vy"):
                         # Called another Vyper contract.
                         sub_trace = self._get_traceback(
-                            called_contract, trace, sub_calldata, previous_depth=frame["depth"]
+                            called_contract, frames, sub_calldata, previous_depth=frame["depth"]
                         )
                         traceback.extend(sub_trace)
 
@@ -1082,7 +1082,7 @@ class VyperCompiler(CompilerAPI):
                         compiler = self.compiler_manager.registered_compilers[ext]
                         try:
                             sub_trace = compiler.trace_source(
-                                called_contract.contract_type, trace, sub_calldata
+                                called_contract.contract_type, frames, sub_calldata
                             )
                             traceback.extend(sub_trace)
                         except NotImplementedError:
