@@ -440,9 +440,10 @@ class VyperCompiler(CompilerAPI):
 
             try:
                 dependency.compile()
-            except Exception:
+            except Exception as err:
                 logger.warning(
-                    f"Failed to compile dependency '{dependency.name}' @ '{dependency.version}'."
+                    f"Failed to compile dependency '{dependency.name}' @ '{dependency.version}'.\n"
+                    f"Reason: {err}"
                 )
                 continue
 
@@ -458,9 +459,10 @@ class VyperCompiler(CompilerAPI):
 
             try:
                 dependency.compile()
-            except Exception:
+            except Exception as err:
                 logger.warning(
-                    f"Failed to compile dependency '{dependency.name}' @ '{dependency.version}'."
+                    f"Failed to compile dependency '{dependency.name}' @ '{dependency.version}'.\n"
+                    f"Reason: {err}"
                 )
                 continue
 
@@ -600,7 +602,6 @@ class VyperCompiler(CompilerAPI):
                             dev_messages=dev_messages,
                         )
                         contract_types.append(contract_type)
-                        yield contract_type
                         contract_versions[name] = (vyper_version, settings_key)
                         yield contract_type
 
