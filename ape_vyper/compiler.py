@@ -3,6 +3,7 @@ import re
 import shutil
 import time
 from base64 import b64encode
+from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from fnmatch import fnmatch
 from importlib import import_module
@@ -265,7 +266,7 @@ class VyperCompiler(CompilerAPI):
         project: Optional[ProjectManager] = None,
     ) -> dict[str, list[str]]:
         pm = project or self.local_project
-        import_map = {}
+        import_map: defaultdict = defaultdict(list)
         dependencies = self.get_dependencies(project=pm)
         for path in contract_filepaths:
             content = path.read_text().splitlines()
@@ -300,8 +301,9 @@ class VyperCompiler(CompilerAPI):
                 elif suffix.split(os.path.sep)[0] in dependencies:
                     dependency_name = suffix.split(os.path.sep)[0]
                     filestem = suffix.replace(f"{dependency_name}{os.path.sep}", "")
-                    for version_str, version_installed in pm.dependencies[dependency_name].items():
-                        dep_project = version_installed.project
+                    for version_str, dep_project in pm.dependencies[dependency_name].items():
+                        dependency = pm.dependencies.get_dependency(dependency_name, version_str)
+                        path_id = dependency.package_id.replace("/", "_")
                         dependency_source_prefix = (
                             f"{get_relative_path(dep_project.contracts_folder, dep_project.path)}"
                         )
@@ -309,7 +311,7 @@ class VyperCompiler(CompilerAPI):
                         for ext in (".vy", ".json"):
                             if f"{source_id_stem}{ext}" in dep_project.sources:
                                 import_source_id = os.path.sep.join(
-                                    (dependency_name, version_str, f"{source_id_stem}{ext}")
+                                    (path_id, version_str, f"{source_id_stem}{ext}")
                                 )
                                 break
 
@@ -317,12 +319,10 @@ class VyperCompiler(CompilerAPI):
                     logger.error(f"Unable to find dependency {suffix}")
                     continue
 
-                if import_source_id and source_id not in import_map:
-                    import_map[source_id] = [import_source_id]
-                elif import_source_id and import_source_id not in import_map[source_id]:
+                if import_source_id and import_source_id not in import_map[source_id]:
                     import_map[source_id].append(import_source_id)
 
-        return import_map
+        return dict(import_map)
 
     def get_versions(self, all_paths: Iterable[Path]) -> set[str]:
         versions = set()
@@ -792,8 +792,8 @@ class VyperCompiler(CompilerAPI):
         Returns the flattened contract suitable for compilation or verification as a single file
         """
         pm = project or self.local_project
-        source = self._flatten_source(path, project=pm)
-        return Content({i: ln for i, ln in enumerate(source.splitlines())})
+        src = self._flatten_source(path, project=pm)
+        return Content({i: ln for i, ln in enumerate(src.splitlines())})
 
     def get_version_map(
         self,
@@ -889,7 +889,9 @@ class VyperCompiler(CompilerAPI):
             output_selection: dict[str, set[str]] = {}
             optimizations_map = get_optimization_pragma_map(source_paths, pm.path)
             evm_version_map = get_evm_version_pragma_map(source_paths, pm.path)
-            default_evm_version = data.get("evm_version", data.get("evmVersion"))
+            default_evm_version = data.get(
+                "evm_version", data.get("evmVersion")
+            ) or EVM_VERSION_DEFAULT.get(version.base_version)
             for source_path in source_paths:
                 source_id = str(get_relative_path(source_path.absolute(), pm.path))
                 optimization = optimizations_map.get(source_id, True)

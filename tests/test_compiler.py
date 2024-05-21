@@ -221,7 +221,10 @@ def test_get_imports(compiler, project):
     builtin_import = "vyper/interfaces/ERC20.json"
     local_import = "interfaces/IFace.vy"
     local_from_import = "interfaces/IFace2.vy"
-    dependency_import = "exampledependency/contracts/Dependency.vy"
+    dep_key = project.dependencies.get_dependency("exampledependency", "local").package_id.replace(
+        "/", "_"
+    )
+    dependency_import = f"{dep_key}/local/contracts/Dependency.vy"
     assert set(actual[f"{prefix}/contract_037.vy"]) == {builtin_import}
     assert set(actual[f"{prefix}/use_iface.vy"]) == {
         local_import,
@@ -548,4 +551,4 @@ def test_flatten_contract(all_versions, project, contract_name, compiler):
     source_code = str(source)
     version = compiler._source_vyper_version(source_code)
     vvm.install_vyper(str(version))
-    vvm.compile_source(source_code, base_path=project.contracts_folder, vyper_version=version)
+    vvm.compile_source(source_code, base_path=project.path, vyper_version=version)
