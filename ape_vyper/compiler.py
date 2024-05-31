@@ -618,14 +618,13 @@ class VyperCompiler(CompilerAPI):
             if ct_version not in compilers_used:
                 compilers_used[ct_version] = {}
 
-            contract_id = f"{ct.source_id}:{ct.name}"
             if ct_settings_key in compilers_used[ct_version] and ct.name not in (
                 compilers_used[ct_version][ct_settings_key].contractTypes or []
             ):
                 # Add contractType to already-tracked compiler.
                 compilers_used[ct_version][ct_settings_key].contractTypes = [
                     *(compilers_used[ct_version][ct_settings_key].contractTypes or []),
-                    contract_id,
+                    ct.name,
                 ]
 
             elif ct_settings_key not in compilers_used[ct_version]:
@@ -633,7 +632,7 @@ class VyperCompiler(CompilerAPI):
                 compilers_used[ct_version][ct_settings_key] = Compiler(
                     name=self.name.lower(),
                     version=f"{ct_version}",
-                    contractTypes=[contract_id],
+                    contractTypes=[ct.name],
                     settings=settings,
                 )
 

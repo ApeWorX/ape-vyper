@@ -162,24 +162,17 @@ def test_compiler_data_in_manifest(project):
         assert true_latest.settings["evmVersion"] == "shanghai"
 
         # There is only one contract with codesize pragma.
-        assert codesize_latest.contractTypes == [
-            "contracts/passing_contracts/optimize_codesize.vy:optimize_codesize"
-        ]
+        assert codesize_latest.contractTypes == ["optimize_codesize"]
         assert codesize_latest.settings["optimize"] == "codesize"
 
         # There is only one contract with evm-version pragma.
-        assert evm_latest.contractTypes == ["contracts/passing_contracts/evm_pragma.vy:evm_pragma"]
+        assert evm_latest.contractTypes == ["evm_pragma"]
         assert evm_latest.settings["evmVersion"] == "paris"
 
         assert len(true_latest.contractTypes) >= 9
         assert len(vyper_028.contractTypes) >= 1
-        assert (
-            "contracts/passing_contracts/contract_0310.vy:contract_0310"
-            in true_latest.contractTypes
-        )
-        assert (
-            "contracts/passing_contracts/older_version.vy:older_version" in vyper_028.contractTypes
-        )
+        assert "contract_0310" in true_latest.contractTypes
+        assert "older_version" in vyper_028.contractTypes
         for compiler in (true_latest, vyper_028):
             assert compiler.settings["optimize"] is True
 
