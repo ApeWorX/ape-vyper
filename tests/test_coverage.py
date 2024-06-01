@@ -2,10 +2,9 @@ import re
 import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import List
+from typing import Optional
 
 import pytest
-from ape.utils import create_tempdir
 
 LINES_VALID = 8
 MISSES = 0
@@ -50,17 +49,37 @@ def coverage_project_path(projects_path):
 def coverage_project(config, coverage_project_path):
     build_dir = coverage_project_path / ".build"
     shutil.rmtree(build_dir, ignore_errors=True)
-    with create_tempdir(name="coverage_project") as base_dir:
-        shutil.copytree(coverage_project_path, base_dir, dirs_exist_ok=True)
-        with config.using_project(base_dir) as project:
-            yield project
+
+    with config.Project.create_temporary_project() as tmp_project:
+        shutil.copytree(coverage_project_path, tmp_project.path, dirs_exist_ok=True)
+        yield tmp_project
 
     shutil.rmtree(build_dir, ignore_errors=True)
 
 
 @pytest.fixture
-def setup_pytester(pytester, coverage_project_path):
-    tests_path = coverage_project_path / "tests"
+def setup_pytester(pytester, coverage_project):
+    tests_path = coverage_project.tests_folder
+
+    # Make other files
+    def _make_all_files(base: Path, prefix: Optional[Path] = None):
+        if not base.is_dir():
+            return
+
+        for file in base.iterdir():
+            if file.is_dir() and not file.name == "tests":
+                _make_all_files(file, prefix=Path(file.name))
+            elif file.is_file():
+                name = (prefix / file.name).as_posix() if prefix else file.name
+
+                if name == "ape-config.yaml":
+                    # Hack in in-memory overrides for testing purposes.
+                    text = str(coverage_project.config)
+                else:
+                    text = file.read_text()
+
+                src = {name: text.splitlines()}
+                pytester.makefile(file.suffix, **src)
 
     # Assume all tests should pass
     num_passes = 0
@@ -80,6 +99,7 @@ def setup_pytester(pytester, coverage_project_path):
             num_failed += len([x for x in content.split("\n") if x.startswith("def test_fail_")])
 
     pytester.makepyfile(**test_files)
+    _make_all_files(coverage_project.path)
 
     # Check for a conftest.py
     conftest = tests_path / "conftest.py"
@@ -92,14 +112,18 @@ def setup_pytester(pytester, coverage_project_path):
 
 def test_coverage(geth_provider, setup_pytester, coverage_project, pytester):
     passed, failed = setup_pytester
-    result = pytester.runpytest("--coverage")
-    result.assert_outcomes(passed=passed, failed=failed)
+    result = pytester.runpytest_subprocess("--coverage")
+    try:
+        result.assert_outcomes(passed=passed, failed=failed)
+    except ValueError:
+        pytest.fail(str(result.stderr))
+
     actual = _get_coverage_report(result.outlines)
     expected = [x.strip() for x in EXPECTED_COVERAGE_REPORT.split("\n")]
     _assert_coverage(actual, expected)
 
     # Ensure XML was created.
-    base_dir = coverage_project.local_project._cache_folder
+    base_dir = pytester.path / ".build"
     xml_path = base_dir / "coverage.xml"
     _assert_xml(xml_path)
     html_path = base_dir / "htmlcov"
@@ -109,7 +133,7 @@ def test_coverage(geth_provider, setup_pytester, coverage_project, pytester):
     _assert_html(index)
 
 
-def _get_coverage_report(lines: List[str]) -> List[str]:
+def _get_coverage_report(lines: list[str]) -> list[str]:
     ret = []
     started = False
     for line in lines:
@@ -134,7 +158,7 @@ def _get_coverage_report(lines: List[str]) -> List[str]:
     return ret
 
 
-def _assert_coverage(actual: List[str], expected: List[str]):
+def _assert_coverage(actual: list[str], expected: list[str]):
     for idx, (a_line, e_line) in enumerate(zip(actual, expected)):
         message = f"Failed at index {idx}. Expected={e_line}, Actual={a_line}"
         assert re.match(e_line, a_line), message

@@ -4,7 +4,7 @@ Ape compiler plugin around [VVM](https://github.com/vyperlang/vvm)
 
 ## Dependencies
 
-- [python3](https://www.python.org/downloads) version 3.8 up to 3.12.
+- [python3](https://www.python.org/downloads) version 3.9 up to 3.12.
 
 ## Installation
 

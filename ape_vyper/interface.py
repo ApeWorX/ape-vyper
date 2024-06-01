@@ -3,7 +3,7 @@ Tools for working with ABI specs and Vyper interface source code
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 from ethpm_types import ABI, MethodABI
 from ethpm_types.abi import ABIType
@@ -22,7 +22,7 @@ def iface_name_from_file(fpath: Path) -> str:
     return fpath.name.split(".")[0]
 
 
-def generate_inputs(inputs: List[ABIType]) -> str:
+def generate_inputs(inputs: list[ABIType]) -> str:
     """Generate the source code input args from ABI inputs"""
     return ", ".join(f"{i.name}: {i.type}" for i in inputs)
 
@@ -34,14 +34,14 @@ def generate_method(abi: MethodABI) -> str:
     return f"def {abi.name}({inputs}){return_maybe}: {abi.stateMutability}\n"
 
 
-def abi_to_type(iface: Dict[str, Any]) -> Optional[ABI]:
+def abi_to_type(iface: dict[str, Any]) -> Optional[ABI]:
     """Convert a dict JSON-like interface to an ethpm-types ABI type"""
     if iface["type"] == "function":
         return MethodABI.model_validate(iface)
     return None
 
 
-def generate_interface(abi: Union[List[Dict[str, Any]], List[ABI]], iface_name: str) -> str:
+def generate_interface(abi: Union[list[dict[str, Any]], list[ABI]], iface_name: str) -> str:
     """
     Generate a Vyper interface source code from an ABI spec
 
@@ -70,10 +70,10 @@ def generate_interface(abi: Union[List[Dict[str, Any]], List[ABI]], iface_name: 
     return f"{source}\n"
 
 
-def extract_meta(source_code: str) -> Tuple[Optional[str], str]:
+def extract_meta(source_code: str) -> tuple[Optional[str], str]:
     """Extract version pragma, and returne cleaned source"""
     version_pragma: Optional[str] = None
-    cleaned_source_lines: List[str] = []
+    cleaned_source_lines: list[str] = []
 
     """
     Pragma format changed a bit.
@@ -94,7 +94,7 @@ def extract_meta(source_code: str) -> Tuple[Optional[str], str]:
     return (version_pragma, "\n".join(cleaned_source_lines))
 
 
-def extract_imports(source: str) -> Tuple[str, str, str]:
+def extract_imports(source: str) -> tuple[str, str, str]:
     """
     Extract import lines from the source, return them and the source without imports
 
@@ -121,7 +121,7 @@ def extract_imports(source: str) -> Tuple[str, str, str]:
     )
 
 
-def extract_import_aliases(source: str) -> Dict[str, str]:
+def extract_import_aliases(source: str) -> dict[str, str]:
     """
     Extract import aliases from import lines
 

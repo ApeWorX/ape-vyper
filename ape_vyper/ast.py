@@ -1,7 +1,5 @@
 """Utilities for dealing with Vyper AST"""
 
-from typing import List
-
 from ethpm_types import ABI, MethodABI
 from ethpm_types.abi import ABIType
 from vyper.ast import parse_to_ast  # type: ignore
@@ -16,11 +14,11 @@ DECORATOR_MUTABILITY = {
 }
 
 
-def funcdef_decorators(funcdef: FunctionDef) -> List[str]:
+def funcdef_decorators(funcdef: FunctionDef) -> list[str]:
     return [d.id for d in funcdef.get("decorator_list") or []]
 
 
-def funcdef_inputs(funcdef: FunctionDef) -> List[ABIType]:
+def funcdef_inputs(funcdef: FunctionDef) -> list[ABIType]:
     """Get a FunctionDef's defined input args"""
     args = funcdef.get("args")
     # TODO: Does Vyper allow complex input types, like structs and arrays?
@@ -31,7 +29,7 @@ def funcdef_inputs(funcdef: FunctionDef) -> List[ABIType]:
     )
 
 
-def funcdef_outputs(funcdef: FunctionDef) -> List[ABIType]:
+def funcdef_outputs(funcdef: FunctionDef) -> list[ABIType]:
     """Get a FunctionDef's outputs, or return values"""
     returns = funcdef.get("returns")
 
@@ -46,9 +44,9 @@ def funcdef_outputs(funcdef: FunctionDef) -> List[ABIType]:
     elif isinstance(returns, Subscript):
         # An array type
         length = returns.slice.value.value
-        array_type = returns.value.id
-        # TOOD: Is this an acurrate way to define a fixed length array for ABI?
-        return [ABIType.model_validate({"type": f"{array_type}[{length}]"})]
+        if array_type := getattr(returns.value, "id", None):
+            # TOOD: Is this an accurate way to define a fixed length array for ABI?
+            return [ABIType.model_validate({"type": f"{array_type}[{length}]"})]
 
     raise NotImplementedError(f"Unhandled return type {type(returns)}")
 
@@ -81,7 +79,7 @@ def funcdef_to_abi(func: FunctionDef) -> ABI:
     )
 
 
-def module_to_abi(module: Module) -> List[ABI]:
+def module_to_abi(module: Module) -> list[ABI]:
     """
     Create a list of MethodABIs from a Vyper AST Module instance.
     """
@@ -92,7 +90,7 @@ def module_to_abi(module: Module) -> List[ABI]:
     return abi
 
 
-def source_to_abi(source: str) -> List[ABI]:
+def source_to_abi(source: str) -> list[ABI]:
     """
     Given Vyper source code, return a list of Ape ABI elements needed for an external interface.
     This currently does not include complex types or events.

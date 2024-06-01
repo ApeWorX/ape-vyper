@@ -3,10 +3,5 @@ contracts_folder: contracts/passing_contracts
 
 # Specify a dependency to use in Vyper imports.
 dependencies:
-  - name: ExampleDependency
+  - name: exampledependency
     local: ./ExampleDependency
-
-vyper:
-  # Allows importing dependencies.
-  import_remapping:
-    - "exampledep=ExampleDependency"

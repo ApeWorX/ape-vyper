@@ -21,9 +21,12 @@ from ape_vyper._cli import cli
 )
 def test_cli_flatten(project, contract_name, expected, cli_runner):
     path = project.contracts_folder / contract_name
+    arguments = ["flatten", str(path)]
+    end = ("--project", str(project.path))
     with create_tempdir() as tmpdir:
         file = tmpdir / "flatten.vy"
-        result = cli_runner.invoke(cli, ("flatten", str(path), str(file)), catch_exceptions=False)
+        arguments.extend([str(file), *end])
+        result = cli_runner.invoke(cli, arguments, catch_exceptions=False)
         assert result.exit_code == 0, result.stderr_bytes
         output = file.read_text()
         for expect in expected:
