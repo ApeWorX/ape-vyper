@@ -365,6 +365,8 @@ class VyperCompiler(CompilerAPI):
                 if import_source_id and import_source_id not in import_map[source_id]:
                     import_map[source_id].append(import_source_id)
 
+                full_path = full_path.parent / f"{full_path.stem}{ext}"
+
                 # Also include imports of imports.
                 sub_imports = self._get_imports((full_path,), project=project, handled=handled)
                 for sub_import_ls in sub_imports.values():
