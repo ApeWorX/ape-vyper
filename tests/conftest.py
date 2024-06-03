@@ -28,8 +28,7 @@ ALL_VERSIONS = (
     "0.3.7",
     "0.3.9",
     "0.3.10",
-    # Uncomment when tracing features work in 0.4 range.
-    # "0.4.0",
+    "0.4.0rc6",
 )
 
 CONTRACT_VERSION_GEN_MAP = {
@@ -38,7 +37,7 @@ CONTRACT_VERSION_GEN_MAP = {
         "0.3.9",
         "0.3.10",
     ),
-    "sub_reverts": ALL_VERSIONS,
+    "sub_reverts": [v for v in ALL_VERSIONS if "0.4.0" not in v],
 }
 
 

@@ -325,17 +325,25 @@ class VyperCompiler(CompilerAPI):
                 # Replace rest of dots with slashes.
                 prefix = prefix.replace(".", os.path.sep)
 
-                full_path = (path.parent / dots / prefix.lstrip(os.path.sep)).resolve()
-                prefix = str(full_path).replace(f"{pm.path}", "").lstrip(os.path.sep)
+                if prefix.startswith("vyper/"):
+                    if f"{prefix}.json" not in import_map[source_id]:
+                        import_map[source_id].append(f"{prefix}.json")
+
+                    continue
+
+                local_path = (path.parent / dots / prefix.lstrip(os.path.sep)).resolve()
+                local_prefix = str(local_path).replace(f"{pm.path}", "").lstrip(os.path.sep)
+
                 import_source_id = None
+                is_local = True
 
                 # NOTE: Defaults to JSON (assuming from input JSON or a local JSON),
                 #  unless a Vyper file exists.
-                if (pm.path / f"{prefix}{FileType.SOURCE}").is_file():
+                if (pm.path / f"{local_prefix}{FileType.SOURCE}").is_file():
                     ext = FileType.SOURCE.value
-                elif (pm.path / f"{prefix}{FileType.SOURCE}").is_file():
+                elif (pm.path / f"{local_prefix}{FileType.SOURCE}").is_file():
                     ext = FileType.INTERFACE.value
-                elif (pm.path / f"{prefix}{FileType.INTERFACE}").is_file():
+                elif (pm.path / f"{local_prefix}{FileType.INTERFACE}").is_file():
                     ext = FileType.INTERFACE.value
                 else:
                     ext = ".json"
@@ -358,19 +366,29 @@ class VyperCompiler(CompilerAPI):
                                     import_source_id = os.path.sep.join(
                                         (path_id, version_str, f"{source_id_stem}{ext}")
                                     )
+                                    # Also include imports of imports.
+                                    sub_imports = self._get_imports(
+                                        (dep_project.path / f"{source_id_stem}{ext}",),
+                                        project=dep_project,
+                                        handled=handled,
+                                    )
+                                    for sub_import_ls in sub_imports.values():
+                                        import_map[source_id].extend(sub_import_ls)
+
+                                    is_local = False
                                     break
 
-                if import_source_id is None:
-                    import_source_id = f"{prefix}{ext}"
+                if is_local:
+                    import_source_id = f"{local_prefix}{ext}"
+                    full_path = local_path.parent / f"{local_path.stem}{ext}"
+
+                    # Also include imports of imports.
+                    sub_imports = self._get_imports((full_path,), project=project, handled=handled)
+                    for sub_import_ls in sub_imports.values():
+                        import_map[source_id].extend(sub_import_ls)
+
                 if import_source_id and import_source_id not in import_map[source_id]:
                     import_map[source_id].append(import_source_id)
-
-                full_path = full_path.parent / f"{full_path.stem}{ext}"
-
-                # Also include imports of imports.
-                sub_imports = self._get_imports((full_path,), project=project, handled=handled)
-                for sub_import_ls in sub_imports.values():
-                    import_map[source_id].extend(sub_import_ls)
 
         return dict(import_map)
 
@@ -955,11 +973,16 @@ class VyperCompiler(CompilerAPI):
 
         # Handle no-pragma sources
         if source_paths_without_pragma:
-            max_installed_vyper_version = (
-                max(v for v in version_map if not v.pre)  # Require 'max' to be stable.
-                if version_map
-                else max(v for v in self.installed_versions if not v.pre)
-            )
+            versions_given = [x for x in version_map.keys()]
+            max_installed_vyper_version = None
+            if versions_given:
+                version_given_non_pre = [x for x in versions_given if not x.pre]
+                if version_given_non_pre:
+                    max_installed_vyper_version = max(version_given_non_pre)
+
+            if max_installed_vyper_version is None:
+                max_installed_vyper_version = max(v for v in self.installed_versions if not v.pre)
+
             _safe_append(version_map, max_installed_vyper_version, source_paths_without_pragma)
 
         return version_map

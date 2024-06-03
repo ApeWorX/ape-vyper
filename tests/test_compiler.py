@@ -128,7 +128,7 @@ def test_get_version_map(project, compiler, all_versions):
         "flatten_me.vy",
         # Include interfaces
         "ERC20.json",
-        "Dependency.json",
+        "Dependency.vy",
         "IRegistry.vy",
         "IFace.vy",
         "IFace2.vy",
@@ -244,8 +244,8 @@ def test_get_imports(compiler, project):
     actual = compiler.get_imports(vyper_files, project=project)
     prefix = "contracts/passing_contracts"
     builtin_import = "vyper/interfaces/ERC20.json"
-    local_import = "interfaces/IFace.vy"
-    local_from_import = "interfaces/IFace2.vy"
+    local_import = f"{prefix}/interfaces/IFace.vy"
+    local_from_import = f"{prefix}/interfaces/IFace2.vy"
     dep_key = project.dependencies.get_dependency("exampledependency", "local").package_id.replace(
         "/", "_"
     )
