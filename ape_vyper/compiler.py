@@ -572,10 +572,13 @@ class VyperCompiler(CompilerAPI):
                     if not sources:
                         continue
 
-                    # Vyper 0.4.0 seems to require absolute paths.
                     src_dict = {p: {"content": Path(p).read_text()} for p in sources}
                     for src in sources:
-                        src_id = f"{get_relative_path(Path(src), pm.path)}"
+                        if Path(src).is_absolute():
+                            src_id = f"{get_relative_path(Path(src), pm.path)}"
+                        else:
+                            src_id = src
+
                         if imports := import_map.get(src_id):
                             for imp in imports:
                                 if imp not in src_dict:
@@ -612,12 +615,14 @@ class VyperCompiler(CompilerAPI):
                 logger.info(log_str)
 
                 vyper_binary = compiler_data[vyper_version]["vyper_binary"]
+                comp_kwargs = {"vyper_version": vyper_version, "vyper_binary": vyper_binary}
+
+                # `base_path` is required for pre-0.4 versions or else imports won't resolve.
+                if vyper_version < Version("0.4.0rc6"):
+                    comp_kwargs["base_path"] = pm.path
+
                 try:
-                    result = vvm_compile_standard(
-                        input_json,
-                        vyper_version=vyper_version,
-                        vyper_binary=vyper_binary,
-                    )
+                    result = vvm_compile_standard(input_json, **comp_kwargs)
                 except VyperError as err:
                     raise VyperCompileError(err) from err
 

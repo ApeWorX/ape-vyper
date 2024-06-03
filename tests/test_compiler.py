@@ -166,7 +166,6 @@ def test_get_version_map(project, compiler, all_versions):
         "zero_four_module.vy",
         "IFaceZeroFour.vyi",
         "zero_four.vy",
-        "sub_reverts_040rc2.vy",
     }
     assert actual4 == expected4
 
