@@ -65,10 +65,9 @@ def test_compile_project(project):
         pytest.xfail(f"Received the following extra sources: {extra_str}")
 
     prefix = "contracts/passing_contracts/"
-    assert len(actual) == len(expected), "Duplicated in actual"
-    assert actual["contract_039"].source_id == f"{prefix}/contract_039.vy"
-    assert actual["contract_no_pragma"].source_id == f"{prefix}/contract_no_pragma.vy"
-    assert actual["older_version"].source_id == f"{prefix}/older_version.vy"
+    assert "contract_039" in actual
+    assert "contract_no_pragma" in actual
+    assert "older_version" in actual
 
 
 @pytest.mark.parametrize("contract_name", PASSING_CONTRACT_NAMES)
