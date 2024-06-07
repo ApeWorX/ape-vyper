@@ -64,7 +64,6 @@ def test_compile_project(project):
         extra_str = ", ".join(extra)
         pytest.xfail(f"Received the following extra sources: {extra_str}")
 
-    prefix = "contracts/passing_contracts/"
     assert "contract_039" in actual
     assert "contract_no_pragma" in actual
     assert "older_version" in actual

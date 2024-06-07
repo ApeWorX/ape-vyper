@@ -58,7 +58,7 @@ setup(
     url="https://github.com/ApeWorX/ape-vyper",
     include_package_data=True,
     install_requires=[
-        "eth-ape>=0.8.2,<0.9",
+        "eth-ape>=0.8.3,<0.9",
         "ethpm-types",  # Use same version as eth-ape
         "tqdm",  # Use same version as eth-ape
         "vvm>=0.2.0,<0.3",
