@@ -20,7 +20,7 @@ from ape.managers.project import ProjectManager
 from ape.types import ContractSourceCoverage, ContractType, SourceTraceback
 from ape.utils import cached_property, get_relative_path, pragma_str_to_specifier_set
 from ape.utils._github import _GithubClient
-from ape.utils.os import get_full_extension
+from ape.utils.os import clean_path, get_full_extension
 from eth_pydantic_types import HexBytes
 from eth_utils import is_0x_prefixed
 from ethpm_types import ASTNode, PackageManifest, PCMap, SourceMapItem
@@ -599,10 +599,14 @@ class VyperCompiler(CompilerAPI):
 
                         if imports := import_map.get(src_id):
                             for imp in imports:
-                                if imp not in src_dict:
-                                    imp_path = pm.path / imp
-                                    if imp_path.is_file():
-                                        src_dict[str(imp_path)] = {"content": imp_path.read_text()}
+                                if imp in src_dict:
+                                    continue
+
+                                imp_path = pm.path / imp
+                                if not imp_path.is_file():
+                                    continue
+
+                                src_dict[str(imp_path)] = {"content": imp_path.read_text()}
 
                 else:
                     # NOTE: Pre vyper 0.4.0, interfaces CANNOT be in the source dict,
@@ -626,7 +630,7 @@ class VyperCompiler(CompilerAPI):
 
                 # Output compiler details.
                 keys = (
-                    "\n\t".join(sorted([x for x in input_json.get("sources", {}).keys()]))
+                    "\n\t".join(sorted([clean_path(Path(x)) for x in src_dict.keys()]))
                     or "No input."
                 )
                 log_str = f"Compiling using Vyper compiler '{vyper_version}'.\nInput:\n\t{keys}"
@@ -696,7 +700,7 @@ class VyperCompiler(CompilerAPI):
                         contract_type = ContractType(
                             ast=ast,
                             contractName=name,
-                            sourceId=source_id,
+                            sourceId=f"{get_relative_path(Path(source_id), pm.path)}",
                             deploymentBytecode={"bytecode": evm["bytecode"]["object"]},
                             runtimeBytecode={"bytecode": bytecode["object"]},
                             abi=output["abi"],
