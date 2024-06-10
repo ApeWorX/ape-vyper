@@ -5,6 +5,7 @@ import ape
 import pytest
 import vvm  # type: ignore
 from ape.exceptions import CompilerError, ContractLogicError
+from ape.utils import get_full_extension
 from ethpm_types import ContractType
 from packaging.version import Version
 from vvm.exceptions import VyperError  # type: ignore
@@ -96,7 +97,9 @@ def test_install_failure(compiler):
 
 def test_get_version_map(project, compiler, all_versions):
     vyper_files = [
-        x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
+        x
+        for x in project.contracts_folder.iterdir()
+        if x.is_file() and get_full_extension(x) == ".vy"
     ]
     actual = compiler.get_version_map(vyper_files, project=project)
     expected_versions = [Version(v) for v in all_versions]
@@ -124,14 +127,6 @@ def test_get_version_map(project, compiler, all_versions):
         "empty.vy",  # empty file still compiles with latest version
         "pragma_with_space.vy",
         "flatten_me.vy",
-        # Include interfaces
-        "ERC20.json",
-        "Dependency.vy",
-        "IRegistry.vy",
-        "IFace.vy",
-        "IFace2.vy",
-        "ERC20Detailed.json",
-        "ISubReverts.vy",
     ]
 
     # Add the 0.3.10 contracts.
@@ -160,11 +155,7 @@ def test_get_version_map(project, compiler, all_versions):
 
     # Vyper 0.4.0 assertions.
     actual4 = {x.name for x in actual[VERSION_04]}
-    expected4 = {
-        "zero_four_module.vy",
-        "IFaceZeroFour.vyi",
-        "zero_four.vy",
-    }
+    expected4 = {"zero_four_module.vy", "zero_four.vy"}
     assert actual4 == expected4
 
 

@@ -630,7 +630,14 @@ class VyperCompiler(CompilerAPI):
 
                 # Output compiler details.
                 keys = (
-                    "\n\t".join(sorted([clean_path(Path(x)) for x in src_dict.keys()]))
+                    "\n\t".join(
+                        sorted(
+                            [
+                                clean_path(Path(x))
+                                for x in settings_set.get("outputSelection", {}).keys()
+                            ]
+                        )
+                    )
                     or "No input."
                 )
                 log_str = f"Compiling using Vyper compiler '{vyper_version}'.\nInput:\n\t{keys}"
@@ -968,7 +975,9 @@ class VyperCompiler(CompilerAPI):
         for pragma_spec, path_set in source_path_by_version_spec.items():
             versions = sorted(list(pragma_spec.filter(self.installed_versions)), reverse=True)
             if versions:
-                _safe_append(version_map, versions[0], path_set)
+                _safe_append(
+                    version_map, versions[0], {p for p in path_set if p in contract_filepaths}
+                )
 
         if not self.installed_versions:
             # If we have no installed versions by this point, we need to install one.
@@ -987,7 +996,11 @@ class VyperCompiler(CompilerAPI):
             if max_installed_vyper_version is None:
                 max_installed_vyper_version = max(v for v in self.installed_versions if not v.pre)
 
-            _safe_append(version_map, max_installed_vyper_version, source_paths_without_pragma)
+            _safe_append(
+                version_map,
+                max_installed_vyper_version,
+                {p for p in source_paths_without_pragma if p in contract_filepaths},
+            )
 
         return version_map
 
