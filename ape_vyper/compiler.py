@@ -1334,12 +1334,12 @@ class VyperCompiler(CompilerAPI):
         pcmap = PCMap.model_validate({})
 
         for frame in frames:
-            if frame["op"] in CALL_OPCODES:
+            if frame["op"] in [c.value for c in CALL_OPCODES]:
                 start_depth = frame["depth"]
                 called_contract, sub_calldata = self._create_contract_from_call(frame)
                 if called_contract:
                     ext = get_full_extension(Path(called_contract.source_id))
-                    if ext in FileType:
+                    if ext in [x for x in FileType]:
                         # Called another Vyper contract.
                         sub_trace = self._get_traceback(
                             called_contract, frames, sub_calldata, previous_depth=frame["depth"]
