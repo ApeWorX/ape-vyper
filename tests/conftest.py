@@ -8,6 +8,7 @@ from tempfile import mkdtemp
 import ape
 import pytest
 import vvm  # type: ignore
+from ape.contracts import ContractContainer
 from click.testing import CliRunner
 
 BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
@@ -216,7 +217,11 @@ def cli_runner():
 
 
 def _get_tb_contract(version: str, project, account):
+    project.load_contracts()
+
     registry_type = project.get_contract(f"registry_{version}")
+    assert isinstance(registry_type, ContractContainer), "Setup failed - couldn't get container"
     registry = account.deploy(registry_type)
     contract = project.get_contract(f"traceback_contract_{version}")
+    assert isinstance(contract, ContractContainer), "Setup failed - couldn't get container"
     return account.deploy(contract, registry)
