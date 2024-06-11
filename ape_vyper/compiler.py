@@ -16,7 +16,7 @@ from ape.api import PluginConfig, TraceAPI
 from ape.api.compiler import CompilerAPI
 from ape.exceptions import ContractLogicError
 from ape.logging import logger
-from ape.managers.project import ProjectManager
+from ape.managers.project import LocalProject, ProjectManager
 from ape.types import ContractSourceCoverage, ContractType, SourceTraceback
 from ape.utils import cached_property, get_relative_path, pragma_str_to_specifier_set
 from ape.utils._github import _GithubClient
@@ -485,7 +485,7 @@ class VyperCompiler(CompilerAPI):
         self, project: Optional[ProjectManager] = None
     ) -> dict[str, ProjectManager]:
         pm = project or self.local_project
-        config = self.get_config(pm)
+        config = self.get_config(project=pm)
         dependencies: dict[str, ProjectManager] = {}
         handled: set[str] = set()
 
@@ -501,7 +501,9 @@ class VyperCompiler(CompilerAPI):
 
             dependency = pm.dependencies.get_dependency(name, _version)
             dep_id = f"{dependency.name}_{dependency.version}"
-            if dep_id in handled:
+            if dep_id in handled or (
+                isinstance(dependency.project, LocalProject) and dependency.project.path == pm.path
+            ):
                 continue
 
             handled.add(dep_id)
@@ -520,7 +522,9 @@ class VyperCompiler(CompilerAPI):
         # Add auto-remapped dependencies.
         for dependency in pm.dependencies.specified:
             dep_id = f"{dependency.name}_{dependency.version}"
-            if dep_id in handled:
+            if dep_id in handled or (
+                isinstance(dependency.project, LocalProject) and dependency.project.path == pm.path
+            ):
                 continue
 
             handled.add(dep_id)
@@ -704,18 +708,26 @@ class VyperCompiler(CompilerAPI):
                             if match := re.search(DEV_MSG_PATTERN, line):
                                 dev_messages[line_no] = match.group(1).strip()
 
-                        contract_type = ContractType(
-                            ast=ast,
-                            contractName=name,
-                            sourceId=f"{get_relative_path(Path(source_id), pm.path)}",
-                            deploymentBytecode={"bytecode": evm["bytecode"]["object"]},
-                            runtimeBytecode={"bytecode": bytecode["object"]},
-                            abi=output["abi"],
-                            sourcemap=compressed_src_map,
-                            pcmap=pcmap,
-                            userdoc=output["userdoc"],
-                            devdoc=output["devdoc"],
-                            dev_messages=dev_messages,
+                        source_id_path = Path(source_id)
+                        if source_id_path.is_absolute():
+                            final_source_id = f"{get_relative_path(Path(source_id), pm.path)}"
+                        else:
+                            final_source_id = source_id
+
+                        contract_type = ContractType.model_validate(
+                            {
+                                "ast": ast,
+                                "contractName": name,
+                                "sourceId": final_source_id,
+                                "deploymentBytecode": {"bytecode": evm["bytecode"]["object"]},
+                                "runtimeBytecode": {"bytecode": bytecode["object"]},
+                                "abi": output["abi"],
+                                "sourcemap": compressed_src_map,
+                                "pcmap": pcmap,
+                                "userdoc": output["userdoc"],
+                                "devdoc": output["devdoc"],
+                                "dev_messages": dev_messages,
+                            }
                         )
                         contract_types.append(contract_type)
                         contract_versions[name] = (vyper_version, settings_key)
@@ -779,11 +791,13 @@ class VyperCompiler(CompilerAPI):
             raise VyperCompileError(str(err)) from err
 
         output = result.get("<stdin>", {})
-        return ContractType(
-            abi=output["abi"],
-            deploymentBytecode={"bytecode": output["bytecode"]},
-            runtimeBytecode={"bytecode": output["bytecode_runtime"]},
-            **kwargs,
+        return ContractType.model_validate(
+            {
+                "abi": output["abi"],
+                "deploymentBytecode": {"bytecode": output["bytecode"]},
+                "runtimeBytecode": {"bytecode": output["bytecode_runtime"]},
+                **kwargs,
+            }
         )
 
     def _source_vyper_version(self, code: str) -> Version:
