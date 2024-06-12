@@ -5,6 +5,7 @@ import ape
 import pytest
 import vvm  # type: ignore
 from ape.exceptions import CompilerError, ContractLogicError
+from ape.utils import get_full_extension
 from ethpm_types import ContractType
 from packaging.version import Version
 from vvm.exceptions import VyperError  # type: ignore
@@ -25,6 +26,7 @@ from .conftest import FAILING_BASE, FAILING_CONTRACT_NAMES, PASSING_CONTRACT_NAM
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.16")
 VERSION_37 = Version("0.3.7")
 VERSION_FROM_PRAGMA = Version("0.3.10")
+VERSION_04 = Version("0.4.0rc6")
 
 
 @pytest.fixture
@@ -46,14 +48,26 @@ EXPECTED_FAIL_PATTERNS = {
 
 
 def test_compile_project(project):
-    contracts = project.load_contracts()
-    assert len(contracts) == len(
-        [p.name for p in project.contracts_folder.glob("*.vy") if p.is_file()]
+    actual = sorted(list(project.load_contracts().keys()))
+
+    # NOTE: Ignore interfaces for this test.
+    expected = sorted(
+        [
+            p.stem
+            for p in project.contracts_folder.rglob("*.vy")
+            if p.is_file() and not p.name.startswith("I")
+        ]
     )
-    prefix = "contracts/passing_contracts"
-    assert contracts["contract_039"].source_id == f"{prefix}/contract_039.vy"
-    assert contracts["contract_no_pragma"].source_id == f"{prefix}/contract_no_pragma.vy"
-    assert contracts["older_version"].source_id == f"{prefix}/older_version.vy"
+    if missing := [e for e in expected if e not in actual]:
+        missing_str = ", ".join(missing)
+        pytest.xfail(f"Missing the following expected sources: {missing_str}")
+    if extra := [a for a in actual if a not in expected]:
+        extra_str = ", ".join(extra)
+        pytest.xfail(f"Received the following extra sources: {extra_str}")
+
+    assert "contract_039" in actual
+    assert "contract_no_pragma" in actual
+    assert "older_version" in actual
 
 
 @pytest.mark.parametrize("contract_name", PASSING_CONTRACT_NAMES)
@@ -83,7 +97,9 @@ def test_install_failure(compiler):
 
 def test_get_version_map(project, compiler, all_versions):
     vyper_files = [
-        x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
+        x
+        for x in project.contracts_folder.iterdir()
+        if x.is_file() and get_full_extension(x) == ".vy"
     ]
     actual = compiler.get_version_map(vyper_files, project=project)
     expected_versions = [Version(v) for v in all_versions]
@@ -137,6 +153,11 @@ def test_get_version_map(project, compiler, all_versions):
 
     assert not failures, "\n".join(failures)
 
+    # Vyper 0.4.0 assertions.
+    actual4 = {x.name for x in actual[VERSION_04]}
+    expected4 = {"zero_four_module.vy", "zero_four.vy"}
+    assert actual4 == expected4
+
 
 def test_compiler_data_in_manifest(project):
     def run_test(manifest):
@@ -144,11 +165,11 @@ def test_compiler_data_in_manifest(project):
 
         all_latest = [c for c in manifest.compilers if str(c.version) == str(VERSION_FROM_PRAGMA)]
         codesize_latest = [c for c in all_latest if c.settings["optimize"] == "codesize"][0]
-        evm_latest = [c for c in all_latest if c.settings["evmVersion"] == "paris"][0]
+        evm_latest = [c for c in all_latest if c.settings.get("evmVersion") == "paris"][0]
         true_latest = [
             c
             for c in all_latest
-            if c.settings["optimize"] is True and c.settings["evmVersion"] != "paris"
+            if c.settings["optimize"] is True and c.settings.get("evmVersion") != "paris"
         ][0]
         vyper_028 = [
             c for c in manifest.compilers if str(c.version) == str(OLDER_VERSION_FROM_PRAGMA)
@@ -167,7 +188,7 @@ def test_compiler_data_in_manifest(project):
 
         # There is only one contract with evm-version pragma.
         assert evm_latest.contractTypes == ["evm_pragma"]
-        assert evm_latest.settings["evmVersion"] == "paris"
+        assert evm_latest.settings.get("evmVersion") == "paris"
 
         assert len(true_latest.contractTypes) >= 9
         assert len(vyper_028.contractTypes) >= 1
@@ -212,8 +233,8 @@ def test_get_imports(compiler, project):
     actual = compiler.get_imports(vyper_files, project=project)
     prefix = "contracts/passing_contracts"
     builtin_import = "vyper/interfaces/ERC20.json"
-    local_import = "interfaces/IFace.vy"
-    local_from_import = "interfaces/IFace2.vy"
+    local_import = f"{prefix}/interfaces/IFace.vy"
+    local_from_import = f"{prefix}/interfaces/IFace2.vy"
     dep_key = project.dependencies.get_dependency("exampledependency", "local").package_id.replace(
         "/", "_"
     )

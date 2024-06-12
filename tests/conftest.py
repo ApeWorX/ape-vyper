@@ -8,6 +8,7 @@ from tempfile import mkdtemp
 import ape
 import pytest
 import vvm  # type: ignore
+from ape.contracts import ContractContainer
 from click.testing import CliRunner
 
 BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
@@ -28,6 +29,7 @@ ALL_VERSIONS = (
     "0.3.7",
     "0.3.9",
     "0.3.10",
+    "0.4.0rc6",
 )
 
 CONTRACT_VERSION_GEN_MAP = {
@@ -36,7 +38,7 @@ CONTRACT_VERSION_GEN_MAP = {
         "0.3.9",
         "0.3.10",
     ),
-    "sub_reverts": ALL_VERSIONS,
+    "sub_reverts": [v for v in ALL_VERSIONS if "0.4.0" not in v],
 }
 
 
@@ -215,7 +217,11 @@ def cli_runner():
 
 
 def _get_tb_contract(version: str, project, account):
+    project.load_contracts()
+
     registry_type = project.get_contract(f"registry_{version}")
+    assert isinstance(registry_type, ContractContainer), "Setup failed - couldn't get container"
     registry = account.deploy(registry_type)
     contract = project.get_contract(f"traceback_contract_{version}")
+    assert isinstance(contract, ContractContainer), "Setup failed - couldn't get container"
     return account.deploy(contract, registry)
