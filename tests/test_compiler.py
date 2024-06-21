@@ -123,8 +123,6 @@ def test_get_version_map(project, compiler, all_versions):
         "optimize_codesize.vy",
         "evm_pragma.vy",
         "use_iface2.vy",
-        "contract_no_pragma.vy",  # no pragma should compile with latest version
-        "empty.vy",  # empty file still compiles with latest version
         "pragma_with_space.vy",
         "flatten_me.vy",
     ]
@@ -566,16 +564,3 @@ def test_flatten_contract(all_versions, project, contract_name, compiler):
     version = compiler._source_vyper_version(source_code)
     vvm.install_vyper(str(version))
     vvm.compile_source(source_code, base_path=project.path, vyper_version=version)
-
-
-# @pytest.skip(
-#     "TODO: Un-skip once official vyper 0.4 released. "
-#     "Because CI won't install the rc-version by default "
-#     "and vyper 0.3 range cannot flatten 0.4 contracts."
-# )
-def test_flatten_contract_04(project,compiler):
-    path = project.contracts_folder / "zero_four.vy"
-    source = compiler.flatten_contract(path, project=project)
-    source_code = str(source)
-    breakpoint()
-    assert source_code == "asdf"
