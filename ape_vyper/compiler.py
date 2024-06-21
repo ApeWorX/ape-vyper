@@ -651,7 +651,7 @@ class VyperCompiler(CompilerAPI):
                 comp_kwargs = {"vyper_version": vyper_version, "vyper_binary": vyper_binary}
 
                 # `base_path` is required for pre-0.4 versions or else imports won't resolve.
-                if vyper_version < Version("0.4.0rc6"):
+                if vyper_version < Version("0.4.0"):
                     comp_kwargs["base_path"] = pm.path
 
                 try:
@@ -1073,7 +1073,7 @@ class VyperCompiler(CompilerAPI):
                 elif optimization == "false":
                     optimization = False
 
-                if version >= Version("0.4.0rc6"):
+                if version >= Version("0.4.0"):
                     # Vyper 0.4.0 seems to require absolute paths.
                     selection_dict = {
                         (pm.path / s).as_posix(): ["*"]

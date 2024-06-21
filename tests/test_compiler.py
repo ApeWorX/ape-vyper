@@ -26,7 +26,7 @@ from .conftest import FAILING_BASE, FAILING_CONTRACT_NAMES, PASSING_CONTRACT_NAM
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.16")
 VERSION_37 = Version("0.3.7")
 VERSION_FROM_PRAGMA = Version("0.3.10")
-VERSION_04 = Version("0.4.0rc6")
+VERSION_04 = Version("0.4.0")
 
 
 @pytest.fixture
@@ -566,3 +566,16 @@ def test_flatten_contract(all_versions, project, contract_name, compiler):
     version = compiler._source_vyper_version(source_code)
     vvm.install_vyper(str(version))
     vvm.compile_source(source_code, base_path=project.path, vyper_version=version)
+
+
+# @pytest.skip(
+#     "TODO: Un-skip once official vyper 0.4 released. "
+#     "Because CI won't install the rc-version by default "
+#     "and vyper 0.3 range cannot flatten 0.4 contracts."
+# )
+def test_flatten_contract_04(project,compiler):
+    path = project.contracts_folder / "zero_four.vy"
+    source = compiler.flatten_contract(path, project=project)
+    source_code = str(source)
+    breakpoint()
+    assert source_code == "asdf"
