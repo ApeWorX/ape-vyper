@@ -564,3 +564,36 @@ def test_flatten_contract(all_versions, project, contract_name, compiler):
     version = compiler._source_vyper_version(source_code)
     vvm.install_vyper(str(version))
     vvm.compile_source(source_code, base_path=project.path, vyper_version=version)
+
+
+def test_flatten_contract_04(project, compiler):
+    path = project.contracts_folder / "zero_four.vy"
+    source = compiler.flatten_contract(path, project=project)
+    source_code = str(source)
+    expected = """
+# pragma version ~=0.4.0
+
+
+interface IFaceZeroFour:
+    def implementThisPlease(role: bytes32) -> bool: view
+
+
+@internal
+def moduleMethod() -> bool:
+    return True
+
+
+implements: IFaceZeroFour
+
+
+@external
+@view
+def implementThisPlease(role: bytes32) -> bool:
+    return True
+
+
+@external
+def callModuleFunction(role: bytes32) -> bool:
+    return zero_four_module.moduleMethod()
+""".lstrip()
+    assert source_code == expected
