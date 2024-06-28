@@ -9,6 +9,7 @@ from enum import Enum
 from fnmatch import fnmatch
 from importlib import import_module
 from pathlib import Path
+from site import getsitepackages
 from typing import Any, Optional, Union, cast
 
 import vvm  # type: ignore
@@ -251,7 +252,7 @@ def get_optimization_pragma_map(
     pragma_map: dict[str, Optimization] = {}
 
     for path in contract_filepaths:
-        pragma = get_optimization_pragma(path) or True
+        pragma = get_optimization_pragma(path) or "codesize"
         source_id = str(get_relative_path(path.absolute(), base_path.absolute()))
         pragma_map[source_id] = pragma
 
@@ -293,6 +294,11 @@ class VyperCompiler(CompilerAPI):
         handled: Optional[set[str]] = None,
     ):
         pm = project or self.local_project
+
+        # When compiling projects outside the cwd, we must
+        # use absolute paths.
+        use_absolute_paths = pm.path != Path.cwd()
+
         import_map: defaultdict = defaultdict(list)
         handled = handled or set()
         dependencies = self.get_dependencies(project=pm)
@@ -301,7 +307,11 @@ class VyperCompiler(CompilerAPI):
                 continue
 
             content = path.read_text().splitlines()
-            source_id = str(get_relative_path(path.absolute(), pm.path.absolute()))
+            source_id = (
+                str(path.absolute())
+                if use_absolute_paths
+                else str(get_relative_path(path.absolute(), pm.path.absolute()))
+            )
             handled.add(source_id)
             for line in content:
                 if line.startswith("import "):
@@ -366,7 +376,6 @@ class VyperCompiler(CompilerAPI):
                                     import_source_id = os.path.sep.join(
                                         (path_id, version_str, f"{source_id_stem}{ext}")
                                     )
-
                                     # Also include imports of imports.
                                     sub_imports = self._get_imports(
                                         (dep_project.path / f"{source_id_stem}{ext}",),
@@ -411,6 +420,9 @@ class VyperCompiler(CompilerAPI):
                     sub_imports = self._get_imports((full_path,), project=project, handled=handled)
                     for sub_import_ls in sub_imports.values():
                         import_map[source_id].extend(sub_import_ls)
+
+                    if use_absolute_paths:
+                        import_source_id = str(full_path)
 
                 if import_source_id and import_source_id not in import_map[source_id]:
                     import_map[source_id].append(import_source_id)
@@ -597,6 +609,11 @@ class VyperCompiler(CompilerAPI):
         settings: Optional[dict] = None,
     ) -> Iterator[ContractType]:
         pm = project or self.local_project
+
+        # (0.4.0): If compiling a project outside the cwd (such as a dependency),
+        # we are forced to use absolute paths.
+        use_absolute_paths = pm.path != Path.cwd()
+
         self.compiler_settings = {**self.compiler_settings, **(settings or {})}
         contract_types: list[ContractType] = []
         import_map = self.get_imports(contract_filepaths, project=pm)
@@ -619,10 +636,21 @@ class VyperCompiler(CompilerAPI):
                     if not sources:
                         continue
 
-                    src_dict = {p: {"content": Path(p).read_text()} for p in sources}
+                    if use_absolute_paths:
+                        src_dict = {
+                            str(pm.path / p): {"content": (pm.path / p).read_text()}
+                            for p in sources
+                        }
+                    else:
+                        src_dict = {p: {"content": Path(p).read_text()} for p in sources}
+
                     for src in sources:
                         if Path(src).is_absolute():
-                            src_id = f"{get_relative_path(Path(src), pm.path)}"
+                            src_id = (
+                                str(Path(src))
+                                if use_absolute_paths
+                                else f"{get_relative_path(Path(src), pm.path)}"
+                            )
                         else:
                             src_id = src
 
@@ -632,26 +660,29 @@ class VyperCompiler(CompilerAPI):
                                     continue
 
                                 imp_path = Path(imp)
-                                if imp_path.is_absolute():
+                                if (pm.path / imp).is_file():
+                                    imp_path = pm.path / imp
+                                    if not imp_path.is_file():
+                                        continue
+
+                                    src_dict[imp] = {"content": imp_path.read_text()}
+
+                                else:
                                     for parent in imp_path.parents:
                                         if parent.name == "site-packages":
                                             src_id = f"{get_relative_path(imp_path, parent)}"
+                                            break
 
                                         elif parent.name == ".ape":
                                             dm = self.local_project.dependencies
                                             full_parent = dm.packages_cache.projects_folder
                                             src_id = f"{get_relative_path(imp_path, full_parent)}"
+                                            break
 
                                     # Likely from a dependency. Exclude absolute prefixes so Vyper
                                     # knows what to do.
                                     src_dict[src_id] = {"content": imp_path.read_text()}
 
-                                else:
-                                    imp_path = pm.path / imp
-                                    if not imp_path.is_file():
-                                        continue
-
-                                    src_dict[str(imp_path)] = {"content": imp_path.read_text()}
                 else:
                     # NOTE: Pre vyper 0.4.0, interfaces CANNOT be in the source dict,
                     # but post 0.4.0, they MUST be.
@@ -1082,6 +1113,11 @@ class VyperCompiler(CompilerAPI):
         project: Optional[ProjectManager] = None,
     ):
         pm = project or self.local_project
+
+        # When compiling projects outside the cwd, use absolute paths for ease.
+        # Also, struggled to get it work any other way.
+        use_absolute_path = pm.path != Path.cwd()
+
         compiler_data = self._get_compiler_arguments(version_map, project=pm)
         settings = {}
         for version, data in compiler_data.items():
@@ -1097,7 +1133,7 @@ class VyperCompiler(CompilerAPI):
             ) or EVM_VERSION_DEFAULT.get(version.base_version)
             for source_path in source_paths:
                 source_id = str(get_relative_path(source_path.absolute(), pm.path))
-                optimization = optimizations_map.get(source_id, True)
+                optimization = optimizations_map.get(source_id, "codesize")
                 evm_version = evm_version_map.get(source_id, default_evm_version)
                 settings_key = f"{optimization}%{evm_version}".lower()
                 if settings_key not in output_selection:
@@ -1114,11 +1150,14 @@ class VyperCompiler(CompilerAPI):
                     optimization = False
 
                 if version >= Version("0.4.0rc6"):
-                    # Vyper 0.4.0 seems to require absolute paths.
+
+                    def _to_src_id(s):
+                        return str(pm.path / s) if use_absolute_path else s
+
                     selection_dict = {
-                        (pm.path / s).as_posix(): ["*"]
+                        _to_src_id(s): ["*"]
                         for s in selection
-                        if (pm.path / s).is_file()
+                        if ((pm.path / s).is_file() if use_absolute_path else Path(s).is_file())
                         and f"interfaces{os.path.sep}" not in s
                         and get_full_extension(pm.path / s) != FileType.INTERFACE
                     }
@@ -1130,9 +1169,15 @@ class VyperCompiler(CompilerAPI):
                         if "interfaces" not in s
                     }
 
+                search_paths = [*getsitepackages()]
+                if pm.path == Path.cwd():
+                    search_paths.append(".")
+                # else: only seem to get absolute paths to work (for compiling deps alone).
+
                 version_settings[settings_key] = {
                     "optimize": optimization,
                     "outputSelection": selection_dict,
+                    "search_paths": [".", *getsitepackages()],
                 }
                 if evm_version and evm_version not in ("none", "null"):
                     version_settings[settings_key]["evmVersion"] = f"{evm_version}"
