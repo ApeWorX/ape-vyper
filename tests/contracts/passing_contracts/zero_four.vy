@@ -5,6 +5,8 @@ implements: IFaceZeroFour
 
 from . import zero_four_module as zero_four_module
 
+from snekmate.auth import ownable
+
 @external
 @view
 def implementThisPlease(role: bytes32) -> bool:

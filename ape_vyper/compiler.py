@@ -14,7 +14,7 @@ from typing import Any, Optional, Union, cast
 import vvm  # type: ignore
 from ape.api import PluginConfig, TraceAPI
 from ape.api.compiler import CompilerAPI
-from ape.exceptions import ContractLogicError
+from ape.exceptions import ContractLogicError, ProjectError
 from ape.logging import logger
 from ape.managers.project import LocalProject, ProjectManager
 from ape.types import ContractSourceCoverage, ContractType, SourceTraceback
@@ -348,9 +348,9 @@ class VyperCompiler(CompilerAPI):
                 else:
                     ext = ".json"
                     dep_key = prefix.split(os.path.sep)[0]
+                    dependency_name = prefix.split(os.path.sep)[0]
+                    filestem = prefix.replace(f"{dependency_name}{os.path.sep}", "")
                     if dep_key in dependencies:
-                        dependency_name = prefix.split(os.path.sep)[0]
-                        filestem = prefix.replace(f"{dependency_name}{os.path.sep}", "")
                         for version_str, dep_project in pm.dependencies[dependency_name].items():
                             dependency = pm.dependencies.get_dependency(
                                 dependency_name, version_str
@@ -377,6 +377,25 @@ class VyperCompiler(CompilerAPI):
 
                                     is_local = False
                                     break
+                    else:
+                        # Attempt looking up dependency from site-packages.
+                        try:
+                            imported_project = ProjectManager.from_python_library(dependency_name)
+                        except ProjectError:
+                            # Must not be it.
+                            pass
+                        else:
+                            for ext in (".vy", ".vyi", ".json"):
+                                try_source_id = f"{filestem}{ext}"
+                                if source_path := imported_project.sources.lookup(try_source_id):
+                                    # Also include imports of imports.
+                                    sub_imports = self._get_imports(
+                                        (source_path,),
+                                        project=imported_project,
+                                        handled=handled,
+                                    )
+                                    for sub_import_ls in sub_imports.values():
+                                        import_map[source_id].extend(sub_import_ls)
 
                 if is_local:
                     import_source_id = f"{local_prefix}{ext}"
