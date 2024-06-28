@@ -366,6 +366,7 @@ class VyperCompiler(CompilerAPI):
                                     import_source_id = os.path.sep.join(
                                         (path_id, version_str, f"{source_id_stem}{ext}")
                                     )
+
                                     # Also include imports of imports.
                                     sub_imports = self._get_imports(
                                         (dep_project.path / f"{source_id_stem}{ext}",),
@@ -388,6 +389,9 @@ class VyperCompiler(CompilerAPI):
                             for ext in (".vy", ".vyi", ".json"):
                                 try_source_id = f"{filestem}{ext}"
                                 if source_path := imported_project.sources.lookup(try_source_id):
+                                    # Make import source ID the abs path so we can find it later.
+                                    import_source_id = str(source_path)
+
                                     # Also include imports of imports.
                                     sub_imports = self._get_imports(
                                         (source_path,),
@@ -396,6 +400,8 @@ class VyperCompiler(CompilerAPI):
                                     )
                                     for sub_import_ls in sub_imports.values():
                                         import_map[source_id].extend(sub_import_ls)
+
+                                is_local = False
 
                 if is_local:
                     import_source_id = f"{local_prefix}{ext}"
@@ -625,12 +631,27 @@ class VyperCompiler(CompilerAPI):
                                 if imp in src_dict:
                                     continue
 
-                                imp_path = pm.path / imp
-                                if not imp_path.is_file():
-                                    continue
+                                imp_path = Path(imp)
+                                if imp_path.is_absolute():
+                                    for parent in imp_path.parents:
+                                        if parent.name == "site-packages":
+                                            src_id = f"{get_relative_path(imp_path, parent)}"
 
-                                src_dict[str(imp_path)] = {"content": imp_path.read_text()}
+                                        elif parent.name == ".ape":
+                                            dm = self.local_project.dependencies
+                                            full_parent = dm.packages_cache.projects_folder
+                                            src_id = f"{get_relative_path(imp_path, full_parent)}"
 
+                                    # Likely from a dependency. Exclude absolute prefixes so Vyper
+                                    # knows what to do.
+                                    src_dict[src_id] = {"content": imp_path.read_text()}
+
+                                else:
+                                    imp_path = pm.path / imp
+                                    if not imp_path.is_file():
+                                        continue
+
+                                    src_dict[str(imp_path)] = {"content": imp_path.read_text()}
                 else:
                     # NOTE: Pre vyper 0.4.0, interfaces CANNOT be in the source dict,
                     # but post 0.4.0, they MUST be.
