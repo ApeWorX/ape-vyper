@@ -2,7 +2,6 @@
 Tools for working with ABI specs and Vyper interface source code
 """
 
-from pathlib import Path
 from typing import Any, Optional, Union
 
 from ethpm_types import ABI, MethodABI
@@ -15,11 +14,6 @@ INDENT = " " * INDENT_SPACES
 def indent_line(line: str, level=1) -> str:
     """Indent a source line of code"""
     return f"{INDENT * level}{line}"
-
-
-def iface_name_from_file(fpath: Path) -> str:
-    """Get Interface name from file path"""
-    return fpath.name.split(".")[0]
 
 
 def generate_inputs(inputs: list[ABIType]) -> str:
@@ -71,7 +65,7 @@ def generate_interface(abi: Union[list[dict[str, Any]], list[ABI]], iface_name: 
 
 
 def extract_meta(source_code: str) -> tuple[Optional[str], str]:
-    """Extract version pragma, and returne cleaned source"""
+    """Extract version pragma, and return cleaned source"""
     version_pragma: Optional[str] = None
     cleaned_source_lines: list[str] = []
 
