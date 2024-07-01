@@ -819,9 +819,15 @@ class VyperCompiler(CompilerAPI):
         return next(version_spec.filter(self.available_versions))
 
     def _flatten_source(
-        self, path: Path, project: Optional[ProjectManager] = None, include_pragma: bool = True
+        self,
+        path: Path,
+        project: Optional[ProjectManager] = None,
+        include_pragma: bool = True,
+        sources_handled: Optional[set[Path]] = None,
     ) -> str:
         pm = project or self.local_project
+        handled = sources_handled or set()
+        handled.add(path)
 
         # Get the non stdlib import paths for our contracts
         imports = list(
@@ -893,12 +899,18 @@ class VyperCompiler(CompilerAPI):
             # Generate an ABI from the source code
             elif import_file.is_file():
                 if version_specifier.contains("0.4.0") and import_file.suffix != ".vyi":
-                    # Is a module. Copy in the source code directly.
-                    flattened_module = self._flatten_source(import_file, include_pragma=False)
-                    flattened_modules = f"{flattened_modules}\n{flattened_module}"
+                    if import_file in handled:
+                        # We have already included this source somewhere.
+                        continue
+
+                    # Is a module or an interface imported from a module.
+                    # Copy in the source code directly.
+                    flattened_module = self._flatten_source(import_file, include_pragma=False, sources_handled=handled)
+                    flattened_modules = f"{flattened_modules}\n\n{flattened_module}"
 
                 else:
                     # Vyper <0.4 interface from folder other than interfaces/
+                    # such as a .vyi file in the contracts folder.
                     abis = source_to_abi(import_file.read_text())
                     interfaces_source += generate_interface(abis, iface_name)
 

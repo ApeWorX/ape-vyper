@@ -586,6 +586,9 @@ def moduleMethod() -> bool:
 implements: IFaceZeroFour
 
 
+# `zero_four_module.vy` also imports this next line.
+# We are testing that the flattener can handle that.
+
 @external
 @view
 def implementThisPlease(role: bytes32) -> bool:
@@ -596,4 +599,5 @@ def implementThisPlease(role: bytes32) -> bool:
 def callModuleFunction(role: bytes32) -> bool:
     return zero_four_module.moduleMethod()
 """.lstrip()
+    breakpoint()
     assert source_code == expected

@@ -65,7 +65,7 @@ def generate_interface(abi: Union[list[dict[str, Any]], list[ABI]], iface_name: 
 
 
 def extract_meta(source_code: str) -> tuple[Optional[str], str]:
-    """Extract version pragma, and returne cleaned source"""
+    """Extract version pragma, and return cleaned source"""
     version_pragma: Optional[str] = None
     cleaned_source_lines: list[str] = []
 
