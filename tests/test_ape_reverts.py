@@ -1,7 +1,18 @@
 import re
+import shutil
 
 import pytest
+from ape import chain
 from ape.pytest.contextmanagers import RevertsContextManager as reverts
+
+
+@pytest.fixture(autouse=True)
+def clear_db(geth_provider):
+    yield
+    # Helps prevent replacement tx errors.
+    # TODO: Move this into Ape's isolation handling for geth.
+    blobpool = chain.provider._process._data_dir / "geth" / "blobpool"
+    shutil.rmtree(blobpool, ignore_errors=True)
 
 
 @pytest.fixture(params=("021", "022", "023", "0215", "0216", "034"))
