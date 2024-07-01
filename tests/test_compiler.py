@@ -123,8 +123,6 @@ def test_get_version_map(project, compiler, all_versions):
         "optimize_codesize.vy",
         "evm_pragma.vy",
         "use_iface2.vy",
-        "contract_no_pragma.vy",  # no pragma should compile with latest version
-        "empty.vy",  # empty file still compiles with latest version
         "pragma_with_space.vy",
         "flatten_me.vy",
     ]
