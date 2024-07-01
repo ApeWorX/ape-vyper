@@ -301,6 +301,11 @@ class VyperCompiler(CompilerAPI):
 
             content = path.read_text().splitlines()
             source_id = str(get_relative_path(path.absolute(), pm.path.absolute()))
+
+            # Prevent infinitely handling imports when they cross over.
+            if source_id in handled:
+                continue
+
             handled.add(source_id)
             for line in content:
                 if line.startswith("import "):
@@ -365,6 +370,7 @@ class VyperCompiler(CompilerAPI):
                                     import_source_id = os.path.sep.join(
                                         (path_id, version_str, f"{source_id_stem}{ext}")
                                     )
+
                                     # Also include imports of imports.
                                     sub_imports = self._get_imports(
                                         (dep_project.path / f"{source_id_stem}{ext}",),
@@ -828,7 +834,6 @@ class VyperCompiler(CompilerAPI):
         pm = project or self.local_project
         handled = sources_handled or set()
         handled.add(path)
-
         # Get the non stdlib import paths for our contracts
         imports = list(
             filter(
@@ -856,9 +861,10 @@ class VyperCompiler(CompilerAPI):
         # Get info about imports and source meta
         aliases = extract_import_aliases(og_source)
         pragma, source_without_meta = extract_meta(og_source)
-        version_specifier = get_version_pragma_spec(pragma)
+        version_specifier = get_version_pragma_spec(pragma) if pragma else None
         stdlib_imports, _, source_without_imports = extract_imports(source_without_meta)
         flattened_modules = ""
+        modules_prefixes: set[str] = set()
 
         for import_path in sorted(imports):
             import_file = None
@@ -898,14 +904,21 @@ class VyperCompiler(CompilerAPI):
 
             # Generate an ABI from the source code
             elif import_file.is_file():
-                if version_specifier.contains("0.4.0") and import_file.suffix != ".vyi":
+                if (
+                    version_specifier
+                    and version_specifier.contains("0.4.0")
+                    and import_file.suffix != ".vyi"
+                ):
+                    modules_prefixes.add(import_file.stem)
                     if import_file in handled:
                         # We have already included this source somewhere.
                         continue
 
                     # Is a module or an interface imported from a module.
                     # Copy in the source code directly.
-                    flattened_module = self._flatten_source(import_file, include_pragma=False, sources_handled=handled)
+                    flattened_module = self._flatten_source(
+                        import_file, include_pragma=False, sources_handled=handled
+                    )
                     flattened_modules = f"{flattened_modules}\n\n{flattened_module}"
 
                 else:
@@ -934,6 +947,12 @@ class VyperCompiler(CompilerAPI):
                 )
             )
         )
+
+        # Clear module-usage prefixes.
+        for prefix in modules_prefixes:
+            # Replace usage lines like 'zero_four_module.moduleMethod()'
+            # with 'self.moduleMethod()'.
+            flattened_source = flattened_source.replace(f"{prefix}.", "self.")
 
         # TODO: Replace this nonsense with a real code formatter
         def format_source(source: str) -> str:
