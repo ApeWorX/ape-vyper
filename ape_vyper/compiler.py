@@ -681,13 +681,14 @@ class VyperCompiler(CompilerAPI):
 
                                     # Likely from a dependency. Exclude absolute prefixes so Vyper
                                     # knows what to do.
-                                    src_dict[src_id] = {"content": imp_path.read_text()}
+                                    if imp_path.is_file():
+                                        src_dict[src_id] = {"content": imp_path.read_text(encoding="utf8")}
 
                 else:
                     # NOTE: Pre vyper 0.4.0, interfaces CANNOT be in the source dict,
                     # but post 0.4.0, they MUST be.
                     src_dict = {
-                        s: {"content": p.read_text()}
+                        s: {"content": p.read_text(encoding="utf8")}
                         for s, p in {
                             p: pm.path / p for p in settings_set["outputSelection"]
                         }.items()
