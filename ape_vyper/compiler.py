@@ -682,7 +682,9 @@ class VyperCompiler(CompilerAPI):
                                     # Likely from a dependency. Exclude absolute prefixes so Vyper
                                     # knows what to do.
                                     if imp_path.is_file():
-                                        src_dict[src_id] = {"content": imp_path.read_text(encoding="utf8")}
+                                        src_dict[src_id] = {
+                                            "content": imp_path.read_text(encoding="utf8")
+                                        }
 
                 else:
                     # NOTE: Pre vyper 0.4.0, interfaces CANNOT be in the source dict,
