@@ -864,8 +864,11 @@ class VyperCompiler(CompilerAPI):
         if version not in self.installed_versions:
             _install_vyper(version)
 
+        binary = self._get_vyper_bin(version)
         try:
-            result = vvm.compile_source(code, base_path=pm.path, vyper_version=version)
+            result = vvm.compile_source(
+                code, base_path=pm.path, vyper_version=version, vyper_binary=binary
+            )
         except Exception as err:
             raise VyperCompileError(str(err)) from err
 
