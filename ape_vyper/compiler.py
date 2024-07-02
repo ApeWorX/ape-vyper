@@ -399,7 +399,8 @@ class VyperCompiler(CompilerAPI):
                                 f"Error: {err}"
                             )
                         else:
-                            for ext in (".vy", ".vyi", ".json"):
+                            did_find = False
+                            for ext in [*[f"{t}" for t in FileType], ".json"]:
                                 try_source_id = f"{filestem}{ext}"
                                 if source_path := imported_project.sources.lookup(try_source_id):
                                     # Make import source ID the abs path so we can find it later.
@@ -414,7 +415,15 @@ class VyperCompiler(CompilerAPI):
                                     for sub_import_ls in sub_imports.values():
                                         import_map[source_id].extend(sub_import_ls)
 
+                                    did_find = True
+
                                 is_local = False
+
+                            if not did_find:
+                                logger.error(
+                                    f"Source for stem '{filestem}' not found in "
+                                    f"'{imported_project.path}'"
+                                )
 
                 if is_local:
                     import_source_id = f"{local_prefix}{ext}"
