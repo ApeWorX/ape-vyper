@@ -391,9 +391,13 @@ class VyperCompiler(CompilerAPI):
                         # Attempt looking up dependency from site-packages.
                         try:
                             imported_project = ProjectManager.from_python_library(dependency_name)
-                        except ProjectError:
-                            # Must not be it.
-                            pass
+                        except ProjectError as err:
+                            # Still attempt to let Vyper handle this.
+                            logger.error(
+                                f"'{dependency_name}' may not be installed. "
+                                "Could not find in Ape dependencies of Python's site-packages. "
+                                f"Error: {err}"
+                            )
                         else:
                             for ext in (".vy", ".vyi", ".json"):
                                 try_source_id = f"{filestem}{ext}"
