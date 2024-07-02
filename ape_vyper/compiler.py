@@ -389,51 +389,19 @@ class VyperCompiler(CompilerAPI):
                                     break
                     else:
                         # Attempt looking up dependency from site-packages.
-                        try:
-                            imported_project = ProjectManager.from_python_library(dependency_name)
-                        except ProjectError as err:
-                            # Still attempt to let Vyper handle this.
-                            logger.error(
-                                f"'{dependency_name}' may not be installed. "
-                                "Could not find it in Ape dependencies or Python's site-packages. "
-                                f"Error: {err}"
+                        if res := self._lookup_source_from_site_packages(dependency_name, filestem):
+                            source_path, imported_project = res
+                            import_source_id = str(source_path)
+                            # Also include imports of imports.
+                            sub_imports = self._get_imports(
+                                (source_path,),
+                                project=imported_project,
+                                handled=handled,
                             )
-                        else:
-                            did_find = False
-                            for ext in [*[f"{t}" for t in FileType], ".json"]:
-                                try_source_id = f"{filestem}{ext}"
-                                if source_path := imported_project.sources.lookup(try_source_id):
-                                    # Make import source ID the abs path so we can find it later.
-                                    import_source_id = str(source_path)
+                            for sub_import_ls in sub_imports.values():
+                                import_map[source_id].extend(sub_import_ls)
 
-                                    # Also include imports of imports.
-                                    sub_imports = self._get_imports(
-                                        (source_path,),
-                                        project=imported_project,
-                                        handled=handled,
-                                    )
-                                    for sub_import_ls in sub_imports.values():
-                                        import_map[source_id].extend(sub_import_ls)
-
-                                    did_find = True
-
-                                is_local = False
-
-                            if not did_find:
-                                # Log a very helpful message.
-                                existing_filestems = [
-                                    f.stem for f in imported_project.path.iterdir()
-                                ]
-                                fs_str = ", ".join(existing_filestems)
-                                contracts_folder = imported_project.contracts_folder
-                                path = imported_project.path
-                                contracts_path = f"{get_relative_path(contracts_folder, path)}"
-                                logger.error(
-                                    f"Source for stem '{filestem}' not found in "
-                                    f"'{imported_project.path}'."
-                                    f"Contracts folder: {contracts_path}, "
-                                    f"Existing file(s): {fs_str}"
-                                )
+                            is_local = False
 
                 if is_local:
                     import_source_id = f"{local_prefix}{ext}"
@@ -451,6 +419,79 @@ class VyperCompiler(CompilerAPI):
                     import_map[source_id].append(import_source_id)
 
         return dict(import_map)
+
+    def _lookup_source_from_site_packages(
+        self,
+        dependency_name: str,
+        filestem: str,
+        config_override: Optional[dict] = None,
+    ) -> Optional[tuple[Path, ProjectManager]]:
+        # Attempt looking up dependency from site-packages.
+        config_override = config_override or {}
+        if "contracts_folder" not in config_override:
+            # Default to looking through the whole release for
+            # contracts. Most often, Python-based dependencies publish
+            # only their contracts this way, and we are only looking
+            # for sources so accurate project configuration is not required.
+            config_override["contracts_folder"] = "."
+
+        try:
+            imported_project = ProjectManager.from_python_library(
+                dependency_name, config_override=config_override,
+            )
+        except ProjectError as err:
+            # Still attempt to let Vyper handle this during compilation.
+            logger.error(
+                f"'{dependency_name}' may not be installed. "
+                "Could not find it in Ape dependencies or Python's site-packages. "
+                f"Error: {err}"
+            )
+        else:
+            extensions = [*[f"{t}" for t in FileType], ".json"]
+
+            def seek() -> Optional[Path]:
+                for ext in extensions:
+                    try_source_id = f"{filestem}{ext}"
+                    if source_path := imported_project.sources.lookup(try_source_id):
+                        # Make import source ID the abs path so we can find it later.
+                        return source_path
+
+                return None
+
+            if res := seek():
+                return res, imported_project
+
+            # Still not found. Try again without contracts_folder set.
+            # This will attempt to use Ape's contracts_folder detection system.
+            # However, I am not sure this code runs in practice, as Vyper-python
+            # based dependencies are new at the time of writing this.
+            new_override = config_override or {}
+            if "contracts_folder" in new_override:
+                del new_override["contracts_folder"]
+
+            imported_project.reconfigure(**new_override)
+            if res := seek():
+                return res, imported_project
+
+            # Still no found. Log a very helpful message.
+            existing_filestems = [
+                f.stem for f in imported_project.path.iterdir()
+            ]
+            fs_str = ", ".join(existing_filestems)
+            contracts_folder = imported_project.contracts_folder
+            path = imported_project.path
+
+            # This will log the calculated / user-set contracts_folder.
+            contracts_path = f"{get_relative_path(contracts_folder, path)}"
+
+            logger.error(
+                f"Source for stem '{filestem}' not found in "
+                f"'{imported_project.path}'."
+                f"Contracts folder: {contracts_path}, "
+                f"Existing file(s): {fs_str}"
+            )
+
+        return None
 
     def get_versions(self, all_paths: Iterable[Path]) -> set[str]:
         versions = set()
