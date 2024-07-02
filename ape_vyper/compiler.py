@@ -860,8 +860,11 @@ class VyperCompiler(CompilerAPI):
 
         # Figure out what compiler version we need for this contract...
         version = self._source_vyper_version(code)
-        # ...and install it if necessary
-        if version not in self.installed_versions:
+        # ...and install it if necessary.
+        # NOTE: We are **NOT** using `self.installed_versions` because the
+        #  package-install version will not work here, we must have the binary.
+        #  (and package_version is included in `self.installed_versions`.
+        if version not in vvm.get_installed_vyper_versions():
             _install_vyper(version)
 
         binary = self._get_vyper_bin(version)

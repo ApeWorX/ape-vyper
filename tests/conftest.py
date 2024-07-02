@@ -2,12 +2,12 @@ import os
 import shutil
 from contextlib import contextmanager
 from pathlib import Path
-from tempfile import mkdtemp
 
 import ape
 import pytest
 import vvm  # type: ignore
 from ape.contracts import ContractContainer
+from ape.utils import create_tempdir
 from click.testing import CliRunner
 
 BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
@@ -80,17 +80,12 @@ pytest_plugins = ["pytester"]
 
 @contextmanager
 def _tmp_vvm_path(monkeypatch):
-    vvm_install_path = Path(mkdtemp()).resolve()
-
-    monkeypatch.setenv(
-        vvm.install.VVM_BINARY_PATH_VARIABLE,
-        f"{vvm_install_path}",
-    )
-
-    yield vvm_install_path
-
-    if vvm_install_path.is_dir():
-        shutil.rmtree(vvm_install_path, ignore_errors=True)
+    with create_tempdir() as path:
+        monkeypatch.setenv(
+            vvm.install.VVM_BINARY_PATH_VARIABLE,
+            f"{path}",
+        )
+        yield path
 
 
 @pytest.fixture(
