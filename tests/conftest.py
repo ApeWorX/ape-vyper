@@ -200,6 +200,11 @@ def all_versions():
     return ALL_VERSIONS
 
 
+@pytest.fixture
+def cli_runner():
+    return CliRunner()
+
+
 def _get_tb_contract(version: str, project, account):
     project.load_contracts()
 
