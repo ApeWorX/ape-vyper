@@ -1,9 +1,11 @@
-# pragma version ~=0.4.0rc6
+# pragma version ~=0.4.0
 
 import interfaces.IFaceZeroFour as IFaceZeroFour
 implements: IFaceZeroFour
 
 from . import zero_four_module as zero_four_module
+
+from snekmate.auth import ownable
 
 @external
 @view

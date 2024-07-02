@@ -1,14 +1,13 @@
 import os
 import shutil
-import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from tempfile import mkdtemp
 
 import ape
 import pytest
 import vvm  # type: ignore
 from ape.contracts import ContractContainer
+from ape.utils import create_tempdir
 from click.testing import CliRunner
 
 BASE_CONTRACTS_PATH = Path(__file__).parent / "contracts"
@@ -29,7 +28,7 @@ ALL_VERSIONS = (
     "0.3.7",
     "0.3.9",
     "0.3.10",
-    "0.4.0rc6",
+    "0.4.0",
 )
 
 CONTRACT_VERSION_GEN_MAP = {
@@ -58,13 +57,8 @@ def from_tests_dir():
 
 @pytest.fixture(scope="session", autouse=True)
 def config():
-    cfg = ape.config
-
-    # Ensure we don't persist any .ape data.
-    with tempfile.TemporaryDirectory() as temp_dir:
-        path = Path(temp_dir).resolve()
-        cfg.DATA_FOLDER = path
-        yield cfg
+    with ape.config.isolate_data_folder():
+        yield ape.config
 
 
 def contract_test_cases(passing: bool) -> list[str]:
@@ -86,17 +80,12 @@ pytest_plugins = ["pytester"]
 
 @contextmanager
 def _tmp_vvm_path(monkeypatch):
-    vvm_install_path = mkdtemp()
-
-    monkeypatch.setenv(
-        vvm.install.VVM_BINARY_PATH_VARIABLE,
-        vvm_install_path,
-    )
-
-    yield vvm_install_path
-
-    if Path(vvm_install_path).is_dir():
-        shutil.rmtree(vvm_install_path, ignore_errors=True)
+    with create_tempdir() as path:
+        monkeypatch.setenv(
+            vvm.install.VVM_BINARY_PATH_VARIABLE,
+            f"{path}",
+        )
+        yield path
 
 
 @pytest.fixture(

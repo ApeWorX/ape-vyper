@@ -26,7 +26,7 @@ from .conftest import FAILING_BASE, FAILING_CONTRACT_NAMES, PASSING_CONTRACT_NAM
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.16")
 VERSION_37 = Version("0.3.7")
 VERSION_FROM_PRAGMA = Version("0.3.10")
-VERSION_04 = Version("0.4.0rc6")
+VERSION_04 = Version("0.4.0")
 
 
 @pytest.fixture
@@ -123,8 +123,6 @@ def test_get_version_map(project, compiler, all_versions):
         "optimize_codesize.vy",
         "evm_pragma.vy",
         "use_iface2.vy",
-        "contract_no_pragma.vy",  # no pragma should compile with latest version
-        "empty.vy",  # empty file still compiles with latest version
         "pragma_with_space.vy",
         "flatten_me.vy",
     ]
@@ -155,7 +153,7 @@ def test_get_version_map(project, compiler, all_versions):
 
     # Vyper 0.4.0 assertions.
     actual4 = {x.name for x in actual[VERSION_04]}
-    expected4 = {"zero_four_module.vy", "zero_four.vy"}
+    expected4 = {"contract_no_pragma.vy", "empty.vy", "zero_four_module.vy", "zero_four.vy"}
     assert actual4 == expected4
 
 
@@ -163,39 +161,33 @@ def test_compiler_data_in_manifest(project):
     def run_test(manifest):
         assert len(manifest.compilers) >= 3, manifest.compilers
 
-        all_latest = [c for c in manifest.compilers if str(c.version) == str(VERSION_FROM_PRAGMA)]
-        codesize_latest = [c for c in all_latest if c.settings["optimize"] == "codesize"][0]
-        evm_latest = [c for c in all_latest if c.settings.get("evmVersion") == "paris"][0]
-        true_latest = [
+        all_latest_03 = [
+            c for c in manifest.compilers if str(c.version) == str(VERSION_FROM_PRAGMA)
+        ]
+        evm_latest = [c for c in all_latest_03 if c.settings.get("evmVersion") == "paris"][0]
+        codesize_latest = [
             c
-            for c in all_latest
-            if c.settings["optimize"] is True and c.settings.get("evmVersion") != "paris"
+            for c in all_latest_03
+            if c.settings["optimize"] == "codesize" and c.settings.get("evmVersion") != "paris"
         ][0]
         vyper_028 = [
             c for c in manifest.compilers if str(c.version) == str(OLDER_VERSION_FROM_PRAGMA)
         ][0]
 
-        for compiler in (vyper_028, codesize_latest, true_latest):
+        for compiler in (vyper_028, codesize_latest):
             assert compiler.name == "vyper"
 
         assert vyper_028.settings["evmVersion"] == "berlin"
         assert codesize_latest.settings["evmVersion"] == "shanghai"
-        assert true_latest.settings["evmVersion"] == "shanghai"
-
-        # There is only one contract with codesize pragma.
-        assert codesize_latest.contractTypes == ["optimize_codesize"]
-        assert codesize_latest.settings["optimize"] == "codesize"
 
         # There is only one contract with evm-version pragma.
         assert evm_latest.contractTypes == ["evm_pragma"]
         assert evm_latest.settings.get("evmVersion") == "paris"
 
-        assert len(true_latest.contractTypes) >= 9
+        assert len(codesize_latest.contractTypes) >= 9
         assert len(vyper_028.contractTypes) >= 1
-        assert "contract_0310" in true_latest.contractTypes
+        assert "contract_0310" in codesize_latest.contractTypes
         assert "older_version" in vyper_028.contractTypes
-        for compiler in (true_latest, vyper_028):
-            assert compiler.settings["optimize"] is True
 
     project.update_manifest(compilers=[])
     project.load_contracts(use_cache=False)
@@ -233,19 +225,24 @@ def test_get_imports(compiler, project):
     actual = compiler.get_imports(vyper_files, project=project)
     prefix = "contracts/passing_contracts"
     builtin_import = "vyper/interfaces/ERC20.json"
-    local_import = f"{prefix}/interfaces/IFace.vy"
-    local_from_import = f"{prefix}/interfaces/IFace2.vy"
-    dep_key = project.dependencies.get_dependency("exampledependency", "local").package_id.replace(
-        "/", "_"
-    )
-    dependency_import = f"{dep_key}/local/contracts/Dependency.vy"
-    assert set(actual[f"{prefix}/contract_037.vy"]) == {builtin_import}
-    assert set(actual[f"{prefix}/use_iface.vy"]) == {
-        local_import,
-        local_from_import,
-        dependency_import,
-    }
-    assert set(actual[f"{prefix}/use_iface2.vy"]) == {local_import}
+    local_import = "IFace.vy"
+    local_from_import = "IFace2.vy"
+    dependency_import = "Dependency.vy"
+
+    # The source IDs end up as absolute paths because they are in tempdir
+    # (not direct local project) and because of Vyper 0.4 reasons, we need
+    # this to be the case. And we don't know the version map yet at this point.
+    contract_37_key = [k for k in actual if f"{prefix}/contract_037.vy" in k][0]
+    use_iface_key = [k for k in actual if f"{prefix}/use_iface.vy" in k][0]
+    use_iface2_key = [k for k in actual if f"{prefix}/use_iface2.vy" in k][0]
+
+    assert set(actual[contract_37_key]) == {builtin_import}
+
+    actual_iface_use = actual[use_iface_key]
+    for expected in (local_import, local_from_import, dependency_import):
+        assert any(k for k in actual_iface_use if expected in k)
+
+    assert actual[use_iface2_key][0].endswith(local_import)
 
 
 @pytest.mark.parametrize("src,vers", [("contract_039", "0.3.9"), ("contract_037", "0.3.7")])
@@ -521,7 +518,7 @@ def test_compile_with_version_set_in_config(config, projects_path, compiler, moc
 
 
 def test_compile_code(project, compiler, dev_revert_source):
-    code = dev_revert_source.read_text()
+    code = dev_revert_source.read_text(encoding="utf8")
     actual = compiler.compile_code(code, project=project, contractName="MyContract")
     assert isinstance(actual, ContractType)
     assert actual.name == "MyContract"

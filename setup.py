@@ -8,12 +8,13 @@ extras_require = {
         "pytest-xdist",  # multi-process runner
         "pytest-cov",  # Coverage analyzer plugin
         "hypothesis>=6.2.0,<7.0",  # Strategy-based fuzzer
+        "snekmate",  # Python package-sources integration testing
     ],
     "lint": [
         "black>=24.4.2,<25",  # Auto-formatter and linter
-        "mypy>=1.10.0,<2",  # Static type analyzer
+        "mypy>=1.10.1,<2",  # Static type analyzer
         "types-setuptools",  # Needed due to mypy typeshed
-        "flake8>=7.0.0,<8",  # Style linter
+        "flake8>=7.1.0,<8",  # Style linter
         "isort>=5.13.2",  # Import sorting linter
         "mdformat>=0.7.17",  # Auto-formatter for markdown
         "mdformat-gfm>=0.3.5",  # Needed for formatting GitHub-flavored markdown
@@ -58,13 +59,13 @@ setup(
     url="https://github.com/ApeWorX/ape-vyper",
     include_package_data=True,
     install_requires=[
-        "eth-ape>=0.8.3,<0.9",
+        "eth-ape>=0.8.7,<0.9",
         "ethpm-types",  # Use same version as eth-ape
         "tqdm",  # Use same version as eth-ape
         "vvm>=0.2.0,<0.3",
         "vyper~=0.3.7",
     ],
-    python_requires=">=3.9,<4",
+    python_requires=">=3.10,<4",
     extras_require=extras_require,
     py_modules=["ape_vyper"],
     entry_points={
@@ -85,7 +86,6 @@ setup(
         "Operating System :: MacOS",
         "Operating System :: POSIX",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",

@@ -9,12 +9,13 @@ from enum import Enum
 from fnmatch import fnmatch
 from importlib import import_module
 from pathlib import Path
+from site import getsitepackages
 from typing import Any, Optional, Union, cast
 
 import vvm  # type: ignore
 from ape.api import PluginConfig, TraceAPI
 from ape.api.compiler import CompilerAPI
-from ape.exceptions import ContractLogicError
+from ape.exceptions import ContractLogicError, ProjectError
 from ape.logging import logger
 from ape.managers.project import LocalProject, ProjectManager
 from ape.types import ContractSourceCoverage, ContractType, SourceTraceback
@@ -73,7 +74,7 @@ EVM_VERSION_DEFAULT = {
     "0.3.8": "shanghai",
     "0.3.9": "shanghai",
     "0.3.10": "shanghai",
-    "0.4.0rc6": "shanghai",
+    "0.4.0": "shanghai",
 }
 
 
@@ -179,7 +180,7 @@ def get_version_pragma_spec(source: Union[str, Path]) -> Optional[SpecifierSet]:
         r"(?:\n|^)\s*#\s*pragma\s+version\s*([^\n]*)",
     )
 
-    source_str = source if isinstance(source, str) else source.read_text()
+    source_str = source if isinstance(source, str) else source.read_text(encoding="utf8")
     for pattern in _version_pragma_patterns:
         for match in re.finditer(pattern, source_str):
             raw_pragma = match.groups()[0]
@@ -210,7 +211,7 @@ def get_optimization_pragma(source: Union[str, Path]) -> Optional[str]:
     elif not source.is_file():
         return None
     else:
-        source_str = source.read_text()
+        source_str = source.read_text(encoding="utf8")
 
     if pragma_match := next(
         re.finditer(r"(?:\n|^)\s*#pragma\s+optimize\s+([^\n]*)", source_str), None
@@ -235,7 +236,7 @@ def get_evmversion_pragma(source: Union[str, Path]) -> Optional[str]:
     elif not source.is_file():
         return None
     else:
-        source_str = source.read_text()
+        source_str = source.read_text(encoding="utf8")
 
     if pragma_match := next(
         re.finditer(r"(?:\n|^)\s*#pragma\s+evm-version\s+([^\n]*)", source_str), None
@@ -251,7 +252,7 @@ def get_optimization_pragma_map(
     pragma_map: dict[str, Optimization] = {}
 
     for path in contract_filepaths:
-        pragma = get_optimization_pragma(path) or True
+        pragma = get_optimization_pragma(path) or "codesize"
         source_id = str(get_relative_path(path.absolute(), base_path.absolute()))
         pragma_map[source_id] = pragma
 
@@ -293,6 +294,11 @@ class VyperCompiler(CompilerAPI):
         handled: Optional[set[str]] = None,
     ):
         pm = project or self.local_project
+
+        # When compiling projects outside the cwd, we must
+        # use absolute paths.
+        use_absolute_paths = pm.path != Path.cwd()
+
         import_map: defaultdict = defaultdict(list)
         handled = handled or set()
         dependencies = self.get_dependencies(project=pm)
@@ -300,8 +306,12 @@ class VyperCompiler(CompilerAPI):
             if not path.is_file():
                 continue
 
-            content = path.read_text().splitlines()
-            source_id = str(get_relative_path(path.absolute(), pm.path.absolute()))
+            content = path.read_text(encoding="utf8").splitlines()
+            source_id = (
+                str(path.absolute())
+                if use_absolute_paths
+                else str(get_relative_path(path.absolute(), pm.path.absolute()))
+            )
             handled.add(source_id)
             for line in content:
                 if line.startswith("import "):
@@ -348,9 +358,9 @@ class VyperCompiler(CompilerAPI):
                 else:
                     ext = ".json"
                     dep_key = prefix.split(os.path.sep)[0]
+                    dependency_name = prefix.split(os.path.sep)[0]
+                    filestem = prefix.replace(f"{dependency_name}{os.path.sep}", "")
                     if dep_key in dependencies:
-                        dependency_name = prefix.split(os.path.sep)[0]
-                        filestem = prefix.replace(f"{dependency_name}{os.path.sep}", "")
                         for version_str, dep_project in pm.dependencies[dependency_name].items():
                             dependency = pm.dependencies.get_dependency(
                                 dependency_name, version_str
@@ -377,6 +387,21 @@ class VyperCompiler(CompilerAPI):
 
                                     is_local = False
                                     break
+                    else:
+                        # Attempt looking up dependency from site-packages.
+                        if res := self._lookup_source_from_site_packages(dependency_name, filestem):
+                            source_path, imported_project = res
+                            import_source_id = str(source_path)
+                            # Also include imports of imports.
+                            sub_imports = self._get_imports(
+                                (source_path,),
+                                project=imported_project,
+                                handled=handled,
+                            )
+                            for sub_import_ls in sub_imports.values():
+                                import_map[source_id].extend(sub_import_ls)
+
+                            is_local = False
 
                 if is_local:
                     import_source_id = f"{local_prefix}{ext}"
@@ -387,10 +412,84 @@ class VyperCompiler(CompilerAPI):
                     for sub_import_ls in sub_imports.values():
                         import_map[source_id].extend(sub_import_ls)
 
+                    if use_absolute_paths:
+                        import_source_id = str(full_path)
+
                 if import_source_id and import_source_id not in import_map[source_id]:
                     import_map[source_id].append(import_source_id)
 
         return dict(import_map)
+
+    def _lookup_source_from_site_packages(
+        self,
+        dependency_name: str,
+        filestem: str,
+        config_override: Optional[dict] = None,
+    ) -> Optional[tuple[Path, ProjectManager]]:
+        # Attempt looking up dependency from site-packages.
+        config_override = config_override or {}
+        if "contracts_folder" not in config_override:
+            # Default to looking through the whole release for
+            # contracts. Most often, Python-based dependencies publish
+            # only their contracts this way, and we are only looking
+            # for sources so accurate project configuration is not required.
+            config_override["contracts_folder"] = "."
+
+        try:
+            imported_project = ProjectManager.from_python_library(
+                dependency_name,
+                config_override=config_override,
+            )
+        except ProjectError as err:
+            # Still attempt to let Vyper handle this during compilation.
+            logger.error(
+                f"'{dependency_name}' may not be installed. "
+                "Could not find it in Ape dependencies or Python's site-packages. "
+                f"Error: {err}"
+            )
+        else:
+            extensions = [*[f"{t}" for t in FileType], ".json"]
+
+            def seek() -> Optional[Path]:
+                for ext in extensions:
+                    try_source_id = f"{filestem}{ext}"
+                    if source_path := imported_project.sources.lookup(try_source_id):
+                        return source_path
+
+                return None
+
+            if res := seek():
+                return res, imported_project
+
+            # Still not found. Try again without contracts_folder set.
+            # This will attempt to use Ape's contracts_folder detection system.
+            # However, I am not sure this situation occurs, as Vyper-python
+            # based dependencies are new at the time of writing this.
+            new_override = config_override or {}
+            if "contracts_folder" in new_override:
+                del new_override["contracts_folder"]
+
+            imported_project.reconfigure(**new_override)
+            if res := seek():
+                return res, imported_project
+
+            # Still not found. Log a very helpful message.
+            existing_filestems = [f.stem for f in imported_project.path.iterdir()]
+            fs_str = ", ".join(existing_filestems)
+            contracts_folder = imported_project.contracts_folder
+            path = imported_project.path
+
+            # This will log the calculated / user-set contracts_folder.
+            contracts_path = f"{get_relative_path(contracts_folder, path)}"
+
+            logger.error(
+                f"Source for stem '{filestem}' not found in "
+                f"'{imported_project.path}'."
+                f"Contracts folder: {contracts_path}, "
+                f"Existing file(s): {fs_str}"
+            )
+
+        return None
 
     def get_versions(self, all_paths: Iterable[Path]) -> set[str]:
         versions = set()
@@ -572,6 +671,11 @@ class VyperCompiler(CompilerAPI):
         settings: Optional[dict] = None,
     ) -> Iterator[ContractType]:
         pm = project or self.local_project
+
+        # (0.4.0): If compiling a project outside the cwd (such as a dependency),
+        # we are forced to use absolute paths.
+        use_absolute_paths = pm.path != Path.cwd()
+
         self.compiler_settings = {**self.compiler_settings, **(settings or {})}
         contract_types: list[ContractType] = []
         import_map = self.get_imports(contract_filepaths, project=pm)
@@ -594,10 +698,23 @@ class VyperCompiler(CompilerAPI):
                     if not sources:
                         continue
 
-                    src_dict = {p: {"content": Path(p).read_text()} for p in sources}
+                    if use_absolute_paths:
+                        src_dict = {
+                            str(pm.path / p): {"content": (pm.path / p).read_text(encoding="utf8")}
+                            for p in sources
+                        }
+                    else:
+                        src_dict = {
+                            p: {"content": Path(p).read_text(encoding="utf8")} for p in sources
+                        }
+
                     for src in sources:
                         if Path(src).is_absolute():
-                            src_id = f"{get_relative_path(Path(src), pm.path)}"
+                            src_id = (
+                                str(Path(src))
+                                if use_absolute_paths
+                                else f"{get_relative_path(Path(src), pm.path)}"
+                            )
                         else:
                             src_id = src
 
@@ -606,17 +723,38 @@ class VyperCompiler(CompilerAPI):
                                 if imp in src_dict:
                                     continue
 
-                                imp_path = pm.path / imp
-                                if not imp_path.is_file():
-                                    continue
+                                imp_path = Path(imp)
+                                if (pm.path / imp).is_file():
+                                    imp_path = pm.path / imp
+                                    if not imp_path.is_file():
+                                        continue
 
-                                src_dict[str(imp_path)] = {"content": imp_path.read_text()}
+                                    src_dict[imp] = {"content": imp_path.read_text(encoding="utf8")}
+
+                                else:
+                                    for parent in imp_path.parents:
+                                        if parent.name == "site-packages":
+                                            src_id = f"{get_relative_path(imp_path, parent)}"
+                                            break
+
+                                        elif parent.name == ".ape":
+                                            dm = self.local_project.dependencies
+                                            full_parent = dm.packages_cache.projects_folder
+                                            src_id = f"{get_relative_path(imp_path, full_parent)}"
+                                            break
+
+                                    # Likely from a dependency. Exclude absolute prefixes so Vyper
+                                    # knows what to do.
+                                    if imp_path.is_file():
+                                        src_dict[src_id] = {
+                                            "content": imp_path.read_text(encoding="utf8")
+                                        }
 
                 else:
                     # NOTE: Pre vyper 0.4.0, interfaces CANNOT be in the source dict,
                     # but post 0.4.0, they MUST be.
                     src_dict = {
-                        s: {"content": p.read_text()}
+                        s: {"content": p.read_text(encoding="utf8")}
                         for s, p in {
                             p: pm.path / p for p in settings_set["outputSelection"]
                         }.items()
@@ -651,7 +789,7 @@ class VyperCompiler(CompilerAPI):
                 comp_kwargs = {"vyper_version": vyper_version, "vyper_binary": vyper_binary}
 
                 # `base_path` is required for pre-0.4 versions or else imports won't resolve.
-                if vyper_version < Version("0.4.0rc6"):
+                if vyper_version < Version("0.4.0"):
                     comp_kwargs["base_path"] = pm.path
 
                 try:
@@ -662,7 +800,9 @@ class VyperCompiler(CompilerAPI):
                 for source_id, output_items in result["contracts"].items():
                     content = {
                         i + 1: ln
-                        for i, ln in enumerate((pm.path / source_id).read_text().splitlines())
+                        for i, ln in enumerate(
+                            (pm.path / source_id).read_text(encoding="utf8").splitlines()
+                        )
                     }
                     for name, output in output_items.items():
                         # De-compress source map to get PC POS map.
@@ -778,27 +918,21 @@ class VyperCompiler(CompilerAPI):
     def compile_code(
         self, code: str, project: Optional[ProjectManager] = None, **kwargs
     ) -> ContractType:
+        # NOTE: We are unable to use `vvm.compile_code()` because it does not
+        #   appear to honor altered VVM install paths, thus always re-installs
+        #   Vyper in our tests because of the monkeypatch. Also, their approach
+        #   isn't really different than our approach implemented below.
         pm = project or self.local_project
+        with pm.isolate_in_tempdir():
+            name = kwargs.get("contractName", "code")
+            file = pm.path / f"{name}.vy"
+            file.write_text(code, encoding="utf8")
+            contract_type = next(self.compile((file,), project=pm), None)
+            if contract_type is None:
+                # Not sure when this would happen.
+                raise VyperCompileError("Failed to produce contract type.")
 
-        # Figure out what compiler version we need for this contract...
-        version = self._source_vyper_version(code)
-        # ...and install it if necessary
-        _install_vyper(version)
-
-        try:
-            result = vvm.compile_source(code, base_path=pm.path, vyper_version=version)
-        except Exception as err:
-            raise VyperCompileError(str(err)) from err
-
-        output = result.get("<stdin>", {})
-        return ContractType.model_validate(
-            {
-                "abi": output["abi"],
-                "deploymentBytecode": {"bytecode": output["bytecode"]},
-                "runtimeBytecode": {"bytecode": output["bytecode_runtime"]},
-                **kwargs,
-            }
-        )
+            return contract_type
 
     def _source_vyper_version(self, code: str) -> Version:
         """Given source code, figure out which Vyper version to use"""
@@ -844,7 +978,7 @@ class VyperCompiler(CompilerAPI):
                 dependencies[import_match] = manifest
 
         interfaces_source = ""
-        og_source = (pm.path / path).read_text()
+        og_source = (pm.path / path).read_text(encoding="utf8")
 
         # Get info about imports and source meta
         aliases = extract_import_aliases(og_source)
@@ -889,7 +1023,7 @@ class VyperCompiler(CompilerAPI):
 
             # Generate an ABI from the source code
             elif import_file.is_file():
-                abis = source_to_abi(import_file.read_text())
+                abis = source_to_abi(import_file.read_text(encoding="utf8"))
                 interfaces_source += generate_interface(abis, iface_name)
 
         def no_nones(it: Iterable[Optional[str]]) -> Iterable[str]:
@@ -1042,6 +1176,11 @@ class VyperCompiler(CompilerAPI):
         project: Optional[ProjectManager] = None,
     ):
         pm = project or self.local_project
+
+        # When compiling projects outside the cwd, use absolute paths for ease.
+        # Also, struggled to get it work any other way.
+        use_absolute_path = pm.path != Path.cwd()
+
         compiler_data = self._get_compiler_arguments(version_map, project=pm)
         settings = {}
         for version, data in compiler_data.items():
@@ -1057,7 +1196,7 @@ class VyperCompiler(CompilerAPI):
             ) or EVM_VERSION_DEFAULT.get(version.base_version)
             for source_path in source_paths:
                 source_id = str(get_relative_path(source_path.absolute(), pm.path))
-                optimization = optimizations_map.get(source_id, True)
+                optimization = optimizations_map.get(source_id, "codesize")
                 evm_version = evm_version_map.get(source_id, default_evm_version)
                 settings_key = f"{optimization}%{evm_version}".lower()
                 if settings_key not in output_selection:
@@ -1073,12 +1212,15 @@ class VyperCompiler(CompilerAPI):
                 elif optimization == "false":
                     optimization = False
 
-                if version >= Version("0.4.0rc6"):
-                    # Vyper 0.4.0 seems to require absolute paths.
+                if version >= Version("0.4.0"):
+
+                    def _to_src_id(s):
+                        return str(pm.path / s) if use_absolute_path else s
+
                     selection_dict = {
-                        (pm.path / s).as_posix(): ["*"]
+                        _to_src_id(s): ["*"]
                         for s in selection
-                        if (pm.path / s).is_file()
+                        if ((pm.path / s).is_file() if use_absolute_path else Path(s).is_file())
                         and f"interfaces{os.path.sep}" not in s
                         and get_full_extension(pm.path / s) != FileType.INTERFACE
                     }
@@ -1090,9 +1232,15 @@ class VyperCompiler(CompilerAPI):
                         if "interfaces" not in s
                     }
 
+                search_paths = [*getsitepackages()]
+                if pm.path == Path.cwd():
+                    search_paths.append(".")
+                # else: only seem to get absolute paths to work (for compiling deps alone).
+
                 version_settings[settings_key] = {
                     "optimize": optimization,
                     "outputSelection": selection_dict,
+                    "search_paths": [".", *getsitepackages()],
                 }
                 if evm_version and evm_version not in ("none", "null"):
                     version_settings[settings_key]["evmVersion"] = f"{evm_version}"
