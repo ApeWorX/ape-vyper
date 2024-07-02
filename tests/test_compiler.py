@@ -94,7 +94,7 @@ def test_compile_zero_four(compiler, project):
     """
     paths = (
         project.contracts_folder / "subdir" / "zero_four_in_subdir.vy",
-        project.contracts_folder / "zero_four.vy"
+        project.contracts_folder / "zero_four.vy",
     )
     result = [x.name for x in compiler.compile(paths, project=project)]
     assert "zero_four" in result

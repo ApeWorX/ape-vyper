@@ -1248,7 +1248,7 @@ class VyperCompiler(CompilerAPI):
                 version_settings[settings_key] = {
                     "optimize": optimization,
                     "outputSelection": selection_dict,
-                    "search_paths": search_paths
+                    "search_paths": search_paths,
                 }
                 if evm_version and evm_version not in ("none", "null"):
                     version_settings[settings_key]["evmVersion"] = f"{evm_version}"
