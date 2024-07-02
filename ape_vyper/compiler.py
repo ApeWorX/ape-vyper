@@ -861,7 +861,8 @@ class VyperCompiler(CompilerAPI):
         # Figure out what compiler version we need for this contract...
         version = self._source_vyper_version(code)
         # ...and install it if necessary
-        _install_vyper(version)
+        if version not in self.installed_versions:
+            _install_vyper(version)
 
         try:
             result = vvm.compile_source(code, base_path=pm.path, vyper_version=version)

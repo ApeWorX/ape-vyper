@@ -518,7 +518,7 @@ def test_compile_with_version_set_in_config(config, projects_path, compiler, moc
 
 
 def test_compile_code(project, compiler, dev_revert_source):
-    code = dev_revert_source.read_text()
+    code = dev_revert_source.read_text(encoding="utf8")
     actual = compiler.compile_code(code, project=project, contractName="MyContract")
     assert isinstance(actual, ContractType)
     assert actual.name == "MyContract"
