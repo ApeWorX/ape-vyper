@@ -1,6 +1,6 @@
 # @version {{VYPER_VERSION}}
 
-import interfaces.ISubReverts as ISubReverts
+from .interfaces import ISubReverts as ISubReverts
 
 sub_reverts: public(ISubReverts)
 MAX_NUM: constant(uint256) = 32

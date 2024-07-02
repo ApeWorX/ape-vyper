@@ -2,8 +2,8 @@
 
 from vyper.interfaces import ERC20
 
-from interfaces import IFace2 as IFaceTwo
-import interfaces.IFace as IFace
+from .interfaces import IFace2 as IFaceTwo
+from .interfaces import IFace as IFace
 import exampledependency.Dependency as Dep
 
 

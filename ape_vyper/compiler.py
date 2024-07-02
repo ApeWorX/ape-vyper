@@ -1241,12 +1241,14 @@ class VyperCompiler(CompilerAPI):
                 search_paths = [*getsitepackages()]
                 if pm.path == Path.cwd():
                     search_paths.append(".")
+                else:
+                    search_paths.append(str(pm.path))
                 # else: only seem to get absolute paths to work (for compiling deps alone).
 
                 version_settings[settings_key] = {
                     "optimize": optimization,
                     "outputSelection": selection_dict,
-                    "search_paths": [".", *getsitepackages()],
+                    "search_paths": search_paths
                 }
                 if evm_version and evm_version not in ("none", "null"):
                     version_settings[settings_key]["evmVersion"] = f"{evm_version}"

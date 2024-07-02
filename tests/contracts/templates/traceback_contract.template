@@ -1,6 +1,6 @@
 # @version {{VYPER_VERSION}}
 
-import interfaces.IRegistry as IRegistry
+from .interfaces import IRegistry as IRegistry
 
 _balance: public(uint256)
 registry: public(IRegistry)
