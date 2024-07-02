@@ -856,34 +856,21 @@ class VyperCompiler(CompilerAPI):
     def compile_code(
         self, code: str, project: Optional[ProjectManager] = None, **kwargs
     ) -> ContractType:
+        # NOTE: We are unable to use `vvm.compile_code()` because it does not
+        #   appear to honor altered VVM install paths, thus always re-installs
+        #   Vyper in our tests because of the monkeypatch. Also, their approach
+        #   isn't really different than our approach implemented below.
         pm = project or self.local_project
+        with pm.isolate_in_tempdir():
+            name = kwargs.get("contractName", "code")
+            file = pm.path / f"{name}.vy"
+            file.write_text(code, encoding="utf8")
+            contract_type = next(self.compile((file,), project=pm), None)
+            if contract_type is None:
+                # Not sure when this would happen.
+                raise VyperCompileError("Failed to produce contract type.")
 
-        # Figure out what compiler version we need for this contract...
-        version = self._source_vyper_version(code)
-        # ...and install it if necessary.
-        # NOTE: We are **NOT** using `self.installed_versions` because the
-        #  package-install version will not work here, we must have the binary.
-        #  (and package_version is included in `self.installed_versions`.
-        if version not in vvm.get_installed_vyper_versions():
-            _install_vyper(version)
-
-        binary = self._get_vyper_bin(version)
-        try:
-            result = vvm.compile_source(
-                code, base_path=pm.path, vyper_version=version, vyper_binary=binary
-            )
-        except Exception as err:
-            raise VyperCompileError(str(err)) from err
-
-        output = result.get("<stdin>", {})
-        return ContractType.model_validate(
-            {
-                "abi": output["abi"],
-                "deploymentBytecode": {"bytecode": output["bytecode"]},
-                "runtimeBytecode": {"bytecode": output["bytecode_runtime"]},
-                **kwargs,
-            }
-        )
+            return contract_type
 
     def _source_vyper_version(self, code: str) -> Version:
         """Given source code, figure out which Vyper version to use"""
