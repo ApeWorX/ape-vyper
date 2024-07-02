@@ -332,16 +332,22 @@ class VyperCompiler(CompilerAPI):
                     dots += prefix[0]
                     prefix = prefix[1:]
 
+                is_relative = dots != ""
+
                 # Replace rest of dots with slashes.
                 prefix = prefix.replace(".", os.path.sep)
 
-                if prefix.startswith("vyper/"):
+                if prefix.startswith("vyper/") or prefix.startswith("ethereum/"):
                     if f"{prefix}.json" not in import_map[source_id]:
                         import_map[source_id].append(f"{prefix}.json")
 
                     continue
 
-                local_path = (path.parent / dots / prefix.lstrip(os.path.sep)).resolve()
+                local_path = (
+                    (path.parent / dots / prefix.lstrip(os.path.sep)).resolve()
+                    if is_relative
+                    else (pm.path / prefix.lstrip(os.path.sep)).resolve()
+                )
                 local_prefix = str(local_path).replace(f"{pm.path}", "").lstrip(os.path.sep)
 
                 import_source_id = None
