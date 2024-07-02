@@ -1,3 +1,5 @@
+import subprocess
+
 import pytest
 from ape.utils import create_tempdir
 
@@ -31,3 +33,17 @@ def test_cli_flatten(project, contract_name, expected, cli_runner):
         output = file.read_text()
         for expect in expected:
             assert expect in output
+
+
+def test_compile():
+    """
+    Integration: Testing the CLI using an actual subprocess because
+    it is the only way to test compiling the project such that it
+    isn't treated as a tempdir project.
+    """
+    # Use a couple contracts
+    cmd_ls = ("ape", "compile", "subdir", "--force")
+    completed_process = subprocess.run(cmd_ls, capture_output=True)
+    output = completed_process.stdout.decode(encoding="utf8")
+    assert "SUCCESS" in output
+    assert "zero_four_in_subdir.vy" in output

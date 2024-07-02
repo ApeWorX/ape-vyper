@@ -332,16 +332,22 @@ class VyperCompiler(CompilerAPI):
                     dots += prefix[0]
                     prefix = prefix[1:]
 
+                is_relative = dots != ""
+
                 # Replace rest of dots with slashes.
                 prefix = prefix.replace(".", os.path.sep)
 
-                if prefix.startswith("vyper/"):
+                if prefix.startswith("vyper/") or prefix.startswith("ethereum/"):
                     if f"{prefix}.json" not in import_map[source_id]:
                         import_map[source_id].append(f"{prefix}.json")
 
                     continue
 
-                local_path = (path.parent / dots / prefix.lstrip(os.path.sep)).resolve()
+                local_path = (
+                    (path.parent / dots / prefix.lstrip(os.path.sep)).resolve()
+                    if is_relative
+                    else (pm.path / prefix.lstrip(os.path.sep)).resolve()
+                )
                 local_prefix = str(local_path).replace(f"{pm.path}", "").lstrip(os.path.sep)
 
                 import_source_id = None
@@ -1235,12 +1241,14 @@ class VyperCompiler(CompilerAPI):
                 search_paths = [*getsitepackages()]
                 if pm.path == Path.cwd():
                     search_paths.append(".")
+                else:
+                    search_paths.append(str(pm.path))
                 # else: only seem to get absolute paths to work (for compiling deps alone).
 
                 version_settings[settings_key] = {
                     "optimize": optimization,
                     "outputSelection": selection_dict,
-                    "search_paths": [".", *getsitepackages()],
+                    "search_paths": search_paths,
                 }
                 if evm_version and evm_version not in ("none", "null"):
                     version_settings[settings_key]["evmVersion"] = f"{evm_version}"

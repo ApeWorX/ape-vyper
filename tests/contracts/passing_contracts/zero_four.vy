@@ -1,11 +1,15 @@
 # pragma version ~=0.4.0
 
-import interfaces.IFaceZeroFour as IFaceZeroFour
+from .interfaces import IFaceZeroFour as IFaceZeroFour
 implements: IFaceZeroFour
 
 from . import zero_four_module as zero_four_module
 
 from snekmate.auth import ownable
+
+# Also show we can import from ethereum namespace.
+# (new in Vyper 0.4).
+from ethereum.ercs import IERC20
 
 @external
 @view

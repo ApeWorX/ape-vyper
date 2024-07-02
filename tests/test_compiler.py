@@ -88,6 +88,19 @@ def test_compile_failures(contract_name, compiler):
     assert isinstance(err.value.base_err, VyperError)
 
 
+def test_compile_zero_four(compiler, project):
+    """
+    An easy way to test only Vyper 0.4 changes.
+    """
+    paths = (
+        project.contracts_folder / "subdir" / "zero_four_in_subdir.vy",
+        project.contracts_folder / "zero_four.vy",
+    )
+    result = [x.name for x in compiler.compile(paths, project=project)]
+    assert "zero_four" in result
+    assert "zero_four_in_subdir" in result
+
+
 def test_install_failure(compiler):
     failing_project = ape.Project(FAILING_BASE)
     path = FAILING_BASE / "contract_unknown_pragma.vy"
