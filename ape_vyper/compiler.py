@@ -420,9 +420,13 @@ class VyperCompiler(CompilerAPI):
                                 is_local = False
 
                             if not did_find:
+                                existing_filestems = [
+                                    f.stem for f in imported_project.path.iterdir()
+                                ]
+                                existing_fs_str = ", ".join(existing_filestems)
                                 logger.error(
                                     f"Source for stem '{filestem}' not found in "
-                                    f"'{imported_project.path}'"
+                                    f"'{imported_project.path}'. Existing file(s): {existing_fs_str}"
                                 )
 
                 if is_local:
