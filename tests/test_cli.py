@@ -44,5 +44,6 @@ def test_compile():
     # Use a couple contracts
     cmd_ls = ("ape", "compile", "subdir", "--force")
     completed_process = subprocess.run(cmd_ls, capture_output=True)
-    assert "SUCCESS" in completed_process.stdout
-    assert "zero_four_in_subdir.vy" in completed_process.stdout
+    output = completed_process.stdout.decode(encoding="utf8")
+    assert "SUCCESS" in output
+    assert "zero_four_in_subdir.vy" in output
