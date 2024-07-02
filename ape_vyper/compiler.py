@@ -395,7 +395,7 @@ class VyperCompiler(CompilerAPI):
                             # Still attempt to let Vyper handle this.
                             logger.error(
                                 f"'{dependency_name}' may not be installed. "
-                                "Could not find in Ape dependencies of Python's site-packages. "
+                                "Could not find it in Ape dependencies or Python's site-packages. "
                                 f"Error: {err}"
                             )
                         else:
