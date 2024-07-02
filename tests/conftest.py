@@ -1,6 +1,5 @@
 import os
 import shutil
-import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import mkdtemp
@@ -58,13 +57,8 @@ def from_tests_dir():
 
 @pytest.fixture(scope="session", autouse=True)
 def config():
-    cfg = ape.config
-
-    # Ensure we don't persist any .ape data.
-    with tempfile.TemporaryDirectory() as temp_dir:
-        path = Path(temp_dir).resolve()
-        cfg.DATA_FOLDER = path
-        yield cfg
+    with ape.config.isolate_data_folder():
+        yield ape.config
 
 
 def contract_test_cases(passing: bool) -> list[str]:
@@ -86,16 +80,16 @@ pytest_plugins = ["pytester"]
 
 @contextmanager
 def _tmp_vvm_path(monkeypatch):
-    vvm_install_path = mkdtemp()
+    vvm_install_path = Path(mkdtemp()).resolve()
 
     monkeypatch.setenv(
         vvm.install.VVM_BINARY_PATH_VARIABLE,
-        vvm_install_path,
+        f"{vvm_install_path}",
     )
 
     yield vvm_install_path
 
-    if Path(vvm_install_path).is_dir():
+    if vvm_install_path.is_dir():
         shutil.rmtree(vvm_install_path, ignore_errors=True)
 
 
