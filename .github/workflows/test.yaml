@@ -98,8 +98,7 @@ jobs:
 
         - name: Run Tests
           run: |
-            # TODO: Remove --maxfail 1 (am debugging)
-            pytest -k "not test_coverage" -m "not fuzzing" -n 0 -s --maxfail 1 \
+            pytest -k "not test_coverage" -m "not fuzzing" -n 0 -s \
               --cov=ape_vyper \
               --cov-branch \
               --cov-report term \

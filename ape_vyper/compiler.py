@@ -180,7 +180,7 @@ def get_version_pragma_spec(source: Union[str, Path]) -> Optional[SpecifierSet]:
         r"(?:\n|^)\s*#\s*pragma\s+version\s*([^\n]*)",
     )
 
-    source_str = source if isinstance(source, str) else source.read_text()
+    source_str = source if isinstance(source, str) else source.read_text(encoding="utf8")
     for pattern in _version_pragma_patterns:
         for match in re.finditer(pattern, source_str):
             raw_pragma = match.groups()[0]
@@ -211,7 +211,7 @@ def get_optimization_pragma(source: Union[str, Path]) -> Optional[str]:
     elif not source.is_file():
         return None
     else:
-        source_str = source.read_text()
+        source_str = source.read_text(encoding="utf8")
 
     if pragma_match := next(
         re.finditer(r"(?:\n|^)\s*#pragma\s+optimize\s+([^\n]*)", source_str), None
@@ -236,7 +236,7 @@ def get_evmversion_pragma(source: Union[str, Path]) -> Optional[str]:
     elif not source.is_file():
         return None
     else:
-        source_str = source.read_text()
+        source_str = source.read_text(encoding="utf8")
 
     if pragma_match := next(
         re.finditer(r"(?:\n|^)\s*#pragma\s+evm-version\s+([^\n]*)", source_str), None
@@ -306,7 +306,7 @@ class VyperCompiler(CompilerAPI):
             if not path.is_file():
                 continue
 
-            content = path.read_text().splitlines()
+            content = path.read_text(encoding="utf8").splitlines()
             source_id = (
                 str(path.absolute())
                 if use_absolute_paths
@@ -437,7 +437,8 @@ class VyperCompiler(CompilerAPI):
 
         try:
             imported_project = ProjectManager.from_python_library(
-                dependency_name, config_override=config_override,
+                dependency_name,
+                config_override=config_override,
             )
         except ProjectError as err:
             # Still attempt to let Vyper handle this during compilation.
@@ -453,7 +454,6 @@ class VyperCompiler(CompilerAPI):
                 for ext in extensions:
                     try_source_id = f"{filestem}{ext}"
                     if source_path := imported_project.sources.lookup(try_source_id):
-                        # Make import source ID the abs path so we can find it later.
                         return source_path
 
                 return None
@@ -463,7 +463,7 @@ class VyperCompiler(CompilerAPI):
 
             # Still not found. Try again without contracts_folder set.
             # This will attempt to use Ape's contracts_folder detection system.
-            # However, I am not sure this code runs in practice, as Vyper-python
+            # However, I am not sure this situation occurs, as Vyper-python
             # based dependencies are new at the time of writing this.
             new_override = config_override or {}
             if "contracts_folder" in new_override:
@@ -473,10 +473,8 @@ class VyperCompiler(CompilerAPI):
             if res := seek():
                 return res, imported_project
 
-            # Still no found. Log a very helpful message.
-            existing_filestems = [
-                f.stem for f in imported_project.path.iterdir()
-            ]
+            # Still not found. Log a very helpful message.
+            existing_filestems = [f.stem for f in imported_project.path.iterdir()]
             fs_str = ", ".join(existing_filestems)
             contracts_folder = imported_project.contracts_folder
             path = imported_project.path
@@ -702,11 +700,13 @@ class VyperCompiler(CompilerAPI):
 
                     if use_absolute_paths:
                         src_dict = {
-                            str(pm.path / p): {"content": (pm.path / p).read_text()}
+                            str(pm.path / p): {"content": (pm.path / p).read_text(encoding="utf8")}
                             for p in sources
                         }
                     else:
-                        src_dict = {p: {"content": Path(p).read_text()} for p in sources}
+                        src_dict = {
+                            p: {"content": Path(p).read_text(encoding="utf8")} for p in sources
+                        }
 
                     for src in sources:
                         if Path(src).is_absolute():
@@ -729,7 +729,7 @@ class VyperCompiler(CompilerAPI):
                                     if not imp_path.is_file():
                                         continue
 
-                                    src_dict[imp] = {"content": imp_path.read_text()}
+                                    src_dict[imp] = {"content": imp_path.read_text(encoding="utf8")}
 
                                 else:
                                     for parent in imp_path.parents:
@@ -800,7 +800,9 @@ class VyperCompiler(CompilerAPI):
                 for source_id, output_items in result["contracts"].items():
                     content = {
                         i + 1: ln
-                        for i, ln in enumerate((pm.path / source_id).read_text().splitlines())
+                        for i, ln in enumerate(
+                            (pm.path / source_id).read_text(encoding="utf8").splitlines()
+                        )
                     }
                     for name, output in output_items.items():
                         # De-compress source map to get PC POS map.
@@ -976,7 +978,7 @@ class VyperCompiler(CompilerAPI):
                 dependencies[import_match] = manifest
 
         interfaces_source = ""
-        og_source = (pm.path / path).read_text()
+        og_source = (pm.path / path).read_text(encoding="utf8")
 
         # Get info about imports and source meta
         aliases = extract_import_aliases(og_source)
@@ -1021,7 +1023,7 @@ class VyperCompiler(CompilerAPI):
 
             # Generate an ABI from the source code
             elif import_file.is_file():
-                abis = source_to_abi(import_file.read_text())
+                abis = source_to_abi(import_file.read_text(encoding="utf8"))
                 interfaces_source += generate_interface(abis, iface_name)
 
         def no_nones(it: Iterable[Optional[str]]) -> Iterable[str]:
