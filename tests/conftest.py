@@ -124,7 +124,9 @@ def generate_contracts():
         for version in versions:
             new_file = PASSING_BASE / f"{file.stem}_{version.replace('.', '')}.vy"
             new_file.unlink(missing_ok=True)
-            new_file.write_text(file.read_text().replace("{{VYPER_VERSION}}", version))
+            new_file.write_text(
+                file.read_text(encoding="utf8").replace("{{VYPER_VERSION}}", version)
+            )
 
 
 @pytest.fixture

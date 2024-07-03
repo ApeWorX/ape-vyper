@@ -2,7 +2,7 @@
 
 # Import a local interface.
 implements: IFaceNested
-import .interfaces.IFace as IFace
+from .interfaces import IFace as IFace
 
 # Import from input JSON (ape-config.yaml).
 import exampledependency.Dependency as Dep
