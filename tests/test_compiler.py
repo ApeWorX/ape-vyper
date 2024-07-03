@@ -240,6 +240,7 @@ def test_get_imports(compiler, project):
     builtin_import = "vyper/interfaces/ERC20.json"
     local_import = "IFace.vy"
     local_from_import = "IFace2.vy"
+    local_nested_import = "IFaceNested.vy"
     dependency_import = "Dependency.vy"
 
     # The source IDs end up as absolute paths because they are in tempdir
@@ -252,7 +253,7 @@ def test_get_imports(compiler, project):
     assert set(actual[contract_37_key]) == {builtin_import}
 
     actual_iface_use = actual[use_iface_key]
-    for expected in (local_import, local_from_import, dependency_import):
+    for expected in (local_import, local_from_import, dependency_import, local_nested_import):
         assert any(k for k in actual_iface_use if expected in k)
 
     assert actual[use_iface2_key][0].endswith(local_import)
@@ -268,7 +269,7 @@ def test_pc_map(compiler, project, src, vers):
     path = project.sources.lookup(src)
     result = list(compiler.compile((path,), project=project))[0]
     actual = result.pcmap.root
-    code = path.read_text()
+    code = path.read_text(encoding="utf8")
     vvm.install_vyper(vers)
     cfg = compiler.get_config(project=project)
     evm_version = cfg.evm_version
