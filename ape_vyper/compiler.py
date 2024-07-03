@@ -50,7 +50,6 @@ from ape_vyper.interface import (
     extract_imports,
     extract_meta,
     generate_interface,
-    iface_name_from_file,
 )
 
 DEV_MSG_PATTERN = re.compile(r".*\s*#\s*(dev:.+)")
@@ -309,12 +308,13 @@ class VyperCompiler(CompilerAPI):
             if not path.is_file():
                 continue
 
-            content = path.read_text(encoding="utf8").splitlines()
-            source_id = (
-                str(path.absolute())
-                if use_absolute_paths
-                else str(get_relative_path(path.absolute(), pm.path.absolute()))
-            )
+            content = path.read_text().splitlines()
+            source_id = str(get_relative_path(path.absolute(), pm.path.absolute()))
+
+            # Prevent infinitely handling imports when they cross over.
+            if source_id in handled:
+                continue
+
             handled.add(source_id)
             for line in content:
                 if line.startswith("import "):
@@ -385,6 +385,7 @@ class VyperCompiler(CompilerAPI):
                                     import_source_id = os.path.sep.join(
                                         (path_id, version_str, f"{source_id_stem}{ext}")
                                     )
+
                                     # Also include imports of imports.
                                     sub_imports = self._get_imports(
                                         (dep_project.path / f"{source_id_stem}{ext}",),
@@ -962,9 +963,16 @@ class VyperCompiler(CompilerAPI):
 
         return next(version_spec.filter(self.available_versions))
 
-    def _flatten_source(self, path: Path, project: Optional[ProjectManager] = None) -> str:
+    def _flatten_source(
+        self,
+        path: Path,
+        project: Optional[ProjectManager] = None,
+        include_pragma: bool = True,
+        sources_handled: Optional[set[Path]] = None,
+    ) -> str:
         pm = project or self.local_project
-
+        handled = sources_handled or set()
+        handled.add(path)
         # Get the non stdlib import paths for our contracts
         imports = list(
             filter(
@@ -992,7 +1000,10 @@ class VyperCompiler(CompilerAPI):
         # Get info about imports and source meta
         aliases = extract_import_aliases(og_source)
         pragma, source_without_meta = extract_meta(og_source)
+        version_specifier = get_version_pragma_spec(pragma) if pragma else None
         stdlib_imports, _, source_without_imports = extract_imports(source_without_meta)
+        flattened_modules = ""
+        modules_prefixes: set[str] = set()
 
         for import_path in sorted(imports):
             import_file = None
@@ -1007,7 +1018,7 @@ class VyperCompiler(CompilerAPI):
                 import_file = pm.path / import_path
 
             # Vyper imported interface names come from their file names
-            file_name = iface_name_from_file(import_file)
+            file_name = import_file.stem
             # If we have a known alias, ("import X as Y"), use the alias as interface name
             iface_name = aliases[file_name] if file_name in aliases else file_name
 
@@ -1032,8 +1043,28 @@ class VyperCompiler(CompilerAPI):
 
             # Generate an ABI from the source code
             elif import_file.is_file():
-                abis = source_to_abi(import_file.read_text(encoding="utf8"))
-                interfaces_source += generate_interface(abis, iface_name)
+                if (
+                    version_specifier
+                    and version_specifier.contains("0.4.0")
+                    and import_file.suffix != ".vyi"
+                ):
+                    modules_prefixes.add(import_file.stem)
+                    if import_file in handled:
+                        # We have already included this source somewhere.
+                        continue
+
+                    # Is a module or an interface imported from a module.
+                    # Copy in the source code directly.
+                    flattened_module = self._flatten_source(
+                        import_file, include_pragma=False, sources_handled=handled
+                    )
+                    flattened_modules = f"{flattened_modules}\n\n{flattened_module}"
+
+                else:
+                    # Vyper <0.4 interface from folder other than interfaces/
+                    # such as a .vyi file in the contracts folder.
+                    abis = source_to_abi(import_file.read_text())
+                    interfaces_source += generate_interface(abis, iface_name)
 
         def no_nones(it: Iterable[Optional[str]]) -> Iterable[str]:
             # Type guard like generator to remove Nones and make mypy happy
@@ -1041,10 +1072,26 @@ class VyperCompiler(CompilerAPI):
                 if el is not None:
                     yield el
 
+        pragma_to_include = pragma if include_pragma else ""
+
         # Join all the OG and generated parts back together
         flattened_source = "\n\n".join(
-            no_nones((pragma, stdlib_imports, interfaces_source, source_without_imports))
+            no_nones(
+                (
+                    pragma_to_include,
+                    stdlib_imports,
+                    interfaces_source,
+                    flattened_modules,
+                    source_without_imports,
+                )
+            )
         )
+
+        # Clear module-usage prefixes.
+        for prefix in modules_prefixes:
+            # Replace usage lines like 'zero_four_module.moduleMethod()'
+            # with 'self.moduleMethod()'.
+            flattened_source = flattened_source.replace(f"{prefix}.", "self.")
 
         # TODO: Replace this nonsense with a real code formatter
         def format_source(source: str) -> str:
@@ -1228,7 +1275,6 @@ class VyperCompiler(CompilerAPI):
                     optimization = False
 
                 if version >= Version("0.4.0"):
-
                     def _to_src_id(s):
                         return str(pm.path / s) if use_absolute_path else s
 

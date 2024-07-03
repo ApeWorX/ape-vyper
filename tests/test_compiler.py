@@ -45,6 +45,57 @@ EXPECTED_FAIL_PATTERNS = {
     ),
     "contract_unknown_pragma": "",
 }
+ZERO_FOUR_CONTRACT_FLAT = """
+# pragma version ~=0.4.0
+
+
+interface IFaceZeroFour:
+    def implementThisPlease(role: bytes32) -> bool: view
+
+
+# This source is also imported from `zero_four.py` to test
+# multiple imports across sources during flattening.
+
+@internal
+def moduleMethod() -> bool:
+    return True
+
+
+@external
+def callModule2FunctionFromAnotherSource(role: bytes32) -> bool:
+    return self.moduleMethod2()
+
+
+# Showing importing interface from module.
+interface Ballot:
+    def delegated(addr: address) -> bool: view
+
+@internal
+def moduleMethod2() -> bool:
+    return True
+
+
+implements: IFaceZeroFour
+
+
+# `self.vy` also imports this next line.
+# We are testing that the flattener can handle that.
+
+@external
+@view
+def implementThisPlease(role: bytes32) -> bool:
+    return True
+
+
+@external
+def callModuleFunction(role: bytes32) -> bool:
+    return self.moduleMethod()
+
+
+@external
+def callModule2Function(role: bytes32) -> bool:
+    return self.moduleMethod2()
+""".lstrip()
 
 
 def test_compile_project(project):
@@ -579,7 +630,21 @@ def test_compile_with_version_set_in_settings_dict(config, compiler_manager, pro
 def test_flatten_contract(all_versions, project, contract_name, compiler):
     path = project.contracts_folder / contract_name
     source = compiler.flatten_contract(path, project=project)
+
+    # Ensure it also compiles.
     source_code = str(source)
+    version = compiler._source_vyper_version(source_code)
+    vvm.install_vyper(str(version))
+    vvm.compile_source(source_code, base_path=project.path, vyper_version=version)
+
+
+def test_flatten_contract_04(project, compiler):
+    path = project.contracts_folder / "zero_four.vy"
+    source = compiler.flatten_contract(path, project=project)
+    source_code = str(source)
+    assert source_code == ZERO_FOUR_CONTRACT_FLAT
+
+    # Ensure it also compiles.
     version = compiler._source_vyper_version(source_code)
     vvm.install_vyper(str(version))
     vvm.compile_source(source_code, base_path=project.path, vyper_version=version)
