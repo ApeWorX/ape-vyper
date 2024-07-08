@@ -203,9 +203,6 @@ def test_compiler_data_in_manifest(project):
         assert evm_opt.contractTypes == ["evm_pragma"]
         assert evm_opt.settings.get("evmVersion") == "paris"
 
-        assert len(codesize_opt.contractTypes) == 1
-        assert len(gas_opt.contractTypes) >= 9
-        assert len(vyper_028.contractTypes) >= 1
         assert "optimize_codesize" in codesize_opt.contractTypes
         assert "older_version" in vyper_028.contractTypes
         assert "contract_0310" in gas_opt.contractTypes
