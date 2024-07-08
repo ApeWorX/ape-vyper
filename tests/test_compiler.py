@@ -53,6 +53,83 @@ interface IFaceZeroFour:
     def implementThisPlease(role: bytes32) -> bool: view
 
 
+# @dev Returns the address of the current owner.
+# @notice If you declare a variable as `public`,
+# Vyper automatically generates an `external`
+# getter function for the variable.
+owner: public(address)
+
+
+# @dev Emitted when the ownership is transferred
+# from `previous_owner` to `new_owner`.
+event OwnershipTransferred:
+    previous_owner: indexed(address)
+    new_owner: indexed(address)
+
+
+@deploy
+@payable
+def __init__():
+    \"\"\"
+    @dev To omit the opcodes for checking the `msg.value`
+         in the creation-time EVM bytecode, the constructor
+         is declared as `payable`.
+    @notice The `owner` role will be assigned to
+            the `msg.sender`.
+    \"\"\"
+    self._transfer_ownership(msg.sender)
+
+
+@external
+def transfer_ownership(new_owner: address):
+    \"\"\"
+    @dev Transfers the ownership of the contract
+         to a new account `new_owner`.
+    @notice Note that this function can only be
+            called by the current `owner`. Also,
+            the `new_owner` cannot be the zero address.
+    @param new_owner The 20-byte address of the new owner.
+    \"\"\"
+    self._check_owner()
+    assert new_owner != empty(address), "ownable: new owner is the zero address"
+    self._transfer_ownership(new_owner)
+
+
+@external
+def renounce_ownership():
+    \"\"\"
+    @dev Leaves the contract without an owner.
+    @notice Renouncing ownership will leave the
+            contract without an owner, thereby
+            removing any functionality that is
+            only available to the owner.
+    \"\"\"
+    self._check_owner()
+    self._transfer_ownership(empty(address))
+
+
+@internal
+def _check_owner():
+    \"\"\"
+    @dev Throws if the sender is not the owner.
+    \"\"\"
+    assert msg.sender == self.owner, "ownable: caller is not the owner"
+
+
+@internal
+def _transfer_ownership(new_owner: address):
+    \"\"\"
+    @dev Transfers the ownership of the contract
+         to a new account `new_owner`.
+    @notice This is an `internal` function without
+            access restriction.
+    @param new_owner The 20-byte address of the new owner.
+    \"\"\"
+    old_owner: address = self.owner
+    self.owner = new_owner
+    log OwnershipTransferred(old_owner, new_owner)
+
+
 # This source is also imported from `zero_four.py` to test
 # multiple imports across sources during flattening.
 
@@ -77,6 +154,9 @@ def moduleMethod2() -> bool:
 
 implements: IFaceZeroFour
 
+
+# Also show we can import from ethereum namespace.
+# (new in Vyper 0.4).
 
 # `self.vy` also imports this next line.
 # We are testing that the flattener can handle that.

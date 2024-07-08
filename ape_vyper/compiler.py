@@ -276,6 +276,77 @@ def get_evm_version_pragma_map(
     return pragmas
 
 
+def _lookup_source_from_site_packages(
+    dependency_name: str,
+    filestem: str,
+    config_override: Optional[dict] = None,
+) -> Optional[tuple[Path, ProjectManager]]:
+    # Attempt looking up dependency from site-packages.
+    config_override = config_override or {}
+    if "contracts_folder" not in config_override:
+        # Default to looking through the whole release for
+        # contracts. Most often, Python-based dependencies publish
+        # only their contracts this way, and we are only looking
+        # for sources so accurate project configuration is not required.
+        config_override["contracts_folder"] = "."
+
+    try:
+        imported_project = ProjectManager.from_python_library(
+            dependency_name,
+            config_override=config_override,
+        )
+    except ProjectError as err:
+        # Still attempt to let Vyper handle this during compilation.
+        logger.error(
+            f"'{dependency_name}' may not be installed. "
+            "Could not find it in Ape dependencies or Python's site-packages. "
+            f"Error: {err}"
+        )
+    else:
+        extensions = [*[f"{t}" for t in FileType], ".json"]
+
+        def seek() -> Optional[Path]:
+            for ext in extensions:
+                try_source_id = f"{filestem}{ext}"
+                if source_path := imported_project.sources.lookup(try_source_id):
+                    return source_path
+
+            return None
+
+        if res := seek():
+            return res, imported_project
+
+        # Still not found. Try again without contracts_folder set.
+        # This will attempt to use Ape's contracts_folder detection system.
+        # However, I am not sure this situation occurs, as Vyper-python
+        # based dependencies are new at the time of writing this.
+        new_override = config_override or {}
+        if "contracts_folder" in new_override:
+            del new_override["contracts_folder"]
+
+        imported_project.reconfigure(**new_override)
+        if res := seek():
+            return res, imported_project
+
+        # Still not found. Log a very helpful message.
+        existing_filestems = [f.stem for f in imported_project.path.iterdir()]
+        fs_str = ", ".join(existing_filestems)
+        contracts_folder = imported_project.contracts_folder
+        path = imported_project.path
+
+        # This will log the calculated / user-set contracts_folder.
+        contracts_path = f"{get_relative_path(contracts_folder, path)}"
+
+        logger.error(
+            f"Source for stem '{filestem}' not found in "
+            f"'{imported_project.path}'."
+            f"Contracts folder: {contracts_path}, "
+            f"Existing file(s): {fs_str}"
+        )
+
+    return None
+
+
 class VyperCompiler(CompilerAPI):
     @property
     def name(self) -> str:
@@ -397,9 +468,9 @@ class VyperCompiler(CompilerAPI):
 
                                     is_local = False
                                     break
-                    else:
+                    elif dependency_name:
                         # Attempt looking up dependency from site-packages.
-                        if res := self._lookup_source_from_site_packages(dependency_name, filestem):
+                        if res := _lookup_source_from_site_packages(dependency_name, filestem):
                             source_path, imported_project = res
                             import_source_id = str(source_path)
                             # Also include imports of imports.
@@ -429,77 +500,6 @@ class VyperCompiler(CompilerAPI):
                     import_map[source_id].append(import_source_id)
 
         return dict(import_map)
-
-    def _lookup_source_from_site_packages(
-        self,
-        dependency_name: str,
-        filestem: str,
-        config_override: Optional[dict] = None,
-    ) -> Optional[tuple[Path, ProjectManager]]:
-        # Attempt looking up dependency from site-packages.
-        config_override = config_override or {}
-        if "contracts_folder" not in config_override:
-            # Default to looking through the whole release for
-            # contracts. Most often, Python-based dependencies publish
-            # only their contracts this way, and we are only looking
-            # for sources so accurate project configuration is not required.
-            config_override["contracts_folder"] = "."
-
-        try:
-            imported_project = ProjectManager.from_python_library(
-                dependency_name,
-                config_override=config_override,
-            )
-        except ProjectError as err:
-            # Still attempt to let Vyper handle this during compilation.
-            logger.error(
-                f"'{dependency_name}' may not be installed. "
-                "Could not find it in Ape dependencies or Python's site-packages. "
-                f"Error: {err}"
-            )
-        else:
-            extensions = [*[f"{t}" for t in FileType], ".json"]
-
-            def seek() -> Optional[Path]:
-                for ext in extensions:
-                    try_source_id = f"{filestem}{ext}"
-                    if source_path := imported_project.sources.lookup(try_source_id):
-                        return source_path
-
-                return None
-
-            if res := seek():
-                return res, imported_project
-
-            # Still not found. Try again without contracts_folder set.
-            # This will attempt to use Ape's contracts_folder detection system.
-            # However, I am not sure this situation occurs, as Vyper-python
-            # based dependencies are new at the time of writing this.
-            new_override = config_override or {}
-            if "contracts_folder" in new_override:
-                del new_override["contracts_folder"]
-
-            imported_project.reconfigure(**new_override)
-            if res := seek():
-                return res, imported_project
-
-            # Still not found. Log a very helpful message.
-            existing_filestems = [f.stem for f in imported_project.path.iterdir()]
-            fs_str = ", ".join(existing_filestems)
-            contracts_folder = imported_project.contracts_folder
-            path = imported_project.path
-
-            # This will log the calculated / user-set contracts_folder.
-            contracts_path = f"{get_relative_path(contracts_folder, path)}"
-
-            logger.error(
-                f"Source for stem '{filestem}' not found in "
-                f"'{imported_project.path}'."
-                f"Contracts folder: {contracts_path}, "
-                f"Existing file(s): {fs_str}"
-            )
-
-        return None
 
     def get_versions(self, all_paths: Iterable[Path]) -> set[str]:
         versions = set()
@@ -1063,7 +1063,7 @@ class VyperCompiler(CompilerAPI):
                 else:
                     # Vyper <0.4 interface from folder other than interfaces/
                     # such as a .vyi file in the contracts folder.
-                    abis = source_to_abi(import_file.read_text())
+                    abis = source_to_abi(import_file.read_text(encoding="utf8"))
                     interfaces_source += generate_interface(abis, iface_name)
 
         def no_nones(it: Iterable[Optional[str]]) -> Iterable[str]:
@@ -1092,6 +1092,27 @@ class VyperCompiler(CompilerAPI):
             # Replace usage lines like 'zero_four_module.moduleMethod()'
             # with 'self.moduleMethod()'.
             flattened_source = flattened_source.replace(f"{prefix}.", "self.")
+
+        # Remove module-level doc-strings, as it causes compilation issues
+        # when used in root contracts.
+        lines_no_doc: list[str] = []
+        in_str_comment = False
+        for line in flattened_source.splitlines():
+            line_stripped = line.rstrip()
+            if not in_str_comment and line_stripped.startswith('"""'):
+                if line_stripped == '"""' or not line_stripped.endswith('"""'):
+                    in_str_comment = True
+                continue
+
+            elif in_str_comment:
+                if line_stripped.endswith('"""'):
+                    in_str_comment = False
+
+                continue
+
+            lines_no_doc.append(line)
+
+        flattened_source = "\n".join(lines_no_doc)
 
         # TODO: Replace this nonsense with a real code formatter
         def format_source(source: str) -> str:
@@ -1275,6 +1296,7 @@ class VyperCompiler(CompilerAPI):
                     optimization = False
 
                 if version >= Version("0.4.0"):
+
                     def _to_src_id(s):
                         return str(pm.path / s) if use_absolute_path else s
 
