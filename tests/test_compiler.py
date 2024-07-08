@@ -177,8 +177,14 @@ def test_compiler_data_in_manifest(project):
         all_latest_03 = [
             c for c in manifest.compilers if str(c.version) == str(VERSION_FROM_PRAGMA)
         ]
-        evm_latest = [c for c in all_latest_03 if c.settings.get("evmVersion") == "paris"][0]
-        codesize_latest = [
+        evm_opt = [c for c in all_latest_03 if c.settings.get("evmVersion") == "paris"][0]
+        gas_opt = [c for c in all_latest_03 if c.settings["optimize"] == "gas"][0]
+        true_opt = [
+            c
+            for c in manifest.compilers
+            if c.settings["optimize"] is True and "non_payable_default" in c.contractTypes
+        ][0]
+        codesize_opt = [
             c
             for c in all_latest_03
             if c.settings["optimize"] == "codesize" and c.settings.get("evmVersion") != "paris"
@@ -187,20 +193,23 @@ def test_compiler_data_in_manifest(project):
             c for c in manifest.compilers if str(c.version) == str(OLDER_VERSION_FROM_PRAGMA)
         ][0]
 
-        for compiler in (vyper_028, codesize_latest):
+        for compiler in (vyper_028, codesize_opt):
             assert compiler.name == "vyper"
 
         assert vyper_028.settings["evmVersion"] == "berlin"
-        assert codesize_latest.settings["evmVersion"] == "shanghai"
+        assert codesize_opt.settings["evmVersion"] == "shanghai"
 
         # There is only one contract with evm-version pragma.
-        assert evm_latest.contractTypes == ["evm_pragma"]
-        assert evm_latest.settings.get("evmVersion") == "paris"
+        assert evm_opt.contractTypes == ["evm_pragma"]
+        assert evm_opt.settings.get("evmVersion") == "paris"
 
-        assert len(codesize_latest.contractTypes) >= 9
+        assert len(codesize_opt.contractTypes) == 1
+        assert len(gas_opt.contractTypes) >= 9
         assert len(vyper_028.contractTypes) >= 1
-        assert "contract_0310" in codesize_latest.contractTypes
+        assert "optimize_codesize" in codesize_opt.contractTypes
         assert "older_version" in vyper_028.contractTypes
+        assert "contract_0310" in gas_opt.contractTypes
+        assert "non_payable_default" in true_opt.contractTypes
 
     project.update_manifest(compilers=[])
     project.load_contracts(use_cache=False)
