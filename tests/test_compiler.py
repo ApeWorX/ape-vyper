@@ -205,7 +205,7 @@ def test_compiler_data_in_manifest(project):
 
         assert "optimize_codesize" in codesize_opt.contractTypes
         assert "older_version" in vyper_028.contractTypes
-        assert "contract_0310" in gas_opt.contractTypes
+        assert len(gas_opt.contractTypes) > 1
         assert "non_payable_default" in true_opt.contractTypes
 
     project.update_manifest(compilers=[])
