@@ -247,12 +247,15 @@ def get_evmversion_pragma(source: Union[str, Path]) -> Optional[str]:
 
 
 def get_optimization_pragma_map(
-    contract_filepaths: Iterable[Path], base_path: Path
+    contract_filepaths: Iterable[Path],
+    base_path: Path,
+    default: Optimization,
 ) -> dict[str, Optimization]:
     pragma_map: dict[str, Optimization] = {}
 
     for path in contract_filepaths:
-        pragma = get_optimization_pragma(path) or "codesize"
+        res = get_optimization_pragma(path)
+        pragma = default if res is None else res
         source_id = str(get_relative_path(path.absolute(), base_path.absolute()))
         pragma_map[source_id] = pragma
 
@@ -1194,15 +1197,21 @@ class VyperCompiler(CompilerAPI):
             if not source_paths:
                 continue
 
+            default_optimization: Optimization = True if version < Version("0.3.10") else "gas"
             output_selection: dict[str, set[str]] = {}
-            optimizations_map = get_optimization_pragma_map(source_paths, pm.path)
+            optimizations_map = get_optimization_pragma_map(
+                source_paths, pm.path, default_optimization
+            )
             evm_version_map = get_evm_version_pragma_map(source_paths, pm.path)
             default_evm_version = data.get(
                 "evm_version", data.get("evmVersion")
             ) or EVM_VERSION_DEFAULT.get(version.base_version)
             for source_path in source_paths:
                 source_id = str(get_relative_path(source_path.absolute(), pm.path))
-                optimization = optimizations_map.get(source_id, "codesize")
+
+                if not (optimization := optimizations_map.get(source_id)):
+                    optimization = True if version < Version("0.3.10") else "gas"
+
                 evm_version = evm_version_map.get(source_id, default_evm_version)
                 settings_key = f"{optimization}%{evm_version}".lower()
                 if settings_key not in output_selection:
