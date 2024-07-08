@@ -30,7 +30,7 @@ def test_cli_flatten(project, contract_name, expected, cli_runner):
         arguments.extend([str(file), *end])
         result = cli_runner.invoke(cli, arguments, catch_exceptions=False)
         assert result.exit_code == 0, result.stderr_bytes
-        output = file.read_text()
+        output = file.read_text(encoding="utf8")
         for expect in expected:
             assert expect in output
 
