@@ -380,7 +380,11 @@ class VyperCompiler(CompilerAPI):
                 continue
 
             content = path.read_text().splitlines()
-            source_id = str(get_relative_path(path.absolute(), pm.path.absolute()))
+            source_id = (
+                str(path.absolute())
+                if use_absolute_paths
+                else str(get_relative_path(path.absolute(), pm.path.absolute()))
+            )
 
             # Prevent infinitely handling imports when they cross over.
             if source_id in handled:
