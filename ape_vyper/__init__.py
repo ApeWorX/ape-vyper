@@ -11,3 +11,9 @@ def config_class():
 @plugins.register(plugins.CompilerPlugin)
 def register_compiler():
     return tuple(e.value for e in FileType), VyperCompiler
+
+__all__ = [
+    "FileType",
+    "VyperCompiler",
+    "VyperConfig",
+]
