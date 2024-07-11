@@ -973,6 +973,7 @@ class VyperCompiler(CompilerAPI):
         project: Optional[ProjectManager] = None,
         include_pragma: bool = True,
         sources_handled: Optional[set[Path]] = None,
+        warn_flattening_modules: bool = True,
     ) -> str:
         pm = project or self.local_project
         handled = sources_handled or set()
@@ -1052,6 +1053,13 @@ class VyperCompiler(CompilerAPI):
                     and version_specifier.contains("0.4.0")
                     and import_file.suffix != ".vyi"
                 ):
+                    if warn_flattening_modules:
+                        logger.warning(
+                            "Flattening modules DOES NOT yield the same bytecode! "
+                            "This is **NOT** valid for contract-verification."
+                        )
+                        warn_flattening_modules = False
+
                     modules_prefixes.add(import_file.stem)
                     if import_file in handled:
                         # We have already included this source somewhere.
@@ -1060,7 +1068,10 @@ class VyperCompiler(CompilerAPI):
                     # Is a module or an interface imported from a module.
                     # Copy in the source code directly.
                     flattened_module = self._flatten_source(
-                        import_file, include_pragma=False, sources_handled=handled
+                        import_file,
+                        include_pragma=False,
+                        sources_handled=handled,
+                        warn_flattening_modules=warn_flattening_modules,
                     )
                     flattened_modules = f"{flattened_modules}\n\n{flattened_module}"
 
