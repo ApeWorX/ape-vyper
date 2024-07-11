@@ -297,7 +297,13 @@ def test_get_version_map(project, compiler, all_versions):
 
     # Vyper 0.4.0 assertions.
     actual4 = {x.name for x in actual[VERSION_04]}
-    expected4 = {"contract_no_pragma.vy", "empty.vy", "zero_four_module.vy", "zero_four.vy"}
+    expected4 = {
+        "contract_no_pragma.vy",
+        "empty.vy",
+        "zero_four.vy",
+        "zero_four_module.vy",
+        "zero_four_module_2.vy",
+    }
     assert actual4 == expected4
 
 
