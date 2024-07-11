@@ -12,6 +12,7 @@ def config_class():
 def register_compiler():
     return tuple(e.value for e in FileType), VyperCompiler
 
+
 __all__ = [
     "FileType",
     "VyperCompiler",
