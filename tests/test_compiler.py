@@ -45,6 +45,137 @@ EXPECTED_FAIL_PATTERNS = {
     ),
     "contract_unknown_pragma": "",
 }
+ZERO_FOUR_CONTRACT_FLAT = """
+# pragma version ~=0.4.0
+
+
+interface IFaceZeroFour:
+    def implementThisPlease(role: bytes32) -> bool: view
+
+
+# @dev Returns the address of the current owner.
+# @notice If you declare a variable as `public`,
+# Vyper automatically generates an `external`
+# getter function for the variable.
+owner: public(address)
+
+
+# @dev Emitted when the ownership is transferred
+# from `previous_owner` to `new_owner`.
+event OwnershipTransferred:
+    previous_owner: indexed(address)
+    new_owner: indexed(address)
+
+
+@deploy
+@payable
+def __init__():
+    \"\"\"
+    @dev To omit the opcodes for checking the `msg.value`
+         in the creation-time EVM bytecode, the constructor
+         is declared as `payable`.
+    @notice The `owner` role will be assigned to
+            the `msg.sender`.
+    \"\"\"
+    self._transfer_ownership(msg.sender)
+
+
+@external
+def transfer_ownership(new_owner: address):
+    \"\"\"
+    @dev Transfers the ownership of the contract
+         to a new account `new_owner`.
+    @notice Note that this function can only be
+            called by the current `owner`. Also,
+            the `new_owner` cannot be the zero address.
+    @param new_owner The 20-byte address of the new owner.
+    \"\"\"
+    self._check_owner()
+    assert new_owner != empty(address), "ownable: new owner is the zero address"
+    self._transfer_ownership(new_owner)
+
+
+@external
+def renounce_ownership():
+    \"\"\"
+    @dev Leaves the contract without an owner.
+    @notice Renouncing ownership will leave the
+            contract without an owner, thereby
+            removing any functionality that is
+            only available to the owner.
+    \"\"\"
+    self._check_owner()
+    self._transfer_ownership(empty(address))
+
+
+@internal
+def _check_owner():
+    \"\"\"
+    @dev Throws if the sender is not the owner.
+    \"\"\"
+    assert msg.sender == self.owner, "ownable: caller is not the owner"
+
+
+@internal
+def _transfer_ownership(new_owner: address):
+    \"\"\"
+    @dev Transfers the ownership of the contract
+         to a new account `new_owner`.
+    @notice This is an `internal` function without
+            access restriction.
+    @param new_owner The 20-byte address of the new owner.
+    \"\"\"
+    old_owner: address = self.owner
+    self.owner = new_owner
+    log OwnershipTransferred(old_owner, new_owner)
+
+
+# This source is also imported from `zero_four.py` to test
+# multiple imports across sources during flattening.
+
+@internal
+def moduleMethod() -> bool:
+    return True
+
+
+@external
+def callModule2FunctionFromAnotherSource(role: bytes32) -> bool:
+    return self.moduleMethod2()
+
+
+# Showing importing interface from module.
+interface Ballot:
+    def delegated(addr: address) -> bool: view
+
+@internal
+def moduleMethod2() -> bool:
+    return True
+
+
+implements: IFaceZeroFour
+
+
+# Also show we can import from ethereum namespace.
+# (new in Vyper 0.4).
+
+# `self.vy` also imports this next line.
+# We are testing that the flattener can handle that.
+
+@external
+@view
+def implementThisPlease(role: bytes32) -> bool:
+    return True
+
+
+@external
+def callModuleFunction(role: bytes32) -> bool:
+    return self.moduleMethod()
+
+
+@external
+def callModule2Function(role: bytes32) -> bool:
+    return self.moduleMethod2()
+""".lstrip()
 
 
 def test_compile_project(project):
@@ -166,7 +297,13 @@ def test_get_version_map(project, compiler, all_versions):
 
     # Vyper 0.4.0 assertions.
     actual4 = {x.name for x in actual[VERSION_04]}
-    expected4 = {"contract_no_pragma.vy", "empty.vy", "zero_four_module.vy", "zero_four.vy"}
+    expected4 = {
+        "contract_no_pragma.vy",
+        "empty.vy",
+        "zero_four.vy",
+        "zero_four_module.vy",
+        "zero_four_module_2.vy",
+    }
     assert actual4 == expected4
 
 
@@ -579,7 +716,21 @@ def test_compile_with_version_set_in_settings_dict(config, compiler_manager, pro
 def test_flatten_contract(all_versions, project, contract_name, compiler):
     path = project.contracts_folder / contract_name
     source = compiler.flatten_contract(path, project=project)
+
+    # Ensure it also compiles.
     source_code = str(source)
+    version = compiler._source_vyper_version(source_code)
+    vvm.install_vyper(str(version))
+    vvm.compile_source(source_code, base_path=project.path, vyper_version=version)
+
+
+def test_flatten_contract_04(project, compiler):
+    path = project.contracts_folder / "zero_four.vy"
+    source = compiler.flatten_contract(path, project=project)
+    source_code = str(source)
+    assert source_code == ZERO_FOUR_CONTRACT_FLAT
+
+    # Ensure it also compiles.
     version = compiler._source_vyper_version(source_code)
     vvm.install_vyper(str(version))
     vvm.compile_source(source_code, base_path=project.path, vyper_version=version)

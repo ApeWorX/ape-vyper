@@ -21,7 +21,7 @@ from ape_vyper._cli import cli
         ),
     ],
 )
-def test_cli_flatten(project, contract_name, expected, cli_runner):
+def test_flatten(project, contract_name, expected, cli_runner):
     path = project.contracts_folder / contract_name
     arguments = ["flatten", str(path)]
     end = ("--project", str(project.path))
