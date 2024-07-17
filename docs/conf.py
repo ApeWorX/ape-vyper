@@ -67,11 +67,11 @@ html_baseurl = "ape-vyper"
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ["_static"]
+html_static_path = []
 
 # These paths are either relative to html_static_path
 # or fully qualified paths (eg. https://...)
-html_css_files = ["custom.css"]
+html_css_files = []
 
 # Currently required for how we handle method docs links in the Myst parser
 # since not all links are available in the markdown files pre-build.
@@ -83,7 +83,7 @@ def fixpath(path: str) -> str:
     Change paths to reference the resources from 'latest/' to save room.
     """
     suffix = path.split("_static")[1]
-    new = f"/{project}/latest/_static"
+    new = f"/ape-vyper/latest/_static"
 
     if suffix:
         new = str(Path(new) / suffix.lstrip("/"))
@@ -96,7 +96,7 @@ def get_versions() -> list[str]:
     """
     Get all the versions from the Web.
     """
-    api_url = "https://api.github.com/repos/ApeWorx/silverback/git/trees/gh-pages?recursive=1"
+    api_url = "https://api.github.com/repos/ApeWorx/ape-vyper/git/trees/gh-pages?recursive=1"
     response = requests.get(api_url)
     response.raise_for_status()
     pattern = re.compile(r"v\d+.?\d+.?\d+$")
