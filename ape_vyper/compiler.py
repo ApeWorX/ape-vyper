@@ -410,7 +410,7 @@ class VyperCompiler(CompilerAPI):
                     dots += prefix[0]
                     prefix = prefix[1:]
 
-                is_relative = dots != ""
+                is_relative = dots != "" or prefix.startswith("interfaces")
 
                 # Replace rest of dots with slashes.
                 prefix = prefix.replace(".", os.path.sep)
