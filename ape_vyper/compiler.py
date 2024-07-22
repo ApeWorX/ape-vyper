@@ -435,8 +435,6 @@ class VyperCompiler(CompilerAPI):
                 #  unless a Vyper file exists.
                 if (pm.path / f"{local_prefix}{FileType.SOURCE}").is_file():
                     ext = FileType.SOURCE.value
-                elif (pm.path / f"{local_prefix}{FileType.SOURCE}").is_file():
-                    ext = FileType.INTERFACE.value
                 elif (pm.path / f"{local_prefix}{FileType.INTERFACE}").is_file():
                     ext = FileType.INTERFACE.value
                 else:
