@@ -411,7 +411,7 @@ class VyperCompiler(CompilerAPI):
                     prefix = prefix[1:]
 
                 is_relative: Optional[bool] = None
-                if dots == "":
+                if dots != "":
                     is_relative = True
                 # else: we are unsure since dots are not required.
 

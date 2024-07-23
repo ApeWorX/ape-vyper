@@ -398,7 +398,7 @@ def test_get_imports(compiler, project):
 
     actual_iface_use = actual[use_iface_key]
     for expected in (local_import, local_from_import, dependency_import, local_nested_import):
-        assert any(k for k in actual_iface_use if expected in k)
+        assert any(k for k in actual_iface_use if expected in k), f"{expected} not found"
 
     assert actual[use_iface2_key][0].endswith(local_import)
 
