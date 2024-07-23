@@ -426,13 +426,24 @@ class VyperCompiler(CompilerAPI):
 
                 relative_path = None
                 abs_path = None
-                if is_relative in (True, None):
+                if is_relative is True:
                     relative_path = (path.parent / dots / prefix.lstrip(os.path.sep)).resolve()
-                if is_relative in (False, None):
+                elif is_relative is False:
+                    abs_path = (pm.path / prefix.lstrip(os.path.sep)).resolve()
+                elif is_relative is None:
+                    relative_path = (path.parent / dots / prefix.lstrip(os.path.sep)).resolve()
                     abs_path = (pm.path / prefix.lstrip(os.path.sep)).resolve()
 
-                local_prefix_relative = None if relative_path is None else str(relative_path).replace(f"{pm.path}", "").lstrip(os.path.sep)
-                local_prefix_abs = None if abs_path is None else str(abs_path).replace(f"{pm.path}", "").lstrip(os.path.sep)
+                local_prefix_relative = (
+                    None
+                    if relative_path is None
+                    else str(relative_path).replace(f"{pm.path}", "").lstrip(os.path.sep)
+                )
+                local_prefix_abs = (
+                    None
+                    if abs_path is None
+                    else str(abs_path).replace(f"{pm.path}", "").lstrip(os.path.sep)
+                )
 
                 import_source_id = None
                 is_local = True
