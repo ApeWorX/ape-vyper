@@ -451,26 +451,38 @@ class VyperCompiler(CompilerAPI):
                 local_prefix = None  # TBD
 
                 if (pm.path / f"{local_prefix_relative}{FileType.SOURCE}").is_file():
-                    # Local project import of a source file.
+                    # Relative source.
                     ext = FileType.SOURCE.value
+                    local_path = relative_path
+                    local_prefix = local_prefix_relative
+
+                elif (pm.path / f"{local_prefix_relative}{FileType.INTERFACE}").is_file():
+                    # Relative interface.
+                    ext = FileType.INTERFACE.value
+                    local_path = relative_path
+                    local_prefix = local_prefix_relative
+
+                elif (pm.path / f"{local_prefix_relative}.json").is_file():
+                    # Relative JSON interface.
+                    ext = ".json"
                     local_path = relative_path
                     local_prefix = local_prefix_relative
 
                 elif (pm.path / f"{local_prefix_abs}{FileType.SOURCE}").is_file():
-                    # Dependency project import of a source file.
+                    # Absolute source.
                     ext = FileType.SOURCE.value
                     local_path = abs_path
                     local_prefix = local_prefix_abs
 
-                elif (pm.path / f"{local_prefix_relative}{FileType.INTERFACE}").is_file():
-                    # Local project import of an interface file.
-                    ext = FileType.INTERFACE.value
-                    local_path = relative_path
-                    local_prefix = local_prefix_relative
-
                 elif (pm.path / f"{local_prefix_abs}{FileType.INTERFACE}").is_file():
-                    # Dependency project import of an interface file.
+                    # Absolute interface.
                     ext = FileType.INTERFACE.value
+                    local_path = abs_path
+                    local_prefix = local_prefix_abs
+
+                elif (pm.path / f"{local_prefix_abs}.json").is_file():
+                    # Absolute JSON interface.
+                    ext = ".json"
                     local_path = abs_path
                     local_prefix = local_prefix_abs
 
