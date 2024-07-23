@@ -379,7 +379,7 @@ class VyperCompiler(CompilerAPI):
             if not path.is_file():
                 continue
 
-            content = path.read_text().splitlines()
+            content = path.read_text(encoding="utf8").splitlines()
             source_id = (
                 str(path.absolute())
                 if use_absolute_paths
@@ -410,7 +410,10 @@ class VyperCompiler(CompilerAPI):
                     dots += prefix[0]
                     prefix = prefix[1:]
 
-                is_relative = dots != ""
+                is_relative: Optional[bool] = None
+                if dots != "":
+                    is_relative = True
+                # else: we are unsure since dots are not required.
 
                 # Replace rest of dots with slashes.
                 prefix = prefix.replace(".", os.path.sep)
@@ -421,25 +424,70 @@ class VyperCompiler(CompilerAPI):
 
                     continue
 
-                local_path = (
-                    (path.parent / dots / prefix.lstrip(os.path.sep)).resolve()
-                    if is_relative
-                    else (pm.path / prefix.lstrip(os.path.sep)).resolve()
+                relative_path = None
+                abs_path = None
+                if is_relative is True:
+                    relative_path = (path.parent / dots / prefix.lstrip(os.path.sep)).resolve()
+                elif is_relative is False:
+                    abs_path = (pm.path / prefix.lstrip(os.path.sep)).resolve()
+                elif is_relative is None:
+                    relative_path = (path.parent / dots / prefix.lstrip(os.path.sep)).resolve()
+                    abs_path = (pm.path / prefix.lstrip(os.path.sep)).resolve()
+
+                local_prefix_relative = (
+                    None
+                    if relative_path is None
+                    else str(relative_path).replace(f"{pm.path}", "").lstrip(os.path.sep)
                 )
-                local_prefix = str(local_path).replace(f"{pm.path}", "").lstrip(os.path.sep)
+                local_prefix_abs = (
+                    None
+                    if abs_path is None
+                    else str(abs_path).replace(f"{pm.path}", "").lstrip(os.path.sep)
+                )
 
                 import_source_id = None
                 is_local = True
+                local_path = None  # TBD
+                local_prefix = None  # TBD
 
-                # NOTE: Defaults to JSON (assuming from input JSON or a local JSON),
-                #  unless a Vyper file exists.
-                if (pm.path / f"{local_prefix}{FileType.SOURCE}").is_file():
+                if (pm.path / f"{local_prefix_relative}{FileType.SOURCE}").is_file():
+                    # Relative source.
                     ext = FileType.SOURCE.value
-                elif (pm.path / f"{local_prefix}{FileType.SOURCE}").is_file():
+                    local_path = relative_path
+                    local_prefix = local_prefix_relative
+
+                elif (pm.path / f"{local_prefix_relative}{FileType.INTERFACE}").is_file():
+                    # Relative interface.
                     ext = FileType.INTERFACE.value
-                elif (pm.path / f"{local_prefix}{FileType.INTERFACE}").is_file():
+                    local_path = relative_path
+                    local_prefix = local_prefix_relative
+
+                elif (pm.path / f"{local_prefix_relative}.json").is_file():
+                    # Relative JSON interface.
+                    ext = ".json"
+                    local_path = relative_path
+                    local_prefix = local_prefix_relative
+
+                elif (pm.path / f"{local_prefix_abs}{FileType.SOURCE}").is_file():
+                    # Absolute source.
+                    ext = FileType.SOURCE.value
+                    local_path = abs_path
+                    local_prefix = local_prefix_abs
+
+                elif (pm.path / f"{local_prefix_abs}{FileType.INTERFACE}").is_file():
+                    # Absolute interface.
                     ext = FileType.INTERFACE.value
+                    local_path = abs_path
+                    local_prefix = local_prefix_abs
+
+                elif (pm.path / f"{local_prefix_abs}.json").is_file():
+                    # Absolute JSON interface.
+                    ext = ".json"
+                    local_path = abs_path
+                    local_prefix = local_prefix_abs
+
                 else:
+                    # Must be an interface JSON specified in the input JSON.
                     ext = ".json"
                     dep_key = prefix.split(os.path.sep)[0]
                     dependency_name = prefix.split(os.path.sep)[0]
@@ -488,7 +536,7 @@ class VyperCompiler(CompilerAPI):
 
                             is_local = False
 
-                if is_local:
+                if is_local and local_prefix is not None and local_path is not None:
                     import_source_id = f"{local_prefix}{ext}"
                     full_path = local_path.parent / f"{local_path.stem}{ext}"
 

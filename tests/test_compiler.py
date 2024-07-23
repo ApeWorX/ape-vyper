@@ -303,6 +303,7 @@ def test_get_version_map(project, compiler, all_versions):
         "zero_four.vy",
         "zero_four_module.vy",
         "zero_four_module_2.vy",
+        "zero_four_snekmate_erc20.vy",
     }
     assert actual4 == expected4
 
@@ -397,7 +398,7 @@ def test_get_imports(compiler, project):
 
     actual_iface_use = actual[use_iface_key]
     for expected in (local_import, local_from_import, dependency_import, local_nested_import):
-        assert any(k for k in actual_iface_use if expected in k)
+        assert any(k for k in actual_iface_use if expected in k), f"{expected} not found"
 
     assert actual[use_iface2_key][0].endswith(local_import)
 
