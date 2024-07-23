@@ -303,6 +303,7 @@ def test_get_version_map(project, compiler, all_versions):
         "zero_four.vy",
         "zero_four_module.vy",
         "zero_four_module_2.vy",
+        "zero_four_snekmate_erc20.vy",
     }
     assert actual4 == expected4
 
