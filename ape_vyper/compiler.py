@@ -50,7 +50,6 @@ from ape_vyper.interface import (
     extract_imports,
     extract_meta,
     generate_interface,
-    iface_name_from_file,
 )
 
 DEV_MSG_PATTERN = re.compile(r".*\s*#\s*(dev:.+)")
@@ -277,6 +276,77 @@ def get_evm_version_pragma_map(
     return pragmas
 
 
+def _lookup_source_from_site_packages(
+    dependency_name: str,
+    filestem: str,
+    config_override: Optional[dict] = None,
+) -> Optional[tuple[Path, ProjectManager]]:
+    # Attempt looking up dependency from site-packages.
+    config_override = config_override or {}
+    if "contracts_folder" not in config_override:
+        # Default to looking through the whole release for
+        # contracts. Most often, Python-based dependencies publish
+        # only their contracts this way, and we are only looking
+        # for sources so accurate project configuration is not required.
+        config_override["contracts_folder"] = "."
+
+    try:
+        imported_project = ProjectManager.from_python_library(
+            dependency_name,
+            config_override=config_override,
+        )
+    except ProjectError as err:
+        # Still attempt to let Vyper handle this during compilation.
+        logger.error(
+            f"'{dependency_name}' may not be installed. "
+            "Could not find it in Ape dependencies or Python's site-packages. "
+            f"Error: {err}"
+        )
+    else:
+        extensions = [*[f"{t}" for t in FileType], ".json"]
+
+        def seek() -> Optional[Path]:
+            for ext in extensions:
+                try_source_id = f"{filestem}{ext}"
+                if source_path := imported_project.sources.lookup(try_source_id):
+                    return source_path
+
+            return None
+
+        if res := seek():
+            return res, imported_project
+
+        # Still not found. Try again without contracts_folder set.
+        # This will attempt to use Ape's contracts_folder detection system.
+        # However, I am not sure this situation occurs, as Vyper-python
+        # based dependencies are new at the time of writing this.
+        new_override = config_override or {}
+        if "contracts_folder" in new_override:
+            del new_override["contracts_folder"]
+
+        imported_project.reconfigure(**new_override)
+        if res := seek():
+            return res, imported_project
+
+        # Still not found. Log a very helpful message.
+        existing_filestems = [f.stem for f in imported_project.path.iterdir()]
+        fs_str = ", ".join(existing_filestems)
+        contracts_folder = imported_project.contracts_folder
+        path = imported_project.path
+
+        # This will log the calculated / user-set contracts_folder.
+        contracts_path = f"{get_relative_path(contracts_folder, path)}"
+
+        logger.error(
+            f"Source for stem '{filestem}' not found in "
+            f"'{imported_project.path}'."
+            f"Contracts folder: {contracts_path}, "
+            f"Existing file(s): {fs_str}"
+        )
+
+    return None
+
+
 class VyperCompiler(CompilerAPI):
     @property
     def name(self) -> str:
@@ -315,6 +385,11 @@ class VyperCompiler(CompilerAPI):
                 if use_absolute_paths
                 else str(get_relative_path(path.absolute(), pm.path.absolute()))
             )
+
+            # Prevent infinitely handling imports when they cross over.
+            if source_id in handled:
+                continue
+
             handled.add(source_id)
             for line in content:
                 if line.startswith("import "):
@@ -335,7 +410,10 @@ class VyperCompiler(CompilerAPI):
                     dots += prefix[0]
                     prefix = prefix[1:]
 
-                is_relative = dots != ""
+                is_relative: Optional[bool] = None
+                if dots != "":
+                    is_relative = True
+                # else: we are unsure since dots are not required.
 
                 # Replace rest of dots with slashes.
                 prefix = prefix.replace(".", os.path.sep)
@@ -346,25 +424,70 @@ class VyperCompiler(CompilerAPI):
 
                     continue
 
-                local_path = (
-                    (path.parent / dots / prefix.lstrip(os.path.sep)).resolve()
-                    if is_relative
-                    else (pm.path / prefix.lstrip(os.path.sep)).resolve()
+                relative_path = None
+                abs_path = None
+                if is_relative is True:
+                    relative_path = (path.parent / dots / prefix.lstrip(os.path.sep)).resolve()
+                elif is_relative is False:
+                    abs_path = (pm.path / prefix.lstrip(os.path.sep)).resolve()
+                elif is_relative is None:
+                    relative_path = (path.parent / dots / prefix.lstrip(os.path.sep)).resolve()
+                    abs_path = (pm.path / prefix.lstrip(os.path.sep)).resolve()
+
+                local_prefix_relative = (
+                    None
+                    if relative_path is None
+                    else str(relative_path).replace(f"{pm.path}", "").lstrip(os.path.sep)
                 )
-                local_prefix = str(local_path).replace(f"{pm.path}", "").lstrip(os.path.sep)
+                local_prefix_abs = (
+                    None
+                    if abs_path is None
+                    else str(abs_path).replace(f"{pm.path}", "").lstrip(os.path.sep)
+                )
 
                 import_source_id = None
                 is_local = True
+                local_path = None  # TBD
+                local_prefix = None  # TBD
 
-                # NOTE: Defaults to JSON (assuming from input JSON or a local JSON),
-                #  unless a Vyper file exists.
-                if (pm.path / f"{local_prefix}{FileType.SOURCE}").is_file():
+                if (pm.path / f"{local_prefix_relative}{FileType.SOURCE}").is_file():
+                    # Relative source.
                     ext = FileType.SOURCE.value
-                elif (pm.path / f"{local_prefix}{FileType.SOURCE}").is_file():
+                    local_path = relative_path
+                    local_prefix = local_prefix_relative
+
+                elif (pm.path / f"{local_prefix_relative}{FileType.INTERFACE}").is_file():
+                    # Relative interface.
                     ext = FileType.INTERFACE.value
-                elif (pm.path / f"{local_prefix}{FileType.INTERFACE}").is_file():
+                    local_path = relative_path
+                    local_prefix = local_prefix_relative
+
+                elif (pm.path / f"{local_prefix_relative}.json").is_file():
+                    # Relative JSON interface.
+                    ext = ".json"
+                    local_path = relative_path
+                    local_prefix = local_prefix_relative
+
+                elif (pm.path / f"{local_prefix_abs}{FileType.SOURCE}").is_file():
+                    # Absolute source.
+                    ext = FileType.SOURCE.value
+                    local_path = abs_path
+                    local_prefix = local_prefix_abs
+
+                elif (pm.path / f"{local_prefix_abs}{FileType.INTERFACE}").is_file():
+                    # Absolute interface.
                     ext = FileType.INTERFACE.value
+                    local_path = abs_path
+                    local_prefix = local_prefix_abs
+
+                elif (pm.path / f"{local_prefix_abs}.json").is_file():
+                    # Absolute JSON interface.
+                    ext = ".json"
+                    local_path = abs_path
+                    local_prefix = local_prefix_abs
+
                 else:
+                    # Must be an interface JSON specified in the input JSON.
                     ext = ".json"
                     dep_key = prefix.split(os.path.sep)[0]
                     dependency_name = prefix.split(os.path.sep)[0]
@@ -385,6 +508,7 @@ class VyperCompiler(CompilerAPI):
                                     import_source_id = os.path.sep.join(
                                         (path_id, version_str, f"{source_id_stem}{ext}")
                                     )
+
                                     # Also include imports of imports.
                                     sub_imports = self._get_imports(
                                         (dep_project.path / f"{source_id_stem}{ext}",),
@@ -396,9 +520,9 @@ class VyperCompiler(CompilerAPI):
 
                                     is_local = False
                                     break
-                    else:
+                    elif dependency_name:
                         # Attempt looking up dependency from site-packages.
-                        if res := self._lookup_source_from_site_packages(dependency_name, filestem):
+                        if res := _lookup_source_from_site_packages(dependency_name, filestem):
                             source_path, imported_project = res
                             import_source_id = str(source_path)
                             # Also include imports of imports.
@@ -412,7 +536,7 @@ class VyperCompiler(CompilerAPI):
 
                             is_local = False
 
-                if is_local:
+                if is_local and local_prefix is not None and local_path is not None:
                     import_source_id = f"{local_prefix}{ext}"
                     full_path = local_path.parent / f"{local_path.stem}{ext}"
 
@@ -428,77 +552,6 @@ class VyperCompiler(CompilerAPI):
                     import_map[source_id].append(import_source_id)
 
         return dict(import_map)
-
-    def _lookup_source_from_site_packages(
-        self,
-        dependency_name: str,
-        filestem: str,
-        config_override: Optional[dict] = None,
-    ) -> Optional[tuple[Path, ProjectManager]]:
-        # Attempt looking up dependency from site-packages.
-        config_override = config_override or {}
-        if "contracts_folder" not in config_override:
-            # Default to looking through the whole release for
-            # contracts. Most often, Python-based dependencies publish
-            # only their contracts this way, and we are only looking
-            # for sources so accurate project configuration is not required.
-            config_override["contracts_folder"] = "."
-
-        try:
-            imported_project = ProjectManager.from_python_library(
-                dependency_name,
-                config_override=config_override,
-            )
-        except ProjectError as err:
-            # Still attempt to let Vyper handle this during compilation.
-            logger.error(
-                f"'{dependency_name}' may not be installed. "
-                "Could not find it in Ape dependencies or Python's site-packages. "
-                f"Error: {err}"
-            )
-        else:
-            extensions = [*[f"{t}" for t in FileType], ".json"]
-
-            def seek() -> Optional[Path]:
-                for ext in extensions:
-                    try_source_id = f"{filestem}{ext}"
-                    if source_path := imported_project.sources.lookup(try_source_id):
-                        return source_path
-
-                return None
-
-            if res := seek():
-                return res, imported_project
-
-            # Still not found. Try again without contracts_folder set.
-            # This will attempt to use Ape's contracts_folder detection system.
-            # However, I am not sure this situation occurs, as Vyper-python
-            # based dependencies are new at the time of writing this.
-            new_override = config_override or {}
-            if "contracts_folder" in new_override:
-                del new_override["contracts_folder"]
-
-            imported_project.reconfigure(**new_override)
-            if res := seek():
-                return res, imported_project
-
-            # Still not found. Log a very helpful message.
-            existing_filestems = [f.stem for f in imported_project.path.iterdir()]
-            fs_str = ", ".join(existing_filestems)
-            contracts_folder = imported_project.contracts_folder
-            path = imported_project.path
-
-            # This will log the calculated / user-set contracts_folder.
-            contracts_path = f"{get_relative_path(contracts_folder, path)}"
-
-            logger.error(
-                f"Source for stem '{filestem}' not found in "
-                f"'{imported_project.path}'."
-                f"Contracts folder: {contracts_path}, "
-                f"Existing file(s): {fs_str}"
-            )
-
-        return None
 
     def get_versions(self, all_paths: Iterable[Path]) -> set[str]:
         versions = set()
@@ -962,9 +1015,17 @@ class VyperCompiler(CompilerAPI):
 
         return next(version_spec.filter(self.available_versions))
 
-    def _flatten_source(self, path: Path, project: Optional[ProjectManager] = None) -> str:
+    def _flatten_source(
+        self,
+        path: Path,
+        project: Optional[ProjectManager] = None,
+        include_pragma: bool = True,
+        sources_handled: Optional[set[Path]] = None,
+        warn_flattening_modules: bool = True,
+    ) -> str:
         pm = project or self.local_project
-
+        handled = sources_handled or set()
+        handled.add(path)
         # Get the non stdlib import paths for our contracts
         imports = list(
             filter(
@@ -992,7 +1053,10 @@ class VyperCompiler(CompilerAPI):
         # Get info about imports and source meta
         aliases = extract_import_aliases(og_source)
         pragma, source_without_meta = extract_meta(og_source)
+        version_specifier = get_version_pragma_spec(pragma) if pragma else None
         stdlib_imports, _, source_without_imports = extract_imports(source_without_meta)
+        flattened_modules = ""
+        modules_prefixes: set[str] = set()
 
         for import_path in sorted(imports):
             import_file = None
@@ -1007,7 +1071,7 @@ class VyperCompiler(CompilerAPI):
                 import_file = pm.path / import_path
 
             # Vyper imported interface names come from their file names
-            file_name = iface_name_from_file(import_file)
+            file_name = import_file.stem
             # If we have a known alias, ("import X as Y"), use the alias as interface name
             iface_name = aliases[file_name] if file_name in aliases else file_name
 
@@ -1032,8 +1096,38 @@ class VyperCompiler(CompilerAPI):
 
             # Generate an ABI from the source code
             elif import_file.is_file():
-                abis = source_to_abi(import_file.read_text(encoding="utf8"))
-                interfaces_source += generate_interface(abis, iface_name)
+                if (
+                    version_specifier
+                    and version_specifier.contains("0.4.0")
+                    and import_file.suffix != ".vyi"
+                ):
+                    if warn_flattening_modules:
+                        logger.warning(
+                            "Flattening modules DOES NOT yield the same bytecode! "
+                            "This is **NOT** valid for contract-verification."
+                        )
+                        warn_flattening_modules = False
+
+                    modules_prefixes.add(import_file.stem)
+                    if import_file in handled:
+                        # We have already included this source somewhere.
+                        continue
+
+                    # Is a module or an interface imported from a module.
+                    # Copy in the source code directly.
+                    flattened_module = self._flatten_source(
+                        import_file,
+                        include_pragma=False,
+                        sources_handled=handled,
+                        warn_flattening_modules=warn_flattening_modules,
+                    )
+                    flattened_modules = f"{flattened_modules}\n\n{flattened_module}"
+
+                else:
+                    # Vyper <0.4 interface from folder other than interfaces/
+                    # such as a .vyi file in the contracts folder.
+                    abis = source_to_abi(import_file.read_text(encoding="utf8"))
+                    interfaces_source += generate_interface(abis, iface_name)
 
         def no_nones(it: Iterable[Optional[str]]) -> Iterable[str]:
             # Type guard like generator to remove Nones and make mypy happy
@@ -1041,10 +1135,47 @@ class VyperCompiler(CompilerAPI):
                 if el is not None:
                     yield el
 
+        pragma_to_include = pragma if include_pragma else ""
+
         # Join all the OG and generated parts back together
         flattened_source = "\n\n".join(
-            no_nones((pragma, stdlib_imports, interfaces_source, source_without_imports))
+            no_nones(
+                (
+                    pragma_to_include,
+                    stdlib_imports,
+                    interfaces_source,
+                    flattened_modules,
+                    source_without_imports,
+                )
+            )
         )
+
+        # Clear module-usage prefixes.
+        for prefix in modules_prefixes:
+            # Replace usage lines like 'zero_four_module.moduleMethod()'
+            # with 'self.moduleMethod()'.
+            flattened_source = flattened_source.replace(f"{prefix}.", "self.")
+
+        # Remove module-level doc-strings, as it causes compilation issues
+        # when used in root contracts.
+        lines_no_doc: list[str] = []
+        in_str_comment = False
+        for line in flattened_source.splitlines():
+            line_stripped = line.rstrip()
+            if not in_str_comment and line_stripped.startswith('"""'):
+                if line_stripped == '"""' or not line_stripped.endswith('"""'):
+                    in_str_comment = True
+                continue
+
+            elif in_str_comment:
+                if line_stripped.endswith('"""'):
+                    in_str_comment = False
+
+                continue
+
+            lines_no_doc.append(line)
+
+        flattened_source = "\n".join(lines_no_doc)
 
         # TODO: Replace this nonsense with a real code formatter
         def format_source(source: str) -> str:

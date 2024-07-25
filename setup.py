@@ -12,7 +12,7 @@ extras_require = {
     ],
     "lint": [
         "black>=24.4.2,<25",  # Auto-formatter and linter
-        "mypy>=1.10.1,<2",  # Static type analyzer
+        "mypy>=1.11.0,<2",  # Static type analyzer
         "types-setuptools",  # Needed due to mypy typeshed
         "flake8>=7.1.0,<8",  # Style linter
         "isort>=5.13.2",  # Import sorting linter
@@ -72,7 +72,7 @@ setup(
         "ethpm-types",  # Use same version as eth-ape
         "tqdm",  # Use same version as eth-ape
         "vvm>=0.2.0,<0.3",
-        "vyper~=0.3.7",
+        "vyper>=0.3.7,<0.5",
     ],
     python_requires=">=3.10,<4",
     extras_require=extras_require,
