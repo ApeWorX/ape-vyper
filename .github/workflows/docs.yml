@@ -40,7 +40,7 @@ jobs:
           uses: actions/upload-artifact@v4
           with:
               name: DocumentationHTML
-              path: docs/_build/ape_vyper
+              path: docs/_build/ape-vyper
 
         - name: Commit and publish documentation changes to gh-pages branch
           run: |
@@ -48,7 +48,7 @@ jobs:
                 echo "skipping 'git commit' step for PR"
               else
                 git clone https://github.com/${GITHUB_REPOSITORY} --branch gh-pages --single-branch gh-pages
-                cp -r docs/_build/ape_vyper/* gh-pages/
+                cp -r docs/_build/ape-vyper/* gh-pages/
                 cd gh-pages
                 touch .nojekyll
                 git config --local user.email "action@github.com"
