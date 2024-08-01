@@ -31,10 +31,13 @@ jobs:
         - name: Clone sphinx-build
           run: git clone https://github.com/dtdang/sphinx-build.git
 
+        - name: Set up environment variable
+          run: echo "GITHUB_REPO=$(echo ${GITHUB_REPOSITORY} | cut -d'/' -f2)" >> $GITHUB_ENV
+
         - name: Build HTML artifact
           run: |
             cd sphinx-build
-            python build_docs.py ${GITHUB_REPOSITORY}
+            python build_docs.py
 
         - name: Upload HTML artifact
           uses: actions/upload-artifact@v4
@@ -48,7 +51,7 @@ jobs:
                 echo "skipping 'git commit' step for PR"
               else
                 git clone https://github.com/${GITHUB_REPOSITORY} --branch gh-pages --single-branch gh-pages
-                cp -r docs/_build/ape-vyper/* gh-pages/
+                cp -r docs/_build/${{ env.GITHUB_REPO }}/* gh-pages/
                 cd gh-pages
                 touch .nojekyll
                 git config --local user.email "action@github.com"
@@ -56,6 +59,9 @@ jobs:
                 git add .
                 git commit -m "Update documentation" -a || true
               fi
+          env:
+            GITHUB_REPO: ${{ env.GITHUB_REPO }}
+
         - name: Push changes
           uses: ad-m/github-push-action@master
           if: ${{ github.event_name != 'pull_request' }}
