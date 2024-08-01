@@ -43,7 +43,9 @@ jobs:
           uses: actions/upload-artifact@v4
           with:
               name: DocumentationHTML
-              path: docs/_build/ape-vyper
+              path: docs/_build/${{ env.GITHUB_REPO }}
+          env:
+            GITHUB_REPO: ${{ env.GITHUB_REPO }}
 
         - name: Commit and publish documentation changes to gh-pages branch
           run: |
