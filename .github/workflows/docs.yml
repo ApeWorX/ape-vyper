@@ -2,7 +2,7 @@ name: Docs
 
 on:
     push:
-        branches: [docs/sphinx-plugin]
+        branches: [main]
     release:
         types: [released]
     pull_request:
@@ -44,8 +44,6 @@ jobs:
           with:
               name: DocumentationHTML
               path: docs/_build/${{ env.GITHUB_REPO }}
-          env:
-            GITHUB_REPO: ${{ env.GITHUB_REPO }}
 
         - name: Commit and publish documentation changes to gh-pages branch
           run: |
@@ -61,8 +59,6 @@ jobs:
                 git add .
                 git commit -m "Update documentation" -a || true
               fi
-          env:
-            GITHUB_REPO: ${{ env.GITHUB_REPO }}
 
         - name: Push changes
           uses: ad-m/github-push-action@master
