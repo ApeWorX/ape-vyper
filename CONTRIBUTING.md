@@ -34,29 +34,35 @@ Committing will now automatically run the local hooks and ensure that your commi
 
 ## Running the docs locally
 
-First, make sure you have the docs-related tooling installed:
+First, clone the repo into your root project directory.
 
 ```bash
-pip install -e .'[doc]'
+git clone https://github.com/ApeWorX/ApeDocumentationBuilder.git
 ```
 
-Then, run the following from the root project directory:
+Then, set up the `GITHUB_REPO` environment variable:
 
 ```bash
+export GITHUB_REPO=<project-name>
+```
+
+Next, run the following in the `ApeDocumentationBuilder` directory:
+
+```bash
+cd ApeDocumentationBuilder
 python build_docs.py
 ```
 
 For the best viewing experience, use a local server:
 
 ```bash
-python -m http.server --directory "docs/_build/" --bind 127.0.0.1 1337
+python -m http.server --directory "../docs/_build/" --bind 127.0.0.1 1337
 ```
 
 Then, open your browser to `127.0.0.1:1337` and click the `ape` directory link.
 
 ```{note}
 Serving from `"docs/_build/"` rather than `"docs/_build/ape"` is necessary to make routing work.
-```
 
 ## Pull Requests
 
