@@ -28,15 +28,15 @@ jobs:
             python -m pip install --upgrade pip
             pip install .[doc]
 
-        - name: Clone sphinx-build
-          run: git clone https://github.com/dtdang/sphinx-build.git
+        - name: Clone ape-docs-build
+          run: git clone https://github.com/ApeWorX/ape-docs-build.git
 
         - name: Set up environment variable
           run: echo "GITHUB_REPO=$(echo ${GITHUB_REPOSITORY} | cut -d'/' -f2)" >> $GITHUB_ENV
 
         - name: Build HTML artifact
           run: |
-            cd sphinx-build
+            cd ape-docs-build
             python build_docs.py
 
         - name: Upload HTML artifact
