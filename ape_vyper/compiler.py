@@ -668,16 +668,6 @@ class VyperCompiler(CompilerAPI):
                 continue
 
             handled.add(dep_id)
-
-            try:
-                dependency.compile()
-            except Exception as err:
-                logger.warning(
-                    f"Failed to compile dependency '{dependency.name}' @ '{dependency.version}'.\n"
-                    f"Reason: {err}"
-                )
-                continue
-
             dependencies[remapping.key] = dependency.project
 
         # Add auto-remapped dependencies.
@@ -689,16 +679,6 @@ class VyperCompiler(CompilerAPI):
                 continue
 
             handled.add(dep_id)
-
-            try:
-                dependency.compile()
-            except Exception as err:
-                logger.warning(
-                    f"Failed to compile dependency '{dependency.name}' @ '{dependency.version}'.\n"
-                    f"Reason: {err}"
-                )
-                continue
-
             dependencies[dependency.name] = dependency.project
 
         return dependencies
