@@ -507,8 +507,8 @@ class VyperCompiler(CompilerAPI):
                                 if f"{source_id_stem}{ext}" in dep_project.sources:
                                     # Dependency located.
                                     if not dependency.project.manifest.contract_types:
-                                        # In this case, the dependency *must* be compiled so the ABIs
-                                        # can be found later on.
+                                        # In this case, the dependency *must* be compiled
+                                        # so the ABIs can be found later on.
                                         try:
                                             dependency.compile()
                                         except Exception as err:
@@ -516,7 +516,8 @@ class VyperCompiler(CompilerAPI):
                                             # a better error from the Vyper compiler, in case
                                             # something else is wrong.
                                             logger.warning(
-                                                f"Failed to compile dependency '{dependency.name}' @ '{dependency.version}'.\n"
+                                                f"Failed to compile dependency '{dependency.name}' "
+                                                f"@ '{dependency.version}'.\n"
                                                 f"Reason: {err}"
                                             )
 
