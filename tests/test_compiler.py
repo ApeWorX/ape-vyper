@@ -376,10 +376,21 @@ def test_compile_parse_dev_messages(compiler, dev_revert_source, project):
 
 
 def test_get_imports(compiler, project):
+    # Ensure the dependency starts off un-compiled so we can show this
+    # is the point at which it will be compiled. We make sure to only
+    # compile when we know it is a JSON interface based dependency
+    # and not a site-package or relative-path based dependency.
+    dependency = project.dependencies["exampledependency"]["local"]
+    dependency.manifest.contract_types = {}
+
     vyper_files = [
         x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
     ]
     actual = compiler.get_imports(vyper_files, project=project)
+
+    # The dependency should have gotten compiled!
+    assert dependency.manifest.contract_types
+
     prefix = "contracts/passing_contracts"
     builtin_import = "vyper/interfaces/ERC20.json"
     local_import = "IFace.vy"
@@ -735,3 +746,19 @@ def test_flatten_contract_04(project, compiler):
     version = compiler._source_vyper_version(source_code)
     vvm.install_vyper(str(version))
     vvm.compile_source(source_code, base_path=project.path, vyper_version=version)
+
+
+def test_get_import_remapping(project, compiler):
+    dependency = project.dependencies["exampledependency"]["local"]
+    dependency.manifest.contract_types = {}
+
+    # Getting import remapping does not compile on its own!
+    # This is important because we don't necessarily want to
+    # compile every dependency, only the ones with imports
+    # that indicate this.
+    actual = compiler.get_import_remapping(project=project)
+    assert actual == {}
+
+    dependency.load_contracts()
+    actual = compiler.get_import_remapping(project=project)
+    assert "exampledependency/Dependency.json" in actual
