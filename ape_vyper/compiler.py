@@ -492,7 +492,25 @@ class VyperCompiler(CompilerAPI):
                     dep_key = prefix.split(os.path.sep)[0]
                     dependency_name = prefix.split(os.path.sep)[0]
                     filestem = prefix.replace(f"{dependency_name}{os.path.sep}", "")
-                    if dep_key in dependencies:
+                    found = False
+                    if dependency_name:
+                        # Attempt looking up dependency from site-packages.
+                        if res := _lookup_source_from_site_packages(dependency_name, filestem):
+                            source_path, imported_project = res
+                            import_source_id = str(source_path)
+                            # Also include imports of imports.
+                            sub_imports = self._get_imports(
+                                (source_path,),
+                                project=imported_project,
+                                handled=handled,
+                            )
+                            for sub_import_ls in sub_imports.values():
+                                import_map[source_id].extend(sub_import_ls)
+
+                            is_local = False
+                            found = True
+
+                    elif not found and dep_key in dependencies:
                         for version_str, dep_project in pm.dependencies[dependency_name].items():
                             dependency = pm.dependencies.get_dependency(
                                 dependency_name, version_str
@@ -502,8 +520,12 @@ class VyperCompiler(CompilerAPI):
                             dependency_source_prefix = (
                                 f"{get_relative_path(contracts_path, dep_project.path)}"
                             )
-                            source_id_stem = f"{dependency_source_prefix}{os.path.sep}{filestem}"
-                            for ext in (".vy", ".json"):
+                            source_id_stem = (
+                                f"{dependency_source_prefix}{os.path.sep}{filestem}".lstrip(
+                                    f"{os.path.sep}."
+                                )
+                            )
+                            for ext in (".vy", ".vyi", ".json"):
                                 if f"{source_id_stem}{ext}" in dep_project.sources:
                                     # Dependency located.
                                     if not dependency.project.manifest.contract_types:
@@ -536,22 +558,6 @@ class VyperCompiler(CompilerAPI):
 
                                     is_local = False
                                     break
-
-                    elif dependency_name:
-                        # Attempt looking up dependency from site-packages.
-                        if res := _lookup_source_from_site_packages(dependency_name, filestem):
-                            source_path, imported_project = res
-                            import_source_id = str(source_path)
-                            # Also include imports of imports.
-                            sub_imports = self._get_imports(
-                                (source_path,),
-                                project=imported_project,
-                                handled=handled,
-                            )
-                            for sub_import_ls in sub_imports.values():
-                                import_map[source_id].extend(sub_import_ls)
-
-                            is_local = False
 
                 if is_local and local_prefix is not None and local_path is not None:
                     import_source_id = f"{local_prefix}{ext}"
