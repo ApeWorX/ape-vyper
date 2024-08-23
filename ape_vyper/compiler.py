@@ -505,6 +505,21 @@ class VyperCompiler(CompilerAPI):
                             source_id_stem = f"{dependency_source_prefix}{os.path.sep}{filestem}"
                             for ext in (".vy", ".json"):
                                 if f"{source_id_stem}{ext}" in dep_project.sources:
+                                    # Dependency located.
+                                    if not dependency.project.manifest.contract_types:
+                                        # In this case, the dependency *must* be compiled so the ABIs
+                                        # can be found later on.
+                                        try:
+                                            dependency.compile()
+                                        except Exception as err:
+                                            # Compiling failed. Try to continue anyway to get
+                                            # a better error from the Vyper compiler, in case
+                                            # something else is wrong.
+                                            logger.warning(
+                                                f"Failed to compile dependency '{dependency.name}' @ '{dependency.version}'.\n"
+                                                f"Reason: {err}"
+                                            )
+
                                     import_source_id = os.path.sep.join(
                                         (path_id, version_str, f"{source_id_stem}{ext}")
                                     )
@@ -520,6 +535,7 @@ class VyperCompiler(CompilerAPI):
 
                                     is_local = False
                                     break
+
                     elif dependency_name:
                         # Attempt looking up dependency from site-packages.
                         if res := _lookup_source_from_site_packages(dependency_name, filestem):
