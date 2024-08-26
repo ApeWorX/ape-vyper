@@ -510,7 +510,7 @@ class VyperCompiler(CompilerAPI):
                             is_local = False
                             found = True
 
-                    elif not found and dep_key in dependencies:
+                    if not found and dep_key in dependencies:
                         for version_str, dep_project in pm.dependencies[dependency_name].items():
                             dependency = pm.dependencies.get_dependency(
                                 dependency_name, version_str
