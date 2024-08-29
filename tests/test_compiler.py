@@ -566,7 +566,7 @@ def test_enrich_error_handle_when_name(compiler, geth_provider, mocker):
 
     tb = mocker.MagicMock()
     tb.revert_type = "NONPAYABLE_CHECK"
-    error = ContractLogicError("", source_traceback=tb)
+    error = ContractLogicError(None, source_traceback=tb)
     new_error = compiler.enrich_error(error)
     assert isinstance(new_error, NonPayableError)
 

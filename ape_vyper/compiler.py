@@ -994,6 +994,9 @@ class VyperCompiler(CompilerAPI):
                 # Not sure when this would happen.
                 raise VyperCompileError("Failed to produce contract type.")
 
+            # Clean-up (just in case)
+            file.unlink(missing_ok=True)
+
             return contract_type
 
     def _source_vyper_version(self, code: str) -> Version:
