@@ -1,10 +1,12 @@
 import re
 from pathlib import Path
+from typing import Optional
 
 import ape
 import pytest
 import vvm  # type: ignore
 from ape.exceptions import CompilerError, ContractLogicError
+from ape.types import SourceTraceback
 from ape.utils import get_full_extension
 from ethpm_types import ContractType
 from packaging.version import Version
@@ -564,9 +566,13 @@ def test_enrich_error_handle_when_name(compiler, geth_provider, mocker):
     which we are still able to enrich.
     """
 
-    tb = mocker.MagicMock()
-    tb.revert_type = "NONPAYABLE_CHECK"
-    error = ContractLogicError("", source_traceback=tb)
+    class TB(SourceTraceback):
+        @property
+        def revert_type(self) -> Optional[str]:
+            return "NONPAYABLE_CHECK"
+
+    tb = TB([{"statements": [], "closure": {"name": "fn"}, "depth": 0}])  # type: ignore
+    error = ContractLogicError(None, source_traceback=tb)
     new_error = compiler.enrich_error(error)
     assert isinstance(new_error, NonPayableError)
 
@@ -683,6 +689,10 @@ def test_compile_code(project, compiler, dev_revert_source):
     assert len(actual.abi) > 1
     assert len(actual.deployment_bytecode.bytecode) > 1
     assert len(actual.runtime_bytecode.bytecode) > 1
+
+    # Ensure temp-file was deleted.
+    file = project.path / "MyContract.vy"
+    assert not file.is_file()
 
 
 def test_compile_with_version_set_in_settings_dict(config, compiler_manager, projects_path):
