@@ -689,6 +689,10 @@ def test_compile_code(project, compiler, dev_revert_source):
     assert len(actual.deployment_bytecode.bytecode) > 1
     assert len(actual.runtime_bytecode.bytecode) > 1
 
+    # Ensure temp-file was deleted.
+    file = project.path / "MyContract.vy"
+    assert not file.is_file()
+
 
 def test_compile_with_version_set_in_settings_dict(config, compiler_manager, projects_path):
     path = projects_path / "version_in_config"
