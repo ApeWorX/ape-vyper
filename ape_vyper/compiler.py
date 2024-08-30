@@ -985,16 +985,16 @@ class VyperCompiler(CompilerAPI):
         #   Vyper in our tests because of the monkeypatch. Also, their approach
         #   isn't really different than our approach implemented below.
         pm = project or self.local_project
-        with pm.isolate_in_tempdir():
+        with pm.isolate_in_tempdir() as tmp_project:
             name = kwargs.get("contractName", "code")
-            file = pm.path / f"{name}.vy"
+            file = tmp_project.path / f"{name}.vy"
             file.write_text(code, encoding="utf8")
-            contract_type = next(self.compile((file,), project=pm), None)
+            contract_type = next(self.compile((file,), project=tmp_project), None)
             if contract_type is None:
                 # Not sure when this would happen.
                 raise VyperCompileError("Failed to produce contract type.")
 
-            # Clean-up (just in case)
+            # Clean-up (just in case tmp_project is re-used)
             file.unlink(missing_ok=True)
 
             return contract_type

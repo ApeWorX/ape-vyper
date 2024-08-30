@@ -565,6 +565,7 @@ def test_enrich_error_handle_when_name(compiler, geth_provider, mocker):
     Sometimes, a provider may use the name of the enum instead of the value,
     which we are still able to enrich.
     """
+
     class TB(SourceTraceback):
         @property
         def revert_type(self) -> Optional[str]:
