@@ -7,6 +7,7 @@ import ape
 import pytest
 import vvm  # type: ignore
 from ape.contracts import ContractContainer
+from ape.logging import LogLevel, logger
 from ape.utils import create_tempdir
 from click.testing import CliRunner
 
@@ -39,6 +40,14 @@ CONTRACT_VERSION_GEN_MAP = {
     ),
     "sub_reverts": [v for v in ALL_VERSIONS if "0.4.0" not in v],
 }
+
+
+@pytest.fixture(scope="session", autouse=True)
+def set_loglevel():
+    """
+    This keeps the pytest output more relevant.
+    """
+    logger.set_level(LogLevel.WARNING)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -208,11 +217,14 @@ def cli_runner():
 
 
 def _get_tb_contract(version: str, project, account):
-    project.load_contracts()
-
     registry_type = project.get_contract(f"registry_{version}")
     assert isinstance(registry_type, ContractContainer), "Setup failed - couldn't get container"
     registry = account.deploy(registry_type)
     contract = project.get_contract(f"traceback_contract_{version}")
+
+    # Workaround until https://github.com/ApeWorX/ape/pull/2270 is released.
+    # Use a different account.
+    account2 = ape.accounts.test_accounts[1]
+
     assert isinstance(contract, ContractContainer), "Setup failed - couldn't get container"
-    return account.deploy(contract, registry)
+    return account2.deploy(contract, registry)
