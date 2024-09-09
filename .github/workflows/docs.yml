@@ -27,6 +27,6 @@ jobs:
 
     # NOTE: This also serves as a test for the action.
     - name: Docs
-      uses: ./
+      uses: apeworx/sphinx-ape@main
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
