@@ -5,3 +5,10 @@ contracts_folder: contracts/passing_contracts
 dependencies:
   - name: exampledependency
     local: ./ExampleDependency
+
+  # NOTE: Snekmate does not need to be listed here since
+  # it is installed in site-packages. However, we include it
+  # to show it doesn't cause problems when included.
+  - python: snekmate
+    config_override:
+      contracts_folder: .

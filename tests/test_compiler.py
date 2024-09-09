@@ -1,10 +1,12 @@
 import re
 from pathlib import Path
+from typing import Optional
 
 import ape
 import pytest
 import vvm  # type: ignore
 from ape.exceptions import CompilerError, ContractLogicError
+from ape.types import SourceTraceback
 from ape.utils import get_full_extension
 from ethpm_types import ContractType
 from packaging.version import Version
@@ -376,10 +378,21 @@ def test_compile_parse_dev_messages(compiler, dev_revert_source, project):
 
 
 def test_get_imports(compiler, project):
+    # Ensure the dependency starts off un-compiled so we can show this
+    # is the point at which it will be compiled. We make sure to only
+    # compile when we know it is a JSON interface based dependency
+    # and not a site-package or relative-path based dependency.
+    dependency = project.dependencies["exampledependency"]["local"]
+    dependency.manifest.contract_types = {}
+
     vyper_files = [
         x for x in project.contracts_folder.iterdir() if x.is_file() and x.suffix == ".vy"
     ]
     actual = compiler.get_imports(vyper_files, project=project)
+
+    # The dependency should have gotten compiled!
+    assert dependency.manifest.contract_types
+
     prefix = "contracts/passing_contracts"
     builtin_import = "vyper/interfaces/ERC20.json"
     local_import = "IFace.vy"
@@ -564,9 +577,13 @@ def test_enrich_error_handle_when_name(compiler, geth_provider, mocker):
     which we are still able to enrich.
     """
 
-    tb = mocker.MagicMock()
-    tb.revert_type = "NONPAYABLE_CHECK"
-    error = ContractLogicError("", source_traceback=tb)
+    class TB(SourceTraceback):
+        @property
+        def revert_type(self) -> Optional[str]:
+            return "NONPAYABLE_CHECK"
+
+    tb = TB([{"statements": [], "closure": {"name": "fn"}, "depth": 0}])  # type: ignore
+    error = ContractLogicError(None, source_traceback=tb)
     new_error = compiler.enrich_error(error)
     assert isinstance(new_error, NonPayableError)
 
@@ -684,6 +701,10 @@ def test_compile_code(project, compiler, dev_revert_source):
     assert len(actual.deployment_bytecode.bytecode) > 1
     assert len(actual.runtime_bytecode.bytecode) > 1
 
+    # Ensure temp-file was deleted.
+    file = project.path / "MyContract.vy"
+    assert not file.is_file()
+
 
 def test_compile_with_version_set_in_settings_dict(config, compiler_manager, projects_path):
     path = projects_path / "version_in_config"
@@ -735,3 +756,19 @@ def test_flatten_contract_04(project, compiler):
     version = compiler._source_vyper_version(source_code)
     vvm.install_vyper(str(version))
     vvm.compile_source(source_code, base_path=project.path, vyper_version=version)
+
+
+def test_get_import_remapping(project, compiler):
+    dependency = project.dependencies["exampledependency"]["local"]
+    dependency.manifest.contract_types = {}
+
+    # Getting import remapping does not compile on its own!
+    # This is important because we don't necessarily want to
+    # compile every dependency, only the ones with imports
+    # that indicate this.
+    actual = compiler.get_import_remapping(project=project)
+    assert actual == {}
+
+    dependency.load_contracts()
+    actual = compiler.get_import_remapping(project=project)
+    assert "exampledependency/Dependency.json" in actual

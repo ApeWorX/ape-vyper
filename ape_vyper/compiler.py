@@ -492,7 +492,25 @@ class VyperCompiler(CompilerAPI):
                     dep_key = prefix.split(os.path.sep)[0]
                     dependency_name = prefix.split(os.path.sep)[0]
                     filestem = prefix.replace(f"{dependency_name}{os.path.sep}", "")
-                    if dep_key in dependencies:
+                    found = False
+                    if dependency_name:
+                        # Attempt looking up dependency from site-packages.
+                        if res := _lookup_source_from_site_packages(dependency_name, filestem):
+                            source_path, imported_project = res
+                            import_source_id = str(source_path)
+                            # Also include imports of imports.
+                            sub_imports = self._get_imports(
+                                (source_path,),
+                                project=imported_project,
+                                handled=handled,
+                            )
+                            for sub_import_ls in sub_imports.values():
+                                import_map[source_id].extend(sub_import_ls)
+
+                            is_local = False
+                            found = True
+
+                    if not found and dep_key in dependencies:
                         for version_str, dep_project in pm.dependencies[dependency_name].items():
                             dependency = pm.dependencies.get_dependency(
                                 dependency_name, version_str
@@ -502,9 +520,29 @@ class VyperCompiler(CompilerAPI):
                             dependency_source_prefix = (
                                 f"{get_relative_path(contracts_path, dep_project.path)}"
                             )
-                            source_id_stem = f"{dependency_source_prefix}{os.path.sep}{filestem}"
-                            for ext in (".vy", ".json"):
+                            source_id_stem = (
+                                f"{dependency_source_prefix}{os.path.sep}{filestem}".lstrip(
+                                    f"{os.path.sep}."
+                                )
+                            )
+                            for ext in (".vy", ".vyi", ".json"):
                                 if f"{source_id_stem}{ext}" in dep_project.sources:
+                                    # Dependency located.
+                                    if not dependency.project.manifest.contract_types:
+                                        # In this case, the dependency *must* be compiled
+                                        # so the ABIs can be found later on.
+                                        try:
+                                            dependency.compile()
+                                        except Exception as err:
+                                            # Compiling failed. Try to continue anyway to get
+                                            # a better error from the Vyper compiler, in case
+                                            # something else is wrong.
+                                            logger.warning(
+                                                f"Failed to compile dependency '{dependency.name}' "
+                                                f"@ '{dependency.version}'.\n"
+                                                f"Reason: {err}"
+                                            )
+
                                     import_source_id = os.path.sep.join(
                                         (path_id, version_str, f"{source_id_stem}{ext}")
                                     )
@@ -520,21 +558,6 @@ class VyperCompiler(CompilerAPI):
 
                                     is_local = False
                                     break
-                    elif dependency_name:
-                        # Attempt looking up dependency from site-packages.
-                        if res := _lookup_source_from_site_packages(dependency_name, filestem):
-                            source_path, imported_project = res
-                            import_source_id = str(source_path)
-                            # Also include imports of imports.
-                            sub_imports = self._get_imports(
-                                (source_path,),
-                                project=imported_project,
-                                handled=handled,
-                            )
-                            for sub_import_ls in sub_imports.values():
-                                import_map[source_id].extend(sub_import_ls)
-
-                            is_local = False
 
                 if is_local and local_prefix is not None and local_path is not None:
                     import_source_id = f"{local_prefix}{ext}"
@@ -668,16 +691,6 @@ class VyperCompiler(CompilerAPI):
                 continue
 
             handled.add(dep_id)
-
-            try:
-                dependency.compile()
-            except Exception as err:
-                logger.warning(
-                    f"Failed to compile dependency '{dependency.name}' @ '{dependency.version}'.\n"
-                    f"Reason: {err}"
-                )
-                continue
-
             dependencies[remapping.key] = dependency.project
 
         # Add auto-remapped dependencies.
@@ -689,16 +702,6 @@ class VyperCompiler(CompilerAPI):
                 continue
 
             handled.add(dep_id)
-
-            try:
-                dependency.compile()
-            except Exception as err:
-                logger.warning(
-                    f"Failed to compile dependency '{dependency.name}' @ '{dependency.version}'.\n"
-                    f"Reason: {err}"
-                )
-                continue
-
             dependencies[dependency.name] = dependency.project
 
         return dependencies
@@ -985,14 +988,17 @@ class VyperCompiler(CompilerAPI):
         #   Vyper in our tests because of the monkeypatch. Also, their approach
         #   isn't really different than our approach implemented below.
         pm = project or self.local_project
-        with pm.isolate_in_tempdir():
+        with pm.isolate_in_tempdir() as tmp_project:
             name = kwargs.get("contractName", "code")
-            file = pm.path / f"{name}.vy"
+            file = tmp_project.path / f"{name}.vy"
             file.write_text(code, encoding="utf8")
-            contract_type = next(self.compile((file,), project=pm), None)
+            contract_type = next(self.compile((file,), project=tmp_project), None)
             if contract_type is None:
                 # Not sure when this would happen.
                 raise VyperCompileError("Failed to produce contract type.")
+
+            # Clean-up (just in case tmp_project is re-used)
+            file.unlink(missing_ok=True)
 
             return contract_type
 
