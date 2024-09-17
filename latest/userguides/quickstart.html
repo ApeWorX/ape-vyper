@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en" data-accent-color="lime" data-content_root="../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Quick Start - ape-vyper documentation</title><link rel="shortcut icon" href="../_static/favicon.ico"/><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Compiler" href="../methoddocs/compiler.html" /><link rel="prev" title="&lt;no title&gt;" href="../index.html" />
+      <link rel="canonical" href="ape-vyper/userguides/quickstart.html" /><script>
+    function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
+    setColorMode(localStorage._theme||"auto");
+  </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=397bb51e" />
+    <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=36d120a7" />
+    <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+}
+</style>
+    <meta property="og:type" content="website"/>
+<meta property="og:url" content="ape-vyper/userguides/quickstart.html"/>
+<meta property="og:title" content="Quick Start"/>
+<meta name="twitter:card" content="summary"/>
+  </head>
+<body><div class="sy-head">
+  <div class="sy-head-blur"></div>
+  <div class="sy-head-inner sy-container mx-auto">
+    <a class="sy-head-brand" href="../index.html">
+      <img class="light-logo" src="../_static/logo_grey.svg" alt="ape-vyper" height="28" loading="lazy" />
+      <img class="dark-logo" src="../_static/logo_green.svg" alt="ape-vyper" height="28" loading="lazy" />
+      <strong>ape-vyper</strong>
+    </a>
+    <div class="sy-head-nav" id="HeadNav">
+      <nav class="sy-head-links"></nav>
+      <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="../search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <kbd>/</kbd>
+</form><div class="sy-head-socials"></div></div>
+    </div>
+    <div class="sy-head-actions flex items-center shrink-0 print:hidden"><button class="js-theme theme-switch flex items-center"
+data-aria-auto="Switch to light color mode"
+data-aria-light="Switch to dark color mode"
+data-aria-dark="Switch to auto color mode">
+<i class="i-lucide theme-icon"></i>
+</button><button class="md:hidden flex items-center js-menu" aria-label="Menu" type="button" aria-controls="HeadNav" aria-expanded="false">
+        <div class="hamburger">
+          <span class="hamburger_1"></span>
+          <span class="hamburger_2 -translate-x-2"></span>
+          <span class="hamburger_3 -translate-x-1"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="sy-page sy-container flex mx-auto">
+  <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
+    <div class="sy-lside-inner md:sticky">
+      <div class="sy-scrollbar p-6">
+        <div class="globaltoc" data-expand-depth="0"><p class="caption" role="heading" aria-level="3"><span class="caption-text">User Guides</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Quick Start</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Python Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../methoddocs/compiler.html">Compiler</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../methoddocs/exceptions.html">Exceptions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../methoddocs/interface.html">Interface</a></li>
+</ul>
+
+        </div>
+      </div></div>
+  </aside>
+  <div class="lside-overlay js-menu" role="button" aria-label="Close left sidebar" aria-controls="lside" aria-expanded="false"></div>
+  <aside id="rside" class="sy-rside pb-3 w-64 shrink-0 order-last">
+    <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
+      <i class="i-lucide close"></i>
+    </button>
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#dependencies">Dependencies</a></li>
+<li><a class="reference internal" href="#installation">Installation</a><ul>
+<li><a class="reference internal" href="#via-pip">via <code class="docutils literal notranslate"><span class="pre">pip</span></code></a></li>
+<li><a class="reference internal" href="#via-setuptools">via <code class="docutils literal notranslate"><span class="pre">setuptools</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#quick-usage">Quick Usage</a><ul>
+<li><a class="reference internal" href="#contract-flattening">Contract Flattening</a></li>
+<li><a class="reference internal" href="#compiler-version">Compiler Version</a></li>
+<li><a class="reference internal" href="#evm-versioning">EVM Versioning</a></li>
+<li><a class="reference internal" href="#interfaces">Interfaces</a></li>
+<li><a class="reference internal" href="#pragmas">Pragmas</a><ul>
+<li><a class="reference internal" href="#version-pragma">Version Pragma</a></li>
+<li><a class="reference internal" href="#evm-version-pragma">EVM Version Pragma</a></li>
+<li><a class="reference internal" href="#optimization-pragma">Optimization Pragma</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div><div id="ethical-ad-placement" data-ea-publisher="readthedocs"></div></div>
+  </aside>
+  <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
+  <main class="sy-main w-full max-sm:max-w-full print:pt-6"><div class="sy-breadcrumbs" role="navigation">
+  <div class="sy-breadcrumbs-inner flex items-center">
+    <div class="md:hidden mr-3">
+      <button class="js-menu" aria-label="Menu" type="button" aria-controls="lside" aria-expanded="false">
+        <i class="i-lucide menu"></i>
+      </button>
+    </div>
+    <ol class="flex-1" itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="../index.html"><span itemprop="name">ape-vyper</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="1" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <strong itemprop="name">Quick Start</strong>
+        <meta itemprop="position" content="2" />
+      </li></ol>
+    <div class="xl:hidden ml-1">
+      <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
+        aria-expanded="false">
+        <i class="i-lucide outdent"></i>
+      </button>
+    </div>
+  </div>
+</div><div class="flex flex-col break-words justify-between">
+      <div class="min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12">
+        <article class="yue" role="main">
+          <section id="quick-start">
+<h1>Quick Start<a class="headerlink" href="#quick-start" title="Link to this heading"></a></h1>
+<p>Ape compiler plugin around <a class="reference external" href="https://github.com/vyperlang/vvm">VVM</a></p>
+<section id="dependencies">
+<h2>Dependencies<a class="headerlink" href="#dependencies" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference external" href="https://www.python.org/downloads">python3</a> version 3.10 up to 3.12.</p></li>
+</ul>
+</section>
+<section id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Link to this heading"></a></h2>
+<section id="via-pip">
+<h3>via <code class="docutils literal notranslate"><span class="pre">pip</span></code><a class="headerlink" href="#via-pip" title="Link to this heading"></a></h3>
+<p>You can install the latest release via <a class="reference external" href="https://pypi.org/project/pip/"><code class="docutils literal notranslate"><span class="pre">pip</span></code></a>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">pip<span class="w"> </span>install<span class="w"> </span>ape-vyper
+</span></pre></div>
+</div>
+</section>
+<section id="via-setuptools">
+<h3>via <code class="docutils literal notranslate"><span class="pre">setuptools</span></code><a class="headerlink" href="#via-setuptools" title="Link to this heading"></a></h3>
+<p>You can clone the repository and use <a class="reference external" href="https://github.com/pypa/setuptools"><code class="docutils literal notranslate"><span class="pre">setuptools</span></code></a> for the most up-to-date version:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">git<span class="w"> </span>clone<span class="w"> </span>https://github.com/ApeWorX/ape-vyper.git
+</span><span data-line="2"><span class="nb">cd</span><span class="w"> </span>ape-vyper
+</span><span data-line="3">python3<span class="w"> </span>setup.py<span class="w"> </span>install
+</span></pre></div>
+</div>
+</section>
+</section>
+<section id="quick-usage">
+<h2>Quick Usage<a class="headerlink" href="#quick-usage" title="Link to this heading"></a></h2>
+<p>First, place Vyper contract source files (files with extension <code class="docutils literal notranslate"><span class="pre">.vy</span></code>) in your Ape project’s contracts folder.
+An example Vyper contract can be found <a class="reference external" href="https://vyper.readthedocs.io/en/stable/vyper-by-example.html">here</a>.
+Then, from your root Ape project folder, run the command:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">ape<span class="w"> </span>compile
+</span></pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">.vy</span></code> files in your project will compile into <code class="docutils literal notranslate"><span class="pre">ContractTypes</span></code> that you can deploy and interact with in Ape.</p>
+<section id="contract-flattening">
+<h3>Contract Flattening<a class="headerlink" href="#contract-flattening" title="Link to this heading"></a></h3>
+<p>For ease of publishing, validation, and some other cases it’s sometimes useful to “flatten” your contract into a single file.
+This combines your contract and any imported interfaces together in a way the compiler can understand.
+You can do so with a command like this:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">ape<span class="w"> </span>vyper<span class="w"> </span>flatten<span class="w"> </span>contracts/MyContract.vy<span class="w"> </span>build/MyContractFlattened.vy
+</span></pre></div>
+</div>
+<blockquote>
+<div><p>[!WARNING]
+This feature is experimental. Please <a class="reference external" href="https://github.com/ApeWorX/ape-solidity/issues/new?assignees=&amp;amp;labels=bug&amp;amp;projects=&amp;amp;template=bug.md">report any bugs</a> you find when trying it out.</p>
+</div></blockquote>
+</section>
+<section id="compiler-version">
+<h3>Compiler Version<a class="headerlink" href="#compiler-version" title="Link to this heading"></a></h3>
+<p>By default, the <code class="docutils literal notranslate"><span class="pre">ape-vyper</span></code> plugin uses version pragma for version specification.
+However, you can also configure the version directly in your <code class="docutils literal notranslate"><span class="pre">ape-config.yaml</span></code> file:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="nt">vyper</span><span class="p">:</span>
+</span><span data-line="2"><span class="w">  </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.3.7</span>
+</span></pre></div>
+</div>
+</section>
+<section id="evm-versioning">
+<h3>EVM Versioning<a class="headerlink" href="#evm-versioning" title="Link to this heading"></a></h3>
+<p>By default, <code class="docutils literal notranslate"><span class="pre">ape-vyper</span></code> will use whatever version of EVM rules are set as default in the compiler version that gets used,
+or based on what the <code class="docutils literal notranslate"><span class="pre">#pragma</span> <span class="pre">evm-version</span> <span class="pre">...</span></code> pragma comment specifies (available post-<code class="docutils literal notranslate"><span class="pre">v0.3.10</span></code>).
+Sometimes, you might want to use a different version, such as deploying on Arbitrum or Optimism where new opcodes are not supported yet.
+If you want to require a different version of EVM rules to use in the configuration of the compiler, set it in your <code class="docutils literal notranslate"><span class="pre">ape-config.yaml</span></code> like this:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="nt">vyper</span><span class="p">:</span>
+</span><span data-line="2"><span class="w">  </span><span class="nt">evm_version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">paris</span>
+</span></pre></div>
+</div>
+<p><strong>NOTE</strong>: The config value chosen will not override if a pragma is set in a contract.</p>
+</section>
+<section id="interfaces">
+<h3>Interfaces<a class="headerlink" href="#interfaces" title="Link to this heading"></a></h3>
+<p>You can not compile interface source files directly.
+Thus, you must place interface files in a directory named <code class="docutils literal notranslate"><span class="pre">interfaces</span></code> in your <code class="docutils literal notranslate"><span class="pre">contracts_folder</span></code> e.g. <code class="docutils literal notranslate"><span class="pre">contracts/interfaces/IFace.vy</span></code>.
+Then, these files can be imported in other <code class="docutils literal notranslate"><span class="pre">.vy</span></code> sources files via:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span> <span class="nn">interfaces.IFace</span> <span class="k">as</span> <span class="nn">IFace</span>
+</span></pre></div>
+</div>
+<p>Alternatively, use JSON interfaces from dependency contract types by listing them under the <code class="docutils literal notranslate"><span class="pre">import_remapping</span></code> key:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># Use `voting` example contracts from Vyperlang repo.</span>
+</span><span data-line="2"><span class="nt">dependencies</span><span class="p">:</span>
+</span><span data-line="3"><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">VyperVoting</span>
+</span><span data-line="4"><span class="w">    </span><span class="nt">github</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vyperlang/vyper</span>
+</span><span data-line="5"><span class="w">    </span><span class="nt">contracts_folder</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">examples/voting/</span>
+</span><span data-line="6"><span class="w">    </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v0.3.8</span>
+</span><span data-line="7">
+</span><span data-line="8"><span class="c1"># Automatically allow importing voting contracts in your project.</span>
+</span><span data-line="9"><span class="nt">vyper</span><span class="p">:</span>
+</span><span data-line="10"><span class="w">  </span><span class="nt">import_remapping</span><span class="p">:</span>
+</span><span data-line="11"><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;voting=VyperVoting@v0.3.8&quot;</span>
+</span></pre></div>
+</div>
+<p>Import the voting contract types like this:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># @version 0.3.10</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="kn">import</span> <span class="nn">voting.ballot</span> <span class="k">as</span> <span class="nn">ballot</span>
+</span></pre></div>
+</div>
+</section>
+<section id="pragmas">
+<h3>Pragmas<a class="headerlink" href="#pragmas" title="Link to this heading"></a></h3>
+<p>Ape-Vyper supports Vyper 0.3.10’s <a class="reference external" href="https://github.com/vyperlang/vyper/pull/3493">new pragma formats</a></p>
+<section id="version-pragma">
+<h4>Version Pragma<a class="headerlink" href="#version-pragma" title="Link to this heading"></a></h4>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1">#pragma version 0.3.10</span>
+</span></pre></div>
+</div>
+</section>
+<section id="evm-version-pragma">
+<h4>EVM Version Pragma<a class="headerlink" href="#evm-version-pragma" title="Link to this heading"></a></h4>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1">#pragma evm-version paris</span>
+</span></pre></div>
+</div>
+</section>
+<section id="optimization-pragma">
+<h4>Optimization Pragma<a class="headerlink" href="#optimization-pragma" title="Link to this heading"></a></h4>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1">#pragma optimize codesize</span>
+</span></pre></div>
+</div>
+</section>
+</section>
+</section>
+</section>
+
+        </article><button class="back-to-top" type="button">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+  </svg>
+  <span>Back to top</span>
+</button><div class="navigation flex print:hidden"><div class="navigation-prev">
+    <a href="../index.html">
+      <i class="i-lucide chevron-left"></i>
+      <div class="page-info">
+        <span>Previous</span><div class="title">Home</div></div>
+    </a>
+  </div><div class="navigation-next">
+    <a href="../methoddocs/compiler.html">
+      <div class="page-info">
+        <span>Next</span>
+        <div class="title">Compiler</div>
+      </div>
+      <i class="i-lucide chevron-right"></i>
+    </a>
+  </div></div></div>
+    </div>
+  </main>
+</div>
+<footer class="sy-foot">
+  <div class="sy-foot-inner sy-container mx-auto">
+    <div class="sy-foot-reserved md:flex justify-between items-center">
+      <div class="sy-foot-copyright"><p>2024, ApeWorX LTD</p>
+  
+  <p>
+    Made with
+    
+    <a href="https://www.sphinx-doc.org/">Sphinx</a> and
+    
+    <a href="https://shibuya.lepture.com">Shibuya theme</a>.
+  </p>
+</div>
+      <div class="sy-foot-socials"></div>
+    </div>
+  </div>
+</footer>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script data-domain="docs.apeworx.io" defer="defer" src="https://plausible.io/js/script.js"></script>
+      <script src="../_static/shibuya.js?v=c5fc9e80"></script></body>
+</html>
