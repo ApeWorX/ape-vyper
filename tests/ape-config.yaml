@@ -1,7 +1,0 @@
-# Allows compiling to work from the project-level.
-contracts_folder: contracts/passing_contracts
-
-# Specify a dependency to use in Vyper imports.
-dependencies:
-  - name: exampledependency
-    local: ./ExampleDependency

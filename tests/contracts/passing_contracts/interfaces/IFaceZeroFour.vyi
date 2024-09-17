@@ -1,6 +1,0 @@
-# pragma version ~=0.4.0
-
-@external
-@view
-def implementThisPlease(role: bytes32) -> bool:
-    ...
