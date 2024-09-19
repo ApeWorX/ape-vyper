@@ -16,7 +16,7 @@ import vvm  # type: ignore
 from ape.api import PluginConfig, TraceAPI
 from ape.api.compiler import CompilerAPI
 from ape.exceptions import ContractLogicError, ProjectError
-from ape.logging import logger
+from ape.logging import logger, LogLevel
 from ape.managers.project import LocalProject, ProjectManager
 from ape.types import ContractSourceCoverage, ContractType, SourceTraceback
 from ape.utils import cached_property, get_relative_path, pragma_str_to_specifier_set
@@ -523,38 +523,45 @@ class VyperCompiler(CompilerAPI):
                                 )
                             )
                             for ext in (".vy", ".vyi", ".json"):
-                                if f"{source_id_stem}{ext}" in dep_project.sources:
-                                    # Dependency located.
-                                    if not dependency.project.manifest.contract_types:
-                                        # In this case, the dependency *must* be compiled
-                                        # so the ABIs can be found later on.
-                                        try:
-                                            dependency.compile()
-                                        except Exception as err:
-                                            # Compiling failed. Try to continue anyway to get
-                                            # a better error from the Vyper compiler, in case
-                                            # something else is wrong.
-                                            logger.warning(
-                                                f"Failed to compile dependency '{dependency.name}' "
-                                                f"@ '{dependency.version}'.\n"
-                                                f"Reason: {err}"
-                                            )
+                                if f"{source_id_stem}{ext}" not in dep_project.sources:
+                                    continue
 
-                                    import_source_id = os.path.sep.join(
-                                        (path_id, version_str, f"{source_id_stem}{ext}")
-                                    )
+                                # Dependency located.
+                                if not dependency.project.manifest.contract_types:
+                                    # In this case, the dependency *must* be compiled
+                                    # so the ABIs can be found later on.
+                                    level = logger.level
+                                    logger.set_level(LogLevel.ERROR)
+                                    try:
+                                        dependency.compile()
+                                    except Exception as err:
+                                        # Compiling failed. Try to continue anyway to get
+                                        # a better error from the Vyper compiler, in case
+                                        # something else is wrong.
+                                        logger.warning(
+                                            f"Failed to compile dependency '{dependency.name}' "
+                                            f"@ '{dependency.version}'.\n"
+                                            f"Reason: {err}"
+                                        )
+                                    finally:
+                                        logger.set_level(level)
 
-                                    # Also include imports of imports.
-                                    sub_imports = self._get_imports(
-                                        (dep_project.path / f"{source_id_stem}{ext}",),
-                                        project=dep_project,
-                                        handled=handled,
-                                    )
-                                    for sub_import_ls in sub_imports.values():
-                                        import_map[source_id].extend(sub_import_ls)
 
-                                    is_local = False
-                                    break
+                                import_source_id = os.path.sep.join(
+                                    (path_id, version_str, f"{source_id_stem}{ext}")
+                                )
+
+                                # Also include imports of imports.
+                                sub_imports = self._get_imports(
+                                    (dep_project.path / f"{source_id_stem}{ext}",),
+                                    project=dep_project,
+                                    handled=handled,
+                                )
+                                for sub_import_ls in sub_imports.values():
+                                    import_map[source_id].extend(sub_import_ls)
+
+                                is_local = False
+                                break
 
                     elif not found:
                         logger.error(
