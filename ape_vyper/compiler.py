@@ -297,11 +297,8 @@ def _lookup_source_from_site_packages(
         )
     except ProjectError as err:
         # Still attempt to let Vyper handle this during compilation.
-        logger.error(
-            f"'{dependency_name}' may not be installed. "
-            "Could not find it in Ape dependencies or Python's site-packages. "
-            f"Error: {err}"
-        )
+        return None
+
     else:
         extensions = [*[f"{t}" for t in FileType], ".json"]
 
@@ -558,6 +555,12 @@ class VyperCompiler(CompilerAPI):
 
                                     is_local = False
                                     break
+
+                    elif not found:
+                        logger.error(
+                            f"'{dependency_name}' may not be installed. "
+                            "Could not find it in Ape dependencies or Python's site-packages."
+                        )
 
                 if is_local and local_prefix is not None and local_path is not None:
                     import_source_id = f"{local_prefix}{ext}"
