@@ -567,7 +567,7 @@ class VyperCompiler(CompilerAPI):
                     full_path = local_path.parent / f"{local_path.stem}{ext}"
 
                     # Also include imports of imports.
-                    sub_imports = self._get_imports((full_path,), project=project, handled=handled)
+                    sub_imports = self._get_imports((full_path,), project=pm, handled=handled)
                     for sub_import_ls in sub_imports.values():
                         import_map[source_id].extend(sub_import_ls)
 
