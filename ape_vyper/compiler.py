@@ -16,7 +16,7 @@ import vvm  # type: ignore
 from ape.api import PluginConfig, TraceAPI
 from ape.api.compiler import CompilerAPI
 from ape.exceptions import ContractLogicError, ProjectError
-from ape.logging import logger, LogLevel
+from ape.logging import LogLevel, logger
 from ape.managers.project import LocalProject, ProjectManager
 from ape.types import ContractSourceCoverage, ContractType, SourceTraceback
 from ape.utils import cached_property, get_relative_path, pragma_str_to_specifier_set
@@ -295,7 +295,7 @@ def _lookup_source_from_site_packages(
             dependency_name,
             config_override=config_override,
         )
-    except ProjectError as err:
+    except ProjectError:
         # Still attempt to let Vyper handle this during compilation.
         return None
 
@@ -512,7 +512,6 @@ class VyperCompiler(CompilerAPI):
                             dependency = pm.dependencies.get_dependency(
                                 dependency_name, version_str
                             )
-                            path_id = dependency.package_id.replace("/", "_")
                             contracts_path = dep_project.contracts_folder
                             dependency_source_prefix = (
                                 f"{get_relative_path(contracts_path, dep_project.path)}"
@@ -530,30 +529,25 @@ class VyperCompiler(CompilerAPI):
                                 if not dependency.project.manifest.contract_types:
                                     # In this case, the dependency *must* be compiled
                                     # so the ABIs can be found later on.
-                                    level = logger.level
-                                    logger.set_level(LogLevel.ERROR)
-                                    try:
-                                        dependency.compile()
-                                    except Exception as err:
-                                        # Compiling failed. Try to continue anyway to get
-                                        # a better error from the Vyper compiler, in case
-                                        # something else is wrong.
-                                        logger.warning(
-                                            f"Failed to compile dependency '{dependency.name}' "
-                                            f"@ '{dependency.version}'.\n"
-                                            f"Reason: {err}"
-                                        )
-                                    finally:
-                                        logger.set_level(level)
+                                    with logger.at_level(LogLevel.ERROR):
+                                        try:
+                                            dependency.compile()
+                                        except Exception as err:
+                                            # Compiling failed. Try to continue anyway to get
+                                            # a better error from the Vyper compiler, in case
+                                            # something else is wrong.
+                                            logger.warning(
+                                                f"Failed to compile dependency '{dependency.name}' "
+                                                f"@ '{dependency.version}'.\n"
+                                                f"Reason: {err}"
+                                            )
 
-
-                                import_source_id = os.path.sep.join(
-                                    (path_id, version_str, f"{source_id_stem}{ext}")
-                                )
+                                import_source_id = f"{source_id_stem}{ext}"
+                                import_path = dep_project.path / f"{source_id_stem}{ext}"
 
                                 # Also include imports of imports.
                                 sub_imports = self._get_imports(
-                                    (dep_project.path / f"{source_id_stem}{ext}",),
+                                    (import_path,),
                                     project=dep_project,
                                     handled=handled,
                                 )
@@ -799,7 +793,9 @@ class VyperCompiler(CompilerAPI):
                                     continue
 
                                 imp_path = Path(imp)
+
                                 if (pm.path / imp).is_file():
+                                    # Is a local file.
                                     imp_path = pm.path / imp
                                     if not imp_path.is_file():
                                         continue
@@ -807,16 +803,19 @@ class VyperCompiler(CompilerAPI):
                                     src_dict[imp] = {"content": imp_path.read_text(encoding="utf8")}
 
                                 else:
+                                    # Is from a dependency.
+                                    specified = {d.name: d for d in pm.dependencies.specified}
                                     for parent in imp_path.parents:
                                         if parent.name == "site-packages":
                                             src_id = f"{get_relative_path(imp_path, parent)}"
                                             break
 
-                                        elif parent.name == ".ape":
-                                            dm = self.local_project.dependencies
-                                            full_parent = dm.packages_cache.projects_folder
-                                            src_id = f"{get_relative_path(imp_path, full_parent)}"
-                                            break
+                                        elif parent.name in specified:
+                                            dependency = specified[parent.name]
+                                            src_id = f"{imp_path}"
+                                            imp_path = dependency.project.path / imp_path
+                                            if imp_path.is_file():
+                                                break
 
                                     # Likely from a dependency. Exclude absolute prefixes so Vyper
                                     # knows what to do.
@@ -835,6 +834,11 @@ class VyperCompiler(CompilerAPI):
                         }.items()
                         if p.parent != pm.path / "interfaces"
                     }
+
+                # if pm.name != "snekmate":
+                #     srcid = "snekmate/auth/ownable.vy"
+                #     depfile = pm.dependencies["snekmate"]["0.1.0"].sources[srcid].content
+                #     src_dict[srcid] = {"content": str(depfile)}
 
                 input_json: dict = {
                     "language": "Vyper",
@@ -1398,7 +1402,7 @@ class VyperCompiler(CompilerAPI):
                 if pm.path == Path.cwd():
                     search_paths.append(".")
                 else:
-                    search_paths.append(str(pm.path))
+                    search_paths.append(str(pm.contracts_folder.parent))
                 # else: only seem to get absolute paths to work (for compiling deps alone).
 
                 version_settings[settings_key] = {
