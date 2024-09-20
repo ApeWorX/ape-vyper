@@ -77,8 +77,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
         self, source_ids: Iterable[str], project: Optional[ProjectManager] = None, **kwargs
     ) -> dict[str, dict]:
         """
-        Get the sources dictionary for Vyper's input JSON. All Vyper versions < 0.4
-        **MUST NOT** include interfaces in the sources dictionary.
+        Generate input for the "sources" key in the input JSON.
         """
         pm = project or self.local_project
         return {
@@ -93,12 +92,21 @@ class BaseVyperCompiler(ManagerAccessMixin):
         project: Optional[ProjectManager] = None,
         **kwargs,
     ) -> dict:
+        """
+        Generate input for the "outputSelection" key in the input JSON.
+        """
+        # NOTE: Vyper0.2 and Vyper0.3 versions don't override this.
+        #   Interfaces cannot be in the sources dict for those versions
+        #   (whereas in Vyper0.4, they must).
         pm = project or self.local_project
         return {s: ["*"] for s in selection if (pm.path / s).is_file() if "interfaces" not in s}
 
     def get_compile_kwargs(
         self, vyper_version: Version, compiler_data: dict, project: Optional[ProjectManager] = None
     ) -> dict:
+        """
+        Generate extra kwargs to pass to Vyper.
+        """
         pm = project or self.local_project
         comp_kwargs = self._get_base_compile_kwargs(vyper_version, compiler_data)
         # `base_path` is required for pre-0.4 versions or else imports won't resolve.
@@ -118,13 +126,22 @@ class BaseVyperCompiler(ManagerAccessMixin):
         opcodes: list[str],
         bytecode: dict,
     ):
+        """
+        Generate the PCMap.
+        """
         return _get_pcmap(bytecode)
 
     def parse_source_map(self, raw_source_map: Any) -> SourceMap:
+        """
+        Generate the SourceMap.
+        """
         # All versions < 0.4 use this one
         return SourceMap(root=raw_source_map)
 
     def get_default_optimization(self, vyper_version: Version) -> Optimization:
+        """
+        The default  value for "optimize" in the settings for input JSON.
+        """
         return True
 
 
