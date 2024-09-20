@@ -73,7 +73,179 @@ class BaseVyperCompiler(ManagerAccessMixin):
     Shared logic between all versions of Vyper.
     """
 
-    def get_sources_dictionary(
+    def compile(
+        self,
+        vyper_version: Version,
+        settings: dict,
+        import_map: dict,
+        import_remapping: dict,
+        compiler_data: dict,
+        project: Optional[ProjectManager] = None,
+        use_absolute_paths: bool = False,
+    ):
+        pm = project or self.local_project
+        for settings_key, settings_set in settings.items():
+            src_dict = self._get_sources_dictionary(
+                settings_set["outputSelection"],
+                project=pm,
+                use_absolute_paths=use_absolute_paths,
+                import_map=import_map,
+            )
+
+            input_json: dict = {
+                "language": "Vyper",
+                "settings": settings_set,
+                "sources": src_dict,
+            }
+
+            if interfaces := import_remapping:
+                input_json["interfaces"] = interfaces
+
+            # Output compiler details.
+            keys = (
+                "\n\t".join(
+                    sorted(
+                        [
+                            clean_path(Path(x))
+                            for x in settings_set.get("outputSelection", {}).keys()
+                        ]
+                    )
+                )
+                or "No input."
+            )
+            log_str = f"Compiling using Vyper compiler '{vyper_version}'.\nInput:\n\t{keys}"
+            logger.info(log_str)
+            comp_kwargs = self._get_compile_kwargs(vyper_version, compiler_data, project=pm)
+            try:
+                result = vvm_compile_standard(input_json, **comp_kwargs)
+            except VyperError as err:
+                raise VyperCompileError(err) from err
+
+            for source_id, output_items in result["contracts"].items():
+                content = {
+                    i + 1: ln
+                    for i, ln in enumerate(
+                        (pm.path / source_id).read_text(encoding="utf8").splitlines()
+                    )
+                }
+                for name, output in output_items.items():
+                    # De-compress source map to get PC POS map.
+                    ast = ASTNode.model_validate(result["sources"][source_id]["ast"])
+                    self._classify_ast(ast)
+
+                    # Track function offsets.
+                    function_offsets = []
+                    for node in ast.children:
+                        lineno = node.lineno
+
+                        # NOTE: Constructor is handled elsewhere.
+                        if node.ast_type == "FunctionDef" and "__init__" not in content.get(
+                            lineno, ""
+                        ):
+                            function_offsets.append((node.lineno, node.end_lineno))
+
+                    evm = output["evm"]
+                    bytecode = evm["deployedBytecode"]
+                    opcodes = bytecode["opcodes"].split(" ")
+                    compressed_src_map = self._parse_source_map(bytecode["sourceMap"])
+                    src_map = list(compressed_src_map.parse())[1:]
+                    pcmap = self._get_pcmap(vyper_version, ast, src_map, opcodes, bytecode)
+
+                    # Find content-specified dev messages.
+                    dev_messages = {}
+                    for line_no, line in content.items():
+                        if match := re.search(DEV_MSG_PATTERN, line):
+                            dev_messages[line_no] = match.group(1).strip()
+
+                    source_id_path = Path(source_id)
+                    if source_id_path.is_absolute():
+                        final_source_id = f"{get_relative_path(Path(source_id), pm.path)}"
+                    else:
+                        final_source_id = source_id
+
+                    contract_type = ContractType.model_validate(
+                        {
+                            "ast": ast,
+                            "contractName": name,
+                            "sourceId": final_source_id,
+                            "deploymentBytecode": {"bytecode": evm["bytecode"]["object"]},
+                            "runtimeBytecode": {"bytecode": bytecode["object"]},
+                            "abi": output["abi"],
+                            "sourcemap": compressed_src_map,
+                            "pcmap": pcmap,
+                            "userdoc": output["userdoc"],
+                            "devdoc": output["devdoc"],
+                            "dev_messages": dev_messages,
+                        }
+                    )
+                    yield contract_type, settings_key
+
+    def get_settings(
+        self,
+        version: Version,
+        source_paths: Iterable[Path],
+        compiler_data: dict,
+        project: Optional[ProjectManager] = None,
+        use_absolute_paths: bool = False,
+    ) -> dict:
+        pm = project or self.local_project
+        default_optimization = self._get_default_optimization(version)
+        output_selection: dict[str, set[str]] = {}
+        optimizations_map = get_optimization_pragma_map(source_paths, pm.path, default_optimization)
+        evm_version_map = get_evm_version_pragma_map(source_paths, pm.path)
+        default_evm_version = compiler_data.get(
+            "evm_version", compiler_data.get("evmVersion")
+        ) or EVM_VERSION_DEFAULT.get(version.base_version)
+        for source_path in source_paths:
+            source_id = str(get_relative_path(source_path.absolute(), pm.path))
+
+            if not (optimization := optimizations_map.get(source_id)):
+                optimization = self._get_default_optimization(version)
+
+            evm_version = evm_version_map.get(source_id, default_evm_version)
+            settings_key = f"{optimization}%{evm_version}".lower()
+            if settings_key not in output_selection:
+                output_selection[settings_key] = {source_id}
+            else:
+                output_selection[settings_key].add(source_id)
+
+        version_settings: dict[str, dict] = {}
+        for settings_key, selection in output_selection.items():
+            optimization, evm_version = settings_key.split("%")
+            if optimization == "true":
+                optimization = True
+            elif optimization == "false":
+                optimization = False
+
+            selection_dict = self._get_selection_dictionary(
+                selection, use_absolute_paths=use_absolute_paths
+            )
+            search_paths = [*getsitepackages()]
+            if pm.path == Path.cwd():
+                search_paths.append(".")
+            else:
+                search_paths.append(str(pm.path))
+                # search_paths.append(str(pm.contracts_folder.parent))
+            # else: only seem to get absolute paths to work (for compiling deps alone).
+
+            version_settings[settings_key] = {
+                "optimize": optimization,
+                "outputSelection": selection_dict,
+                "search_paths": search_paths,
+            }
+            if evm_version and evm_version not in ("none", "null"):
+                version_settings[settings_key]["evmVersion"] = f"{evm_version}"
+
+        return version_settings
+
+    def _classify_ast(self, _node: ASTNode):
+        if _node.ast_type in _FUNCTION_AST_TYPES:
+            _node.classification = ASTClassification.FUNCTION
+
+        for child in _node.children:
+            self._classify_ast(child)
+
+    def _get_sources_dictionary(
         self, source_ids: Iterable[str], project: Optional[ProjectManager] = None, **kwargs
     ) -> dict[str, dict]:
         """
@@ -86,7 +258,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
             if p.parent != pm.path / "interfaces"
         }
 
-    def get_selection_dictionary(
+    def _get_selection_dictionary(
         self,
         selection: Iterable[str],
         project: Optional[ProjectManager] = None,
@@ -101,7 +273,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
         pm = project or self.local_project
         return {s: ["*"] for s in selection if (pm.path / s).is_file() if "interfaces" not in s}
 
-    def get_compile_kwargs(
+    def _get_compile_kwargs(
         self, vyper_version: Version, compiler_data: dict, project: Optional[ProjectManager] = None
     ) -> dict:
         """
@@ -118,7 +290,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
         comp_kwargs = {"vyper_version": vyper_version, "vyper_binary": vyper_binary}
         return comp_kwargs
 
-    def get_pcmap(
+    def _get_pcmap(
         self,
         vyper_version: Version,
         ast: Any,
@@ -131,14 +303,14 @@ class BaseVyperCompiler(ManagerAccessMixin):
         """
         return _get_pcmap(bytecode)
 
-    def parse_source_map(self, raw_source_map: Any) -> SourceMap:
+    def _parse_source_map(self, raw_source_map: Any) -> SourceMap:
         """
         Generate the SourceMap.
         """
         # All versions < 0.4 use this one
         return SourceMap(root=raw_source_map)
 
-    def get_default_optimization(self, vyper_version: Version) -> Optimization:
+    def _get_default_optimization(self, vyper_version: Version) -> Optimization:
         """
         The default  value for "optimize" in the settings for input JSON.
         """
@@ -713,13 +885,6 @@ class VyperCompiler(CompilerAPI):
 
         return interfaces
 
-    def classify_ast(self, _node: ASTNode):
-        if _node.ast_type in _FUNCTION_AST_TYPES:
-            _node.classification = ASTClassification.FUNCTION
-
-        for child in _node.children:
-            self.classify_ast(child)
-
     def compile(
         self,
         contract_filepaths: Iterable[Path],
@@ -748,108 +913,19 @@ class VyperCompiler(CompilerAPI):
         import_remapping = self.get_import_remapping(project=pm)
 
         for vyper_version, version_settings in all_settings.items():
-            for settings_key, settings_set in version_settings.items():
-                sub_compiler = self.get_sub_compiler(vyper_version)
-                src_dict = sub_compiler.get_sources_dictionary(
-                    settings_set["outputSelection"],
-                    project=pm,
-                    use_absolute_paths=use_absolute_paths,
-                    import_map=import_map,
-                )
-
-                input_json: dict = {
-                    "language": "Vyper",
-                    "settings": settings_set,
-                    "sources": src_dict,
-                }
-
-                if interfaces := import_remapping:
-                    input_json["interfaces"] = interfaces
-
-                # Output compiler details.
-                keys = (
-                    "\n\t".join(
-                        sorted(
-                            [
-                                clean_path(Path(x))
-                                for x in settings_set.get("outputSelection", {}).keys()
-                            ]
-                        )
-                    )
-                    or "No input."
-                )
-                log_str = f"Compiling using Vyper compiler '{vyper_version}'.\nInput:\n\t{keys}"
-                logger.info(log_str)
-                comp_kwargs = sub_compiler.get_compile_kwargs(
-                    vyper_version, compiler_data, project=pm
-                )
-                try:
-                    result = vvm_compile_standard(input_json, **comp_kwargs)
-                except VyperError as err:
-                    raise VyperCompileError(err) from err
-
-                for source_id, output_items in result["contracts"].items():
-                    content = {
-                        i + 1: ln
-                        for i, ln in enumerate(
-                            (pm.path / source_id).read_text(encoding="utf8").splitlines()
-                        )
-                    }
-                    for name, output in output_items.items():
-                        # De-compress source map to get PC POS map.
-                        ast = ASTNode.model_validate(result["sources"][source_id]["ast"])
-                        self.classify_ast(ast)
-
-                        # Track function offsets.
-                        function_offsets = []
-                        for node in ast.children:
-                            lineno = node.lineno
-
-                            # NOTE: Constructor is handled elsewhere.
-                            if node.ast_type == "FunctionDef" and "__init__" not in content.get(
-                                lineno, ""
-                            ):
-                                function_offsets.append((node.lineno, node.end_lineno))
-
-                        evm = output["evm"]
-                        bytecode = evm["deployedBytecode"]
-                        opcodes = bytecode["opcodes"].split(" ")
-                        compressed_src_map = sub_compiler.parse_source_map(bytecode["sourceMap"])
-                        src_map = list(compressed_src_map.parse())[1:]
-                        pcmap = sub_compiler.get_pcmap(
-                            vyper_version, ast, src_map, opcodes, bytecode
-                        )
-
-                        # Find content-specified dev messages.
-                        dev_messages = {}
-                        for line_no, line in content.items():
-                            if match := re.search(DEV_MSG_PATTERN, line):
-                                dev_messages[line_no] = match.group(1).strip()
-
-                        source_id_path = Path(source_id)
-                        if source_id_path.is_absolute():
-                            final_source_id = f"{get_relative_path(Path(source_id), pm.path)}"
-                        else:
-                            final_source_id = source_id
-
-                        contract_type = ContractType.model_validate(
-                            {
-                                "ast": ast,
-                                "contractName": name,
-                                "sourceId": final_source_id,
-                                "deploymentBytecode": {"bytecode": evm["bytecode"]["object"]},
-                                "runtimeBytecode": {"bytecode": bytecode["object"]},
-                                "abi": output["abi"],
-                                "sourcemap": compressed_src_map,
-                                "pcmap": pcmap,
-                                "userdoc": output["userdoc"],
-                                "devdoc": output["devdoc"],
-                                "dev_messages": dev_messages,
-                            }
-                        )
-                        contract_types.append(contract_type)
-                        contract_versions[name] = (vyper_version, settings_key)
-                        yield contract_type
+            sub_compiler = self.get_sub_compiler(vyper_version)
+            for contract_type, settings_key in sub_compiler.compile(
+                vyper_version,
+                version_settings,
+                import_map,
+                import_remapping,
+                compiler_data,
+                project=pm,
+                use_absolute_paths=use_absolute_paths,
+            ):
+                contract_types.append(contract_type)
+                contract_versions[contract_type.name] = (vyper_version, settings_key)
+                yield contract_type
 
         # Output compiler data used.
         compilers_used: dict[Version, dict[str, Compiler]] = {}
@@ -1243,61 +1319,14 @@ class VyperCompiler(CompilerAPI):
         compiler_data = self._get_compiler_arguments(version_map, project=pm)
         settings = {}
         for version, data in compiler_data.items():
-            sub_compiler = self.get_sub_compiler(version)
             source_paths = list(version_map.get(version, []))
             if not source_paths:
                 continue
 
-            default_optimization = sub_compiler.get_default_optimization(version)
-            output_selection: dict[str, set[str]] = {}
-            optimizations_map = get_optimization_pragma_map(
-                source_paths, pm.path, default_optimization
+            sub_compiler = self.get_sub_compiler(version)
+            settings[version] = sub_compiler.get_settings(
+                version, source_paths, data, project=pm, use_absolute_paths=use_absolute_paths
             )
-            evm_version_map = get_evm_version_pragma_map(source_paths, pm.path)
-            default_evm_version = data.get(
-                "evm_version", data.get("evmVersion")
-            ) or EVM_VERSION_DEFAULT.get(version.base_version)
-            for source_path in source_paths:
-                source_id = str(get_relative_path(source_path.absolute(), pm.path))
-
-                if not (optimization := optimizations_map.get(source_id)):
-                    optimization = sub_compiler.get_default_optimization(version)
-
-                evm_version = evm_version_map.get(source_id, default_evm_version)
-                settings_key = f"{optimization}%{evm_version}".lower()
-                if settings_key not in output_selection:
-                    output_selection[settings_key] = {source_id}
-                else:
-                    output_selection[settings_key].add(source_id)
-
-            version_settings: dict[str, dict] = {}
-            for settings_key, selection in output_selection.items():
-                optimization, evm_version = settings_key.split("%")
-                if optimization == "true":
-                    optimization = True
-                elif optimization == "false":
-                    optimization = False
-
-                selection_dict = sub_compiler.get_selection_dictionary(
-                    selection, use_absolute_paths=use_absolute_paths
-                )
-                search_paths = [*getsitepackages()]
-                if pm.path == Path.cwd():
-                    search_paths.append(".")
-                else:
-                    search_paths.append(str(pm.path))
-                    # search_paths.append(str(pm.contracts_folder.parent))
-                # else: only seem to get absolute paths to work (for compiling deps alone).
-
-                version_settings[settings_key] = {
-                    "optimize": optimization,
-                    "outputSelection": selection_dict,
-                    "search_paths": search_paths,
-                }
-                if evm_version and evm_version not in ("none", "null"):
-                    version_settings[settings_key]["evmVersion"] = f"{evm_version}"
-
-            settings[version] = version_settings
 
         return settings
 
