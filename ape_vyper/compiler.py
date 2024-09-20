@@ -193,16 +193,23 @@ class Vyper04Compiler(BaseVyperCompiler):
         if not source_ids:
             return {}
 
-        use_absolute_paths = kwargs.get("use_absolute_path", False)
         import_map = kwargs.get("import_map", {})
-        if use_absolute_paths:
-            # Dependencies and testing.
-            src_dict = {
-                str(pm.path / src_id): {"content": (pm.path / src_id).read_text(encoding="utf8")}
-                for src_id in source_ids
-            }
-        else:
-            src_dict = {p: {"content": Path(p).read_text(encoding="utf8")} for p in source_ids}
+        src_dict = {}
+        use_absolute_paths = kwargs.get("use_absolute_paths", False)
+
+        for source_id in source_ids:
+            path = Path(source_id)
+            if path.is_absolute() and path.is_file():
+                content = path.read_text()
+            elif (pm.path / source_id).is_file():
+                content = (pm.path / source_id).read_text()
+            else:
+                continue
+
+            if use_absolute_paths:
+                source_id = str(pm.path / source_id)
+
+            src_dict[source_id] = {"content": content}
 
         for src in source_ids:
             if Path(src).is_absolute():
@@ -230,15 +237,17 @@ class Vyper04Compiler(BaseVyperCompiler):
 
                         src_dict[imp] = {"content": imp_path.read_text(encoding="utf8")}
 
-                    elif not abs_import:
+                    else:
                         # Is from a dependency.
                         specified = {d.name: d for d in pm.dependencies.specified}
+                        is_site_packages = "site-packages" in f"{imp_path}"
                         for parent in imp_path.parents:
                             if parent.name == "site-packages":
+                                is_site_packages = True
                                 src_id = f"{get_relative_path(imp_path, parent)}"
                                 break
 
-                            elif parent.name in specified:
+                            elif not is_site_packages and parent.name in specified:
                                 dependency = specified[parent.name]
                                 src_id = f"{imp_path}"
                                 imp_path = dependency.project.path / imp_path
@@ -247,7 +256,9 @@ class Vyper04Compiler(BaseVyperCompiler):
 
                         # Likely from a dependency. Exclude absolute prefixes so Vyper
                         # knows what to do.
-                        if imp_path.is_file() and not Path(src_id).is_absolute():
+                        if imp_path.is_file() and (
+                            not Path(src_id).is_absolute() or is_site_packages
+                        ):
                             src_dict[src_id] = {"content": imp_path.read_text(encoding="utf8")}
 
         return src_dict
@@ -311,7 +322,7 @@ class VyperCompiler(CompilerAPI):
         contract_filepaths: Iterable[Path],
         project: Optional[ProjectManager] = None,
         handled: Optional[set[str]] = None,
-        use_absolute_paths: Optional[None] = None,
+        use_absolute_paths: Optional[bool] = None,
     ):
         pm = project or self.local_project
 
@@ -451,7 +462,7 @@ class VyperCompiler(CompilerAPI):
                                 (source_path,),
                                 project=imported_project,
                                 handled=handled,
-                                use_absolute_paths=use_absolute_paths,
+                                use_absolute_paths=True,  # Must use absolute for site-packages.
                             )
                             for sub_import_ls in sub_imports.values():
                                 import_map[source_id].extend(sub_import_ls)
@@ -525,7 +536,7 @@ class VyperCompiler(CompilerAPI):
                         (full_path,),
                         project=pm,
                         handled=handled,
-                        use_absolute_paths=use_absolute_paths,
+                        use_absolute_paths="site-packages" in str(full_path) or use_absolute_paths,
                     )
 
                     for sub_import_ls in sub_imports.values():
