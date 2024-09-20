@@ -120,6 +120,10 @@ class BaseVyperCompiler(ManagerAccessMixin):
     ):
         return _get_pcmap(bytecode)
 
+    def parse_source_map(self, raw_source_map: Any) -> SourceMap:
+        # All versions < 0.4 use this one
+        return SourceMap(root=raw_source_map)
+
     def get_default_optimization(self, vyper_version: Version) -> Optimization:
         return True
 
@@ -216,8 +220,9 @@ class Vyper04Compiler(BaseVyperCompiler):
                         continue
 
                     imp_path = Path(imp)
+                    abs_import = Path(imp).is_absolute()
 
-                    if (pm.path / imp).is_file():
+                    if not abs_import and (pm.path / imp).is_file():
                         # Is a local file.
                         imp_path = pm.path / imp
                         if not imp_path.is_file():
@@ -225,7 +230,7 @@ class Vyper04Compiler(BaseVyperCompiler):
 
                         src_dict[imp] = {"content": imp_path.read_text(encoding="utf8")}
 
-                    else:
+                    elif not abs_import:
                         # Is from a dependency.
                         specified = {d.name: d for d in pm.dependencies.specified}
                         for parent in imp_path.parents:
@@ -242,7 +247,7 @@ class Vyper04Compiler(BaseVyperCompiler):
 
                         # Likely from a dependency. Exclude absolute prefixes so Vyper
                         # knows what to do.
-                        if imp_path.is_file():
+                        if imp_path.is_file() and not Path(src_id).is_absolute():
                             src_dict[src_id] = {"content": imp_path.read_text(encoding="utf8")}
 
         return src_dict
@@ -254,6 +259,9 @@ class Vyper04Compiler(BaseVyperCompiler):
 
     def get_default_optimization(self, vyper_version: Version) -> Optimization:
         return "gas"
+
+    def parse_source_map(self, raw_source_map: dict) -> SourceMap:
+        return SourceMap(root=raw_source_map["pc_pos_map_compressed"])
 
 
 class VyperCompiler(CompilerAPI):
@@ -303,12 +311,14 @@ class VyperCompiler(CompilerAPI):
         contract_filepaths: Iterable[Path],
         project: Optional[ProjectManager] = None,
         handled: Optional[set[str]] = None,
+        use_absolute_paths: Optional[None] = None,
     ):
         pm = project or self.local_project
 
-        # When compiling projects outside the cwd, we must
-        # use absolute paths.
-        use_absolute_paths = pm.path != Path.cwd()
+        if use_absolute_paths is None:
+            # When compiling projects outside the cwd, we must
+            # use absolute paths.
+            use_absolute_paths = pm.path != Path.cwd()
 
         import_map: defaultdict = defaultdict(list)
         handled = handled or set()
@@ -441,6 +451,7 @@ class VyperCompiler(CompilerAPI):
                                 (source_path,),
                                 project=imported_project,
                                 handled=handled,
+                                use_absolute_paths=use_absolute_paths,
                             )
                             for sub_import_ls in sub_imports.values():
                                 import_map[source_id].extend(sub_import_ls)
@@ -491,6 +502,7 @@ class VyperCompiler(CompilerAPI):
                                     (import_path,),
                                     project=dep_project,
                                     handled=handled,
+                                    use_absolute_paths=use_absolute_paths,
                                 )
                                 for sub_import_ls in sub_imports.values():
                                     import_map[source_id].extend(sub_import_ls)
@@ -509,7 +521,13 @@ class VyperCompiler(CompilerAPI):
                     full_path = local_path.parent / f"{local_path.stem}{ext}"
 
                     # Also include imports of imports.
-                    sub_imports = self._get_imports((full_path,), project=pm, handled=handled)
+                    sub_imports = self._get_imports(
+                        (full_path,),
+                        project=pm,
+                        handled=handled,
+                        use_absolute_paths=use_absolute_paths,
+                    )
+
                     for sub_import_ls in sub_imports.values():
                         import_map[source_id].extend(sub_import_ls)
 
@@ -734,10 +752,8 @@ class VyperCompiler(CompilerAPI):
                 )
                 log_str = f"Compiling using Vyper compiler '{vyper_version}'.\nInput:\n\t{keys}"
                 logger.info(log_str)
-
-                vyper_binary = compiler_data[vyper_version]["vyper_binary"]
                 comp_kwargs = sub_compiler.get_compile_kwargs(
-                    vyper_binary, compiler_data, project=pm
+                    vyper_version, compiler_data, project=pm
                 )
                 try:
                     result = vvm_compile_standard(input_json, **comp_kwargs)
@@ -770,17 +786,7 @@ class VyperCompiler(CompilerAPI):
                         evm = output["evm"]
                         bytecode = evm["deployedBytecode"]
                         opcodes = bytecode["opcodes"].split(" ")
-
-                        src_map_raw = bytecode["sourceMap"]
-                        if isinstance(src_map_raw, str):
-                            # <0.4 range.
-                            compressed_src_map = SourceMap(root=src_map_raw)
-                        else:
-                            # >=0.4 range.
-                            compressed_src_map = SourceMap(
-                                root=src_map_raw["pc_pos_map_compressed"]
-                            )
-
+                        compressed_src_map = sub_compiler.parse_source_map(bytecode["sourceMap"])
                         src_map = list(compressed_src_map.parse())[1:]
                         pcmap = sub_compiler.get_pcmap(
                             vyper_version, ast, src_map, opcodes, bytecode
