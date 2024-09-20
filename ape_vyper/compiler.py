@@ -18,7 +18,7 @@ from ape.exceptions import ContractLogicError
 from ape.logging import LogLevel, logger
 from ape.managers.project import LocalProject, ProjectManager
 from ape.types import ContractSourceCoverage, ContractType, SourceTraceback
-from ape.utils import cached_property, get_relative_path
+from ape.utils import ManagerAccessMixin, cached_property, get_relative_path
 from ape.utils._github import _GithubClient
 from ape.utils.os import clean_path, get_full_extension
 from eth_pydantic_types import HexBytes
@@ -68,10 +68,227 @@ _EMPTY_REVERT_OFFSET = 18
 _NON_PAYABLE_STR = f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}"
 
 
+class BaseVyperCompiler(ManagerAccessMixin):
+    """
+    Shared logic between all versions of Vyper.
+    """
+
+    def get_sources_dictionary(
+        self, source_ids: Iterable[str], project: Optional[ProjectManager] = None, **kwargs
+    ) -> dict[str, dict]:
+        """
+        Get the sources dictionary for Vyper's input JSON. All Vyper versions < 0.4
+        **MUST NOT** include interfaces in the sources dictionary.
+        """
+        pm = project or self.local_project
+        return {
+            s: {"content": p.read_text(encoding="utf8")}
+            for s, p in {src_id: pm.path / src_id for src_id in source_ids}.items()
+            if p.parent != pm.path / "interfaces"
+        }
+
+    def get_selection_dictionary(
+        self,
+        selection: Iterable[str],
+        project: Optional[ProjectManager] = None,
+        **kwargs,
+    ) -> dict:
+        pm = project or self.local_project
+        return {s: ["*"] for s in selection if (pm.path / s).is_file() if "interfaces" not in s}
+
+    def get_compile_kwargs(
+        self, vyper_version: Version, compiler_data: dict, project: Optional[ProjectManager] = None
+    ) -> dict:
+        pm = project or self.local_project
+        comp_kwargs = self._get_base_compile_kwargs(vyper_version, compiler_data)
+        # `base_path` is required for pre-0.4 versions or else imports won't resolve.
+        comp_kwargs["base_path"] = pm.path
+        return comp_kwargs
+
+    def _get_base_compile_kwargs(self, vyper_version: Version, compiler_data: dict):
+        vyper_binary = compiler_data[vyper_version]["vyper_binary"]
+        comp_kwargs = {"vyper_version": vyper_version, "vyper_binary": vyper_binary}
+        return comp_kwargs
+
+    def get_pcmap(
+        self,
+        vyper_version: Version,
+        ast: Any,
+        src_map: list,
+        opcodes: list[str],
+        bytecode: dict,
+    ):
+        return _get_pcmap(bytecode)
+
+    def get_default_optimization(self, vyper_version: Version) -> Optimization:
+        return True
+
+
+class Vyper02Compiler(BaseVyperCompiler):
+    """
+    Compiler for Vyper>=0.2.7,<0.3.
+    """
+
+    DEFAULT_OPTIMIZATION = True
+
+    def get_pcmap(
+        self,
+        vyper_version: Version,
+        ast: Any,
+        src_map: list,
+        opcodes: list[str],
+        bytecode: dict,
+    ):
+        return _get_legacy_pcmap(ast, src_map, opcodes)
+
+
+class Vyper03Compiler(BaseVyperCompiler):
+    """
+    Compiler for Vyper>=0.3.3,<0.4.
+    """
+
+    def get_pcmap(
+        self, vyper_version: Version, ast: Any, src_map: list, opcodes: list[str], bytecode: dict
+    ):
+        return (
+            _get_legacy_pcmap(ast, src_map, opcodes)
+            if vyper_version <= Version("0.3.7")
+            else _get_pcmap(bytecode)
+        )
+
+    def get_default_optimization(self, vyper_version: Version) -> Optimization:
+        return True if vyper_version < Version("0.3.10") else "gas"
+
+    def get_selection_dictionary(
+        self, selection: Iterable[str], project: Optional[ProjectManager] = None, **kwargs
+    ) -> dict:
+        pm = project or self.local_project
+        use_absolute_paths = kwargs.get("use_absolute_paths", False)
+
+        def _to_src_id(s):
+            return str(pm.path / s) if use_absolute_paths else s
+
+        return {
+            _to_src_id(s): ["*"]
+            for s in selection
+            if ((pm.path / s).is_file() if use_absolute_paths else Path(s).is_file())
+            and f"interfaces{os.path.sep}" not in s
+            and get_full_extension(pm.path / s) != FileType.INTERFACE
+        }
+
+
+class Vyper04Compiler(BaseVyperCompiler):
+    """
+    Compiler for Vyper>=0.4.0.
+    """
+
+    def get_sources_dictionary(
+        self, source_ids: Iterable[str], project: Optional[ProjectManager] = None, **kwargs
+    ) -> dict[str, dict]:
+        pm = project or self.local_project
+        if not source_ids:
+            return {}
+
+        use_absolute_paths = kwargs.get("use_absolute_path", False)
+        import_map = kwargs.get("import_map", {})
+        if use_absolute_paths:
+            # Dependencies and testing.
+            src_dict = {
+                str(pm.path / src_id): {"content": (pm.path / src_id).read_text(encoding="utf8")}
+                for src_id in source_ids
+            }
+        else:
+            src_dict = {p: {"content": Path(p).read_text(encoding="utf8")} for p in source_ids}
+
+        for src in source_ids:
+            if Path(src).is_absolute():
+                src_id = (
+                    str(Path(src))
+                    if use_absolute_paths
+                    else f"{get_relative_path(Path(src), pm.path)}"
+                )
+            else:
+                src_id = src
+
+            if imports := import_map.get(src_id):
+                for imp in imports:
+                    if imp in src_dict:
+                        continue
+
+                    imp_path = Path(imp)
+
+                    if (pm.path / imp).is_file():
+                        # Is a local file.
+                        imp_path = pm.path / imp
+                        if not imp_path.is_file():
+                            continue
+
+                        src_dict[imp] = {"content": imp_path.read_text(encoding="utf8")}
+
+                    else:
+                        # Is from a dependency.
+                        specified = {d.name: d for d in pm.dependencies.specified}
+                        for parent in imp_path.parents:
+                            if parent.name == "site-packages":
+                                src_id = f"{get_relative_path(imp_path, parent)}"
+                                break
+
+                            elif parent.name in specified:
+                                dependency = specified[parent.name]
+                                src_id = f"{imp_path}"
+                                imp_path = dependency.project.path / imp_path
+                                if imp_path.is_file():
+                                    break
+
+                        # Likely from a dependency. Exclude absolute prefixes so Vyper
+                        # knows what to do.
+                        if imp_path.is_file():
+                            src_dict[src_id] = {"content": imp_path.read_text(encoding="utf8")}
+
+        return src_dict
+
+    def get_compile_kwargs(
+        self, vyper_version: Version, compiler_data: dict, project: Optional[ProjectManager] = None
+    ) -> dict:
+        return self._get_base_compile_kwargs(vyper_version, compiler_data)
+
+    def get_default_optimization(self, vyper_version: Version) -> Optimization:
+        return "gas"
+
+
 class VyperCompiler(CompilerAPI):
     @property
     def name(self) -> str:
         return "vyper"
+
+    @cached_property
+    def vyper_02(self) -> Vyper02Compiler:
+        """
+        Sub-compiler for Vyper 0.2.7 contracts.
+        """
+        return Vyper02Compiler()
+
+    @cached_property
+    def vyper_03(self) -> Vyper03Compiler:
+        """
+        Sub-compiler for Vyper>=0.3.3,<0.4 contracts.
+        """
+        return Vyper03Compiler()
+
+    @cached_property
+    def vyper_04(self) -> Vyper04Compiler:
+        """
+        Sub-compiler for Vyper>=0.4 contracts.
+        """
+        return Vyper04Compiler()
+
+    def get_sub_compiler(self, version: Version) -> BaseVyperCompiler:
+        if version < Version("0.3"):
+            return self.vyper_02
+        elif version < Version("0.4"):
+            return self.vyper_03
+
+        return self.vyper_04
 
     def get_imports(
         self,
@@ -486,78 +703,13 @@ class VyperCompiler(CompilerAPI):
 
         for vyper_version, version_settings in all_settings.items():
             for settings_key, settings_set in version_settings.items():
-                if vyper_version >= Version("0.4.0rc1"):
-                    sources = settings_set.get("outputSelection", {})
-                    if not sources:
-                        continue
-
-                    if use_absolute_paths:
-                        src_dict = {
-                            str(pm.path / p): {"content": (pm.path / p).read_text(encoding="utf8")}
-                            for p in sources
-                        }
-                    else:
-                        src_dict = {
-                            p: {"content": Path(p).read_text(encoding="utf8")} for p in sources
-                        }
-
-                    for src in sources:
-                        if Path(src).is_absolute():
-                            src_id = (
-                                str(Path(src))
-                                if use_absolute_paths
-                                else f"{get_relative_path(Path(src), pm.path)}"
-                            )
-                        else:
-                            src_id = src
-
-                        if imports := import_map.get(src_id):
-                            for imp in imports:
-                                if imp in src_dict:
-                                    continue
-
-                                imp_path = Path(imp)
-
-                                if (pm.path / imp).is_file():
-                                    # Is a local file.
-                                    imp_path = pm.path / imp
-                                    if not imp_path.is_file():
-                                        continue
-
-                                    src_dict[imp] = {"content": imp_path.read_text(encoding="utf8")}
-
-                                else:
-                                    # Is from a dependency.
-                                    specified = {d.name: d for d in pm.dependencies.specified}
-                                    for parent in imp_path.parents:
-                                        if parent.name == "site-packages":
-                                            src_id = f"{get_relative_path(imp_path, parent)}"
-                                            break
-
-                                        elif parent.name in specified:
-                                            dependency = specified[parent.name]
-                                            src_id = f"{imp_path}"
-                                            imp_path = dependency.project.path / imp_path
-                                            if imp_path.is_file():
-                                                break
-
-                                    # Likely from a dependency. Exclude absolute prefixes so Vyper
-                                    # knows what to do.
-                                    if imp_path.is_file():
-                                        src_dict[src_id] = {
-                                            "content": imp_path.read_text(encoding="utf8")
-                                        }
-
-                else:
-                    # NOTE: Pre vyper 0.4.0, interfaces CANNOT be in the source dict,
-                    # but post 0.4.0, they MUST be.
-                    src_dict = {
-                        s: {"content": p.read_text(encoding="utf8")}
-                        for s, p in {
-                            p: pm.path / p for p in settings_set["outputSelection"]
-                        }.items()
-                        if p.parent != pm.path / "interfaces"
-                    }
+                sub_compiler = self.get_sub_compiler(vyper_version)
+                src_dict = sub_compiler.get_sources_dictionary(
+                    settings_set["outputSelection"],
+                    project=pm,
+                    use_absolute_paths=use_absolute_paths,
+                    import_map=import_map,
+                )
 
                 input_json: dict = {
                     "language": "Vyper",
@@ -584,12 +736,9 @@ class VyperCompiler(CompilerAPI):
                 logger.info(log_str)
 
                 vyper_binary = compiler_data[vyper_version]["vyper_binary"]
-                comp_kwargs = {"vyper_version": vyper_version, "vyper_binary": vyper_binary}
-
-                # `base_path` is required for pre-0.4 versions or else imports won't resolve.
-                if vyper_version < Version("0.4.0"):
-                    comp_kwargs["base_path"] = pm.path
-
+                comp_kwargs = sub_compiler.get_compile_kwargs(
+                    vyper_binary, compiler_data, project=pm
+                )
                 try:
                     result = vvm_compile_standard(input_json, **comp_kwargs)
                 except VyperError as err:
@@ -633,11 +782,8 @@ class VyperCompiler(CompilerAPI):
                             )
 
                         src_map = list(compressed_src_map.parse())[1:]
-
-                        pcmap = (
-                            _get_legacy_pcmap(ast, src_map, opcodes)
-                            if vyper_version <= Version("0.3.7")
-                            else _get_pcmap(bytecode)
+                        pcmap = sub_compiler.get_pcmap(
+                            vyper_version, ast, src_map, opcodes, bytecode
                         )
 
                         # Find content-specified dev messages.
@@ -1058,16 +1204,17 @@ class VyperCompiler(CompilerAPI):
 
         # When compiling projects outside the cwd, use absolute paths for ease.
         # Also, struggled to get it work any other way.
-        use_absolute_path = pm.path != Path.cwd()
+        use_absolute_paths = pm.path != Path.cwd()
 
         compiler_data = self._get_compiler_arguments(version_map, project=pm)
         settings = {}
         for version, data in compiler_data.items():
+            sub_compiler = self.get_sub_compiler(version)
             source_paths = list(version_map.get(version, []))
             if not source_paths:
                 continue
 
-            default_optimization: Optimization = True if version < Version("0.3.10") else "gas"
+            default_optimization = sub_compiler.get_default_optimization(version)
             output_selection: dict[str, set[str]] = {}
             optimizations_map = get_optimization_pragma_map(
                 source_paths, pm.path, default_optimization
@@ -1080,7 +1227,7 @@ class VyperCompiler(CompilerAPI):
                 source_id = str(get_relative_path(source_path.absolute(), pm.path))
 
                 if not (optimization := optimizations_map.get(source_id)):
-                    optimization = True if version < Version("0.3.10") else "gas"
+                    optimization = sub_compiler.get_default_optimization(version)
 
                 evm_version = evm_version_map.get(source_id, default_evm_version)
                 settings_key = f"{optimization}%{evm_version}".lower()
@@ -1097,26 +1244,9 @@ class VyperCompiler(CompilerAPI):
                 elif optimization == "false":
                     optimization = False
 
-                if version >= Version("0.4.0"):
-
-                    def _to_src_id(s):
-                        return str(pm.path / s) if use_absolute_path else s
-
-                    selection_dict = {
-                        _to_src_id(s): ["*"]
-                        for s in selection
-                        if ((pm.path / s).is_file() if use_absolute_path else Path(s).is_file())
-                        and f"interfaces{os.path.sep}" not in s
-                        and get_full_extension(pm.path / s) != FileType.INTERFACE
-                    }
-                else:
-                    selection_dict = {
-                        s: ["*"]
-                        for s in selection
-                        if (pm.path / s).is_file()
-                        if "interfaces" not in s
-                    }
-
+                selection_dict = sub_compiler.get_selection_dictionary(
+                    selection, use_absolute_paths=use_absolute_paths
+                )
                 search_paths = [*getsitepackages()]
                 if pm.path == Path.cwd():
                     search_paths.append(".")
