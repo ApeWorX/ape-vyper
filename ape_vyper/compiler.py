@@ -5,7 +5,6 @@ import time
 from base64 import b64encode
 from collections import defaultdict
 from collections.abc import Iterable, Iterator
-from enum import Enum
 from fnmatch import fnmatch
 from importlib import import_module
 from pathlib import Path
@@ -15,7 +14,7 @@ from typing import Any, Optional, Union, cast
 import vvm  # type: ignore
 from ape.api import PluginConfig, TraceAPI
 from ape.api.compiler import CompilerAPI
-from ape.exceptions import ContractLogicError, ProjectError
+from ape.exceptions import ContractLogicError
 from ape.logging import LogLevel, logger
 from ape.managers.project import LocalProject, ProjectManager
 from ape.types import ContractSourceCoverage, ContractType, SourceTraceback
@@ -31,12 +30,21 @@ from ethpm_types.source import Compiler, Content, ContractSource, Function, Sour
 from evm_trace import TraceFrame
 from evm_trace.enums import CALL_OPCODES
 from evm_trace.geth import create_call_node_data
-from packaging.specifiers import InvalidSpecifier, SpecifierSet
+from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 from pydantic import field_serializer, field_validator, model_validator
 from vvm import compile_standard as vvm_compile_standard
 from vvm.exceptions import VyperError  # type: ignore
 
+from ape_vyper._utils import (
+    FileType,
+    Optimization,
+    get_evm_version_pragma_map,
+    get_optimization_pragma_map,
+    get_version_pragma_spec,
+    install_vyper,
+    lookup_source_from_site_packages,
+)
 from ape_vyper.ast import source_to_abi
 from ape_vyper.exceptions import (
     RUNTIME_ERROR_MAP,
@@ -58,7 +66,6 @@ _FUNCTION_DEF = "FunctionDef"
 _FUNCTION_AST_TYPES = (_FUNCTION_DEF, "Name", "arguments")
 _EMPTY_REVERT_OFFSET = 18
 _NON_PAYABLE_STR = f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}"
-Optimization = Union[str, bool]
 
 EVM_VERSION_DEFAULT = {
     "0.2.15": "berlin",
@@ -75,14 +82,6 @@ EVM_VERSION_DEFAULT = {
     "0.3.10": "shanghai",
     "0.4.0": "shanghai",
 }
-
-
-class FileType(str, Enum):
-    SOURCE = ".vy"
-    INTERFACE = ".vyi"
-
-    def __str__(self) -> str:
-        return self.value
 
 
 class Remapping(PluginConfig):
@@ -153,195 +152,6 @@ class VyperConfig(PluginConfig):
             return str(version)
 
         return None
-
-
-def _install_vyper(version: Version):
-    try:
-        vvm.install_vyper(version, show_progress=True)
-    except Exception as err:
-        raise VyperInstallError(
-            f"Unable to install Vyper version: '{version}'.\nReason: {err}"
-        ) from err
-
-
-def get_version_pragma_spec(source: Union[str, Path]) -> Optional[SpecifierSet]:
-    """
-    Extracts version pragma information from Vyper source code.
-
-    Args:
-        source (str): Vyper source code
-
-    Returns:
-        ``packaging.specifiers.SpecifierSet``, or None if no valid pragma is found.
-    """
-    _version_pragma_patterns: tuple[str, str] = (
-        r"(?:\n|^)\s*#\s*@version\s*([^\n]*)",
-        r"(?:\n|^)\s*#\s*pragma\s+version\s*([^\n]*)",
-    )
-
-    source_str = source if isinstance(source, str) else source.read_text(encoding="utf8")
-    for pattern in _version_pragma_patterns:
-        for match in re.finditer(pattern, source_str):
-            raw_pragma = match.groups()[0]
-            pragma_str = " ".join(raw_pragma.split()).replace("^", "~=")
-            if pragma_str and pragma_str[0].isnumeric():
-                pragma_str = f"=={pragma_str}"
-
-            try:
-                return SpecifierSet(pragma_str)
-            except InvalidSpecifier:
-                logger.warning(f"Invalid pragma spec: '{raw_pragma}'. Trying latest.")
-                return None
-    return None
-
-
-def get_optimization_pragma(source: Union[str, Path]) -> Optional[str]:
-    """
-    Extracts optimization pragma information from Vyper source code.
-
-    Args:
-        source (Union[str, Path]): Vyper source code
-
-    Returns:
-        ``str``, or None if no valid pragma is found.
-    """
-    if isinstance(source, str):
-        source_str = source
-    elif not source.is_file():
-        return None
-    else:
-        source_str = source.read_text(encoding="utf8")
-
-    if pragma_match := next(
-        re.finditer(r"(?:\n|^)\s*#pragma\s+optimize\s+([^\n]*)", source_str), None
-    ):
-        return pragma_match.groups()[0]
-
-    return None
-
-
-def get_evmversion_pragma(source: Union[str, Path]) -> Optional[str]:
-    """
-    Extracts evm version pragma information from Vyper source code.
-
-    Args:
-        source (Union[str, Path]): Vyper source code
-
-    Returns:
-        ``str``, or None if no valid pragma is found.
-    """
-    if isinstance(source, str):
-        source_str = source
-    elif not source.is_file():
-        return None
-    else:
-        source_str = source.read_text(encoding="utf8")
-
-    if pragma_match := next(
-        re.finditer(r"(?:\n|^)\s*#pragma\s+evm-version\s+([^\n]*)", source_str), None
-    ):
-        return pragma_match.groups()[0]
-
-    return None
-
-
-def get_optimization_pragma_map(
-    contract_filepaths: Iterable[Path],
-    base_path: Path,
-    default: Optimization,
-) -> dict[str, Optimization]:
-    pragma_map: dict[str, Optimization] = {}
-
-    for path in contract_filepaths:
-        res = get_optimization_pragma(path)
-        pragma = default if res is None else res
-        source_id = str(get_relative_path(path.absolute(), base_path.absolute()))
-        pragma_map[source_id] = pragma
-
-    return pragma_map
-
-
-def get_evm_version_pragma_map(
-    contract_filepaths: Iterable[Path], base_path: Path
-) -> dict[str, str]:
-    pragmas: dict[str, str] = {}
-    for path in contract_filepaths:
-        pragma = get_evmversion_pragma(path)
-        if not pragma:
-            continue
-
-        source_id = str(get_relative_path(path.absolute(), base_path.absolute()))
-        pragmas[source_id] = pragma
-
-    return pragmas
-
-
-def _lookup_source_from_site_packages(
-    dependency_name: str,
-    filestem: str,
-    config_override: Optional[dict] = None,
-) -> Optional[tuple[Path, ProjectManager]]:
-    # Attempt looking up dependency from site-packages.
-    config_override = config_override or {}
-    if "contracts_folder" not in config_override:
-        # Default to looking through the whole release for
-        # contracts. Most often, Python-based dependencies publish
-        # only their contracts this way, and we are only looking
-        # for sources so accurate project configuration is not required.
-        config_override["contracts_folder"] = "."
-
-    try:
-        imported_project = ProjectManager.from_python_library(
-            dependency_name,
-            config_override=config_override,
-        )
-    except ProjectError:
-        # Still attempt to let Vyper handle this during compilation.
-        return None
-
-    else:
-        extensions = [*[f"{t}" for t in FileType], ".json"]
-
-        def seek() -> Optional[Path]:
-            for ext in extensions:
-                try_source_id = f"{filestem}{ext}"
-                if source_path := imported_project.sources.lookup(try_source_id):
-                    return source_path
-
-            return None
-
-        if res := seek():
-            return res, imported_project
-
-        # Still not found. Try again without contracts_folder set.
-        # This will attempt to use Ape's contracts_folder detection system.
-        # However, I am not sure this situation occurs, as Vyper-python
-        # based dependencies are new at the time of writing this.
-        new_override = config_override or {}
-        if "contracts_folder" in new_override:
-            del new_override["contracts_folder"]
-
-        imported_project.reconfigure(**new_override)
-        if res := seek():
-            return res, imported_project
-
-        # Still not found. Log a very helpful message.
-        existing_filestems = [f.stem for f in imported_project.path.iterdir()]
-        fs_str = ", ".join(existing_filestems)
-        contracts_folder = imported_project.contracts_folder
-        path = imported_project.path
-
-        # This will log the calculated / user-set contracts_folder.
-        contracts_path = f"{get_relative_path(contracts_folder, path)}"
-
-        logger.error(
-            f"Source for stem '{filestem}' not found in "
-            f"'{imported_project.path}'."
-            f"Contracts folder: {contracts_path}, "
-            f"Existing file(s): {fs_str}"
-        )
-
-    return None
 
 
 class VyperCompiler(CompilerAPI):
@@ -492,7 +302,7 @@ class VyperCompiler(CompilerAPI):
                     found = False
                     if dependency_name:
                         # Attempt looking up dependency from site-packages.
-                        if res := _lookup_source_from_site_packages(dependency_name, filestem):
+                        if res := lookup_source_from_site_packages(dependency_name, filestem):
                             source_path, imported_project = res
                             import_source_id = str(source_path)
                             # Also include imports of imports.
@@ -834,11 +644,6 @@ class VyperCompiler(CompilerAPI):
                         }.items()
                         if p.parent != pm.path / "interfaces"
                     }
-
-                # if pm.name != "snekmate":
-                #     srcid = "snekmate/auth/ownable.vy"
-                #     depfile = pm.dependencies["snekmate"]["0.1.0"].sources[srcid].content
-                #     src_dict[srcid] = {"content": str(depfile)}
 
                 input_json: dict = {
                     "language": "Vyper",
@@ -1268,7 +1073,7 @@ class VyperCompiler(CompilerAPI):
                     if version == self.package_version:
                         break
                     else:
-                        _install_vyper(version)
+                        install_vyper(version)
                         did_install = True
                         break
 
@@ -1290,7 +1095,7 @@ class VyperCompiler(CompilerAPI):
         if not self.installed_versions:
             # If we have no installed versions by this point, we need to install one.
             # This happens when there are no pragmas in any sources and no vyper installations.
-            _install_vyper(max(self.available_versions))
+            install_vyper(max(self.available_versions))
 
         # Handle no-pragma sources
         if source_paths_without_pragma:
@@ -1402,7 +1207,8 @@ class VyperCompiler(CompilerAPI):
                 if pm.path == Path.cwd():
                     search_paths.append(".")
                 else:
-                    search_paths.append(str(pm.contracts_folder.parent))
+                    search_paths.append(str(pm.path))
+                    # search_paths.append(str(pm.contracts_folder.parent))
                 # else: only seem to get absolute paths to work (for compiling deps alone).
 
                 version_settings[settings_key] = {
