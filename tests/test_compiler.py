@@ -12,12 +12,12 @@ from ethpm_types import ContractType
 from packaging.version import Version
 from vvm.exceptions import VyperError  # type: ignore
 
-from ape_vyper.compiler import RuntimeErrorType
 from ape_vyper.exceptions import (
     FallbackNotDefinedError,
     IntegerOverflowError,
     InvalidCalldataOrValueError,
     NonPayableError,
+    RuntimeErrorType,
     VyperCompileError,
     VyperInstallError,
 )
