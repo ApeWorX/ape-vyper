@@ -18,7 +18,7 @@ from ape.exceptions import ContractLogicError
 from ape.logging import LogLevel, logger
 from ape.managers.project import LocalProject, ProjectManager
 from ape.types import ContractSourceCoverage, ContractType, SourceTraceback
-from ape.utils import cached_property, get_relative_path, pragma_str_to_specifier_set
+from ape.utils import cached_property, get_relative_path
 from ape.utils._github import _GithubClient
 from ape.utils.os import clean_path, get_full_extension
 from eth_pydantic_types import HexBytes
@@ -32,11 +32,11 @@ from evm_trace.enums import CALL_OPCODES
 from evm_trace.geth import create_call_node_data
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
-from pydantic import field_serializer, field_validator, model_validator
 from vvm import compile_standard as vvm_compile_standard
 from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper._utils import (
+    EVM_VERSION_DEFAULT,
     FileType,
     Optimization,
     get_evm_version_pragma_map,
@@ -66,92 +66,6 @@ _FUNCTION_DEF = "FunctionDef"
 _FUNCTION_AST_TYPES = (_FUNCTION_DEF, "Name", "arguments")
 _EMPTY_REVERT_OFFSET = 18
 _NON_PAYABLE_STR = f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}"
-
-EVM_VERSION_DEFAULT = {
-    "0.2.15": "berlin",
-    "0.2.16": "berlin",
-    "0.3.0": "berlin",
-    "0.3.1": "berlin",
-    "0.3.2": "berlin",
-    "0.3.3": "berlin",
-    "0.3.4": "berlin",
-    "0.3.6": "berlin",
-    "0.3.7": "paris",
-    "0.3.8": "shanghai",
-    "0.3.9": "shanghai",
-    "0.3.10": "shanghai",
-    "0.4.0": "shanghai",
-}
-
-
-class Remapping(PluginConfig):
-    key: str
-    dependency_name: str
-    dependency_version: Optional[None] = None
-
-    @model_validator(mode="before")
-    @classmethod
-    def validate_str(cls, value):
-        if isinstance(value, str):
-            parts = value.split("=")
-            key = parts[0].strip()
-            value = parts[1].strip()
-            if "@" in value:
-                value_parts = value.split("@")
-                dep_name = value_parts[0].strip()
-                dep_version = value_parts[1].strip()
-            else:
-                dep_name = value
-                dep_version = None
-
-            return {"key": key, "dependency_name": dep_name, "dependency_version": dep_version}
-
-        return value
-
-    def __str__(self) -> str:
-        value = self.dependency_name
-        if _version := self.dependency_version:
-            value = f"{value}@{_version}"
-
-        return f"{self.key}={value}"
-
-
-class VyperConfig(PluginConfig):
-    version: Optional[SpecifierSet] = None
-    """
-    Configure a version to use for all files,
-    regardless of pragma.
-    """
-
-    evm_version: Optional[str] = None
-    """
-    The evm-version or hard-fork name.
-    """
-
-    import_remapping: list[Remapping] = []
-    """
-    Configuration of an import name mapped to a dependency listing.
-    To use a specific version of a dependency, specify using ``@`` symbol.
-
-    Usage example::
-
-        vyper:
-          import_remapping:
-            - "dep_a=dependency_a@0.1.1"
-            - "dep_b=dependency"  # Uses only version. Will raise if more than 1.
-
-    """
-
-    @field_validator("version", mode="before")
-    def validate_version(cls, value):
-        return pragma_str_to_specifier_set(value) if isinstance(value, str) else value
-
-    @field_serializer("version")
-    def serialize_version(self, value: Optional[SpecifierSet], _info) -> Optional[str]:
-        if version := value:
-            return str(version)
-
-        return None
 
 
 class VyperCompiler(CompilerAPI):

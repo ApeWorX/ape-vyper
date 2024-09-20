@@ -1,6 +1,7 @@
 from ape import plugins
 
-from .compiler import FileType, VyperCompiler, VyperConfig
+from .compiler import FileType, VyperCompiler
+from .config import VyperConfig
 
 
 @plugins.register(plugins.Config)

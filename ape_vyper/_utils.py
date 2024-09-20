@@ -15,6 +15,21 @@ from packaging.version import Version
 from ape_vyper.exceptions import VyperInstallError
 
 Optimization = Union[str, bool]
+EVM_VERSION_DEFAULT = {
+    "0.2.15": "berlin",
+    "0.2.16": "berlin",
+    "0.3.0": "berlin",
+    "0.3.1": "berlin",
+    "0.3.2": "berlin",
+    "0.3.3": "berlin",
+    "0.3.4": "berlin",
+    "0.3.6": "berlin",
+    "0.3.7": "paris",
+    "0.3.8": "shanghai",
+    "0.3.9": "shanghai",
+    "0.3.10": "shanghai",
+    "0.4.0": "shanghai",
+}
 
 
 class FileType(str, Enum):
