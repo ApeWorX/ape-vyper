@@ -230,7 +230,7 @@ def lookup_source_from_site_packages(
 
     logger.error(
         f"Source for stem '{filestem}' not found in "
-        f"'{imported_project.path}'."
+        f"'{imported_project.path}'. "
         f"Contracts folder: {contracts_path}, "
         f"Existing file(s): {fs_str}"
     )

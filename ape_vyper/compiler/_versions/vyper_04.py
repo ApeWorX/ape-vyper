@@ -57,7 +57,7 @@ class Vyper04Compiler(BaseVyperCompiler):
             else:
                 src_id = src
 
-            if imports := import_map.get(src_id):
+            if imports := import_map.get(Path(src)):
                 for imp in imports:
                     if imp in src_dict:
                         continue

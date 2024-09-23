@@ -2,7 +2,6 @@ import os
 import shutil
 import time
 from base64 import b64encode
-from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from functools import cached_property
 from importlib import import_module
@@ -12,7 +11,7 @@ from typing import Optional
 import vvm  # type: ignore
 from ape.api import CompilerAPI, PluginConfig, TraceAPI
 from ape.exceptions import ContractLogicError
-from ape.logging import LogLevel, logger
+from ape.logging import logger
 from ape.managers import ProjectManager
 from ape.managers.project import LocalProject
 from ape.types import ContractSourceCoverage, SourceTraceback
@@ -24,13 +23,7 @@ from ethpm_types.source import Compiler, Content, ContractSource
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
-from ape_vyper._utils import (
-    FileType,
-    get_version_pragma_spec,
-    install_vyper,
-    lookup_source_from_site_packages,
-    safe_append,
-)
+from ape_vyper._utils import FileType, get_version_pragma_spec, install_vyper, safe_append
 from ape_vyper.compiler._versions import (
     BaseVyperCompiler,
     Vyper02Compiler,
@@ -40,6 +33,7 @@ from ape_vyper.compiler._versions import (
 from ape_vyper.coverage import CoverageProfiler
 from ape_vyper.exceptions import VyperCompileError, VyperInstallError, enrich_error
 from ape_vyper.flattener import Flattener
+from ape_vyper.imports import ImportMap, ImportResolver
 from ape_vyper.traceback import SourceTracer
 
 
@@ -71,6 +65,10 @@ class VyperCompiler(CompilerAPI):
         """
         return Vyper04Compiler(self)
 
+    @cached_property
+    def _import_resolver(self) -> ImportResolver:
+        return ImportResolver()
+
     def get_sub_compiler(self, version: Version) -> BaseVyperCompiler:
         if version < Version("0.3"):
             return self.vyper_02
@@ -85,240 +83,14 @@ class VyperCompiler(CompilerAPI):
         project: Optional[ProjectManager] = None,
     ) -> dict[str, list[str]]:
         pm = project or self.local_project
-        return self._get_imports(contract_filepaths, project=pm, handled=set())
-
-    def _get_imports(
-        self,
-        contract_filepaths: Iterable[Path],
-        project: Optional[ProjectManager] = None,
-        handled: Optional[set[str]] = None,
-        use_absolute_paths: Optional[bool] = None,
-    ):
-        pm = project or self.local_project
-
-        if use_absolute_paths is None:
-            # When compiling projects outside the cwd, we must
-            # use absolute paths.
-            use_absolute_paths = pm.path != Path.cwd()
-
-        import_map: defaultdict = defaultdict(list)
-        handled = handled or set()
-
-        for path in contract_filepaths:
-            if not path.is_file():
-                continue
-
-            content = path.read_text(encoding="utf8").splitlines()
-            source_id = (
-                str(path.absolute())
-                if use_absolute_paths
-                else str(get_relative_path(path.absolute(), pm.path.absolute()))
-            )
-
-            # Prevent infinitely handling imports when they cross over.
-            if source_id in handled:
-                continue
-
-            handled.add(source_id)
-            for line in content:
-                if line.startswith("import "):
-                    import_line_parts = line.replace("import ", "").split(" ")
-                    prefix = import_line_parts[0]
-
-                elif line.startswith("from ") and " import " in line:
-                    import_line_parts = line.replace("from ", "").strip().split(" ")
-                    module_name = import_line_parts[0].strip()
-                    prefix = os.path.sep.join([module_name, import_line_parts[2].strip()])
-
-                else:
-                    # Not an import line
-                    continue
-
-                dots = ""
-                while prefix.startswith("."):
-                    dots += prefix[0]
-                    prefix = prefix[1:]
-
-                is_relative: Optional[bool] = None
-                if dots != "":
-                    is_relative = True
-                # else: we are unsure since dots are not required.
-
-                # Replace rest of dots with slashes.
-                prefix = prefix.replace(".", os.path.sep)
-
-                if prefix.startswith("vyper/") or prefix.startswith("ethereum/"):
-                    if f"{prefix}.json" not in import_map[source_id]:
-                        import_map[source_id].append(f"{prefix}.json")
-
-                    continue
-
-                relative_path = None
-                abs_path = None
-                if is_relative is True:
-                    relative_path = (path.parent / dots / prefix.lstrip(os.path.sep)).resolve()
-                elif is_relative is False:
-                    abs_path = (pm.path / prefix.lstrip(os.path.sep)).resolve()
-                elif is_relative is None:
-                    relative_path = (path.parent / dots / prefix.lstrip(os.path.sep)).resolve()
-                    abs_path = (pm.path / prefix.lstrip(os.path.sep)).resolve()
-
-                local_prefix_relative = (
-                    None
-                    if relative_path is None
-                    else str(relative_path).replace(f"{pm.path}", "").lstrip(os.path.sep)
-                )
-                local_prefix_abs = (
-                    None
-                    if abs_path is None
-                    else str(abs_path).replace(f"{pm.path}", "").lstrip(os.path.sep)
-                )
-
-                import_source_id = None
-                is_local = True
-                local_path = None  # TBD
-                local_prefix = None  # TBD
-
-                if (pm.path / f"{local_prefix_relative}{FileType.SOURCE}").is_file():
-                    # Relative source.
-                    ext = FileType.SOURCE.value
-                    local_path = relative_path
-                    local_prefix = local_prefix_relative
-
-                elif (pm.path / f"{local_prefix_relative}{FileType.INTERFACE}").is_file():
-                    # Relative interface.
-                    ext = FileType.INTERFACE.value
-                    local_path = relative_path
-                    local_prefix = local_prefix_relative
-
-                elif (pm.path / f"{local_prefix_relative}.json").is_file():
-                    # Relative JSON interface.
-                    ext = ".json"
-                    local_path = relative_path
-                    local_prefix = local_prefix_relative
-
-                elif (pm.path / f"{local_prefix_abs}{FileType.SOURCE}").is_file():
-                    # Absolute source.
-                    ext = FileType.SOURCE.value
-                    local_path = abs_path
-                    local_prefix = local_prefix_abs
-
-                elif (pm.path / f"{local_prefix_abs}{FileType.INTERFACE}").is_file():
-                    # Absolute interface.
-                    ext = FileType.INTERFACE.value
-                    local_path = abs_path
-                    local_prefix = local_prefix_abs
-
-                elif (pm.path / f"{local_prefix_abs}.json").is_file():
-                    # Absolute JSON interface.
-                    ext = ".json"
-                    local_path = abs_path
-                    local_prefix = local_prefix_abs
-
-                else:
-                    # Must be an interface JSON specified in the input JSON.
-                    ext = ".json"
-                    dep_key = prefix.split(os.path.sep)[0]
-                    dependency_name = prefix.split(os.path.sep)[0]
-                    filestem = prefix.replace(f"{dependency_name}{os.path.sep}", "")
-                    found = False
-                    if dependency_name:
-                        # Attempt looking up dependency from site-packages.
-                        if res := lookup_source_from_site_packages(dependency_name, filestem):
-                            source_path, imported_project = res
-                            import_source_id = str(source_path)
-                            # Also include imports of imports.
-                            sub_imports = self._get_imports(
-                                (source_path,),
-                                project=imported_project,
-                                handled=handled,
-                                use_absolute_paths=True,  # Must use absolute for site-packages.
-                            )
-                            for sub_import_ls in sub_imports.values():
-                                import_map[source_id].extend(sub_import_ls)
-
-                            is_local = False
-                            found = True
-
-                    if not found and dep_key in [x.name for x in pm.dependencies.installed]:
-                        for version_str, dep_project in pm.dependencies[dependency_name].items():
-                            dependency = pm.dependencies.get_dependency(
-                                dependency_name, version_str
-                            )
-                            contracts_path = dep_project.contracts_folder
-                            dependency_source_prefix = (
-                                f"{get_relative_path(contracts_path, dep_project.path)}"
-                            )
-                            source_id_stem = (
-                                f"{dependency_source_prefix}{os.path.sep}{filestem}".lstrip(
-                                    f"{os.path.sep}."
-                                )
-                            )
-                            for ext in (".vy", ".vyi", ".json"):
-                                if f"{source_id_stem}{ext}" not in dep_project.sources:
-                                    continue
-
-                                # Dependency located.
-                                if not dependency.project.manifest.contract_types:
-                                    # In this case, the dependency *must* be compiled
-                                    # so the ABIs can be found later on.
-                                    with logger.at_level(LogLevel.ERROR):
-                                        try:
-                                            dependency.compile()
-                                        except Exception as err:
-                                            # Compiling failed. Try to continue anyway to get
-                                            # a better error from the Vyper compiler, in case
-                                            # something else is wrong.
-                                            logger.warning(
-                                                f"Failed to compile dependency '{dependency.name}' "
-                                                f"@ '{dependency.version}'.\n"
-                                                f"Reason: {err}"
-                                            )
-
-                                import_source_id = f"{source_id_stem}{ext}"
-                                import_path = dep_project.path / f"{source_id_stem}{ext}"
-
-                                # Also include imports of imports.
-                                sub_imports = self._get_imports(
-                                    (import_path,),
-                                    project=dep_project,
-                                    handled=handled,
-                                    use_absolute_paths=use_absolute_paths,
-                                )
-                                for sub_import_ls in sub_imports.values():
-                                    import_map[source_id].extend(sub_import_ls)
-
-                                is_local = False
-                                break
-
-                    elif not found:
-                        logger.error(
-                            f"'{dependency_name}' may not be installed. "
-                            "Could not find it in Ape dependencies or Python's site-packages."
-                        )
-
-                if is_local and local_prefix is not None and local_path is not None:
-                    import_source_id = f"{local_prefix}{ext}"
-                    full_path = local_path.parent / f"{local_path.stem}{ext}"
-
-                    # Also include imports of imports.
-                    sub_imports = self._get_imports(
-                        (full_path,),
-                        project=pm,
-                        handled=handled,
-                        use_absolute_paths="site-packages" in str(full_path) or use_absolute_paths,
-                    )
-
-                    for sub_import_ls in sub_imports.values():
-                        import_map[source_id].extend(sub_import_ls)
-
-                    if use_absolute_paths:
-                        import_source_id = str(full_path)
-
-                if import_source_id and import_source_id not in import_map[source_id]:
-                    import_map[source_id].append(import_source_id)
-
-        return dict(import_map)
+        imports = self._import_resolver.get_imports(pm, contract_filepaths)
+        use_absolute_paths = pm.path != Path.cwd()
+        return {
+            f"{p}" if use_absolute_paths else f"{get_relative_path(p.absolute(), pm.path)}": [
+                imp.source_id for imp in import_ls
+            ]
+            for p, import_ls in imports.items()
+        }
 
     def get_versions(self, all_paths: Iterable[Path]) -> set[str]:
         versions = set()
@@ -485,7 +257,7 @@ class VyperCompiler(CompilerAPI):
 
         self.compiler_settings = {**self.compiler_settings, **(settings or {})}
         contract_types: list[ContractType] = []
-        import_map = self._get_imports(contract_filepaths, project=pm, handled=set())
+        import_map = self._import_resolver.get_imports(pm, contract_filepaths)
         config = self.get_config(pm)
         version_map = self._get_version_map_from_import_map(
             contract_filepaths,
@@ -613,16 +385,16 @@ class VyperCompiler(CompilerAPI):
         project: Optional[ProjectManager] = None,
     ) -> dict[Version, set[Path]]:
         pm = project or self.local_project
-        import_map = self.get_imports(contract_filepaths, project=pm)
+        import_map = self._import_resolver.get_imports(pm, contract_filepaths)
         return self._get_version_map_from_import_map(contract_filepaths, import_map, project=pm)
 
     def _get_version_map_from_import_map(
         self,
         contract_filepaths: Iterable[Path],
-        import_map: dict[str, list[str]],
+        import_map: ImportMap,
         project: Optional[ProjectManager] = None,
         config: Optional[PluginConfig] = None,
-    ):
+    ) -> dict[Version, set[Path]]:
         pm = project or self.local_project
         self.compiler_settings = {**self.compiler_settings}
         config = config or self.get_config(pm)
@@ -632,8 +404,7 @@ class VyperCompiler(CompilerAPI):
 
         # Sort contract_filepaths to promote consistent, reproduce-able behavior
         for path in sorted(contract_filepaths):
-            src_id = f"{get_relative_path(path.absolute(), pm.path)}"
-            imports = [pm.path / imp for imp in import_map.get(src_id, [])]
+            imports = [imp.path for imp in import_map.get(path, []) if imp.path]
 
             if config_spec := config.version:
                 safe_append(source_path_by_version_spec, config_spec, {path, *imports})
@@ -739,7 +510,11 @@ class VyperCompiler(CompilerAPI):
 
             sub_compiler = self.get_sub_compiler(version)
             settings[version] = sub_compiler.get_settings(
-                version, source_paths, data, project=pm, use_absolute_paths=use_absolute_paths,
+                version,
+                source_paths,
+                data,
+                project=pm,
+                use_absolute_paths=use_absolute_paths,
             )
 
         return settings
