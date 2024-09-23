@@ -23,7 +23,7 @@ from ape_vyper.exceptions import (
 )
 
 # Currently, this is the only version specified from a pragma spec
-from .conftest import FAILING_BASE, FAILING_CONTRACT_NAMES, PASSING_CONTRACT_NAMES, TEMPLATES
+from ..conftest import FAILING_BASE, FAILING_CONTRACT_NAMES, PASSING_CONTRACT_NAMES, TEMPLATES
 
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.16")
 VERSION_37 = Version("0.3.7")
