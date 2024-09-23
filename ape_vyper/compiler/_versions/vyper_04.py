@@ -32,7 +32,7 @@ class Vyper04Compiler(BaseVyperCompiler):
 
         import_map: ImportMap = kwargs["import_map"]
         src_dict = {}
-        use_absolute_paths = kwargs.get("use_absolute_paths", False)
+        use_absolute_paths = pm.in_tempdir
 
         for source_id in source_ids:
             path = Path(source_id)

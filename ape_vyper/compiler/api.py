@@ -84,11 +84,8 @@ class VyperCompiler(CompilerAPI):
     ) -> dict[str, list[str]]:
         pm = project or self.local_project
         imports = self._import_resolver.get_imports(pm, contract_filepaths)
-        use_absolute_paths = pm.path != Path.cwd()
         return {
-            f"{p}" if use_absolute_paths else f"{get_relative_path(p.absolute(), pm.path)}": [
-                imp.source_id for imp in import_ls
-            ]
+            f"{get_relative_path(p.absolute(), pm.path)}": [imp.source_id for imp in import_ls]
             for p, import_ls in imports.items()
         }
 
@@ -251,10 +248,6 @@ class VyperCompiler(CompilerAPI):
     ) -> Iterator[ContractType]:
         pm = project or self.local_project
 
-        # (0.4.0): If compiling a project outside the cwd (such as a dependency),
-        # we are forced to use absolute paths.
-        use_absolute_paths = pm.path != Path.cwd()
-
         self.compiler_settings = {**self.compiler_settings, **(settings or {})}
         contract_types: list[ContractType] = []
         import_map = self._import_resolver.get_imports(pm, contract_filepaths)
@@ -277,7 +270,6 @@ class VyperCompiler(CompilerAPI):
                 import_map,
                 compiler_data,
                 project=pm,
-                use_absolute_paths=use_absolute_paths,
             ):
                 contract_types.append(contract_type)
                 contract_versions[contract_type.name] = (vyper_version, settings_key)
@@ -496,11 +488,6 @@ class VyperCompiler(CompilerAPI):
         project: Optional[ProjectManager] = None,
     ):
         pm = project or self.local_project
-
-        # When compiling projects outside the cwd, use absolute paths for ease.
-        # Also, struggled to get it work any other way.
-        use_absolute_paths = pm.path != Path.cwd()
-
         compiler_data = self._get_compiler_arguments(version_map, project=pm)
         settings = {}
         for version, data in compiler_data.items():
@@ -514,7 +501,6 @@ class VyperCompiler(CompilerAPI):
                 source_paths,
                 data,
                 project=pm,
-                use_absolute_paths=use_absolute_paths,
             )
 
         return settings

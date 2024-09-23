@@ -1,0 +1,5 @@
+dependencies:
+  - pypi: snekmate
+    config_override:
+      base_path: src
+      contracts_folder: snekmate

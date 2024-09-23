@@ -103,13 +103,14 @@ class Import:
     @cached_property
     def dependency_info(self) -> Optional[tuple[str, Dependency]]:
         dependency_name = self.dependency_name
-        if dependency_name not in [x.name for x in self.project.dependencies]:
-            return None
+        for dependency in self.project.dependencies:
+            if dependency.name != dependency_name:
+                continue
 
-        for version_str, dep_project in self.project.dependencies[dependency_name].items():
-            dependency = self.project.dependencies.get_dependency(dependency_name, version_str)
-            contracts_path = dep_project.contracts_folder
-            dependency_source_prefix = f"{get_relative_path(contracts_path, dep_project.path)}"
+            contracts_path = dependency.project.contracts_folder
+            dependency_source_prefix = (
+                f"{get_relative_path(contracts_path, dependency.project.path)}"
+            )
             source_id_stem = (
                 f"{dependency_source_prefix}{os.path.sep}{self.dependency_filestem}".lstrip(
                     f"{os.path.sep}."
@@ -117,7 +118,7 @@ class Import:
             )
             for ext in (".vy", ".vyi", ".json"):
                 source_id = f"{source_id_stem}{ext}"
-                if source_id not in dep_project.sources:
+                if source_id not in dependency.project.sources:
                     continue
 
                 return (source_id, dependency)
@@ -156,7 +157,12 @@ class Import:
 
         elif dependency_info := self.dependency_info:
             source_id, dependency = dependency_info
-            return dependency.project.path / source_id
+            source_id_path = Path(source_id)
+            return (
+                source_id_path
+                if source_id_path.is_absolute()
+                else dependency.project.path / source_id
+            )
 
         # Unknown.
         return None
@@ -189,7 +195,8 @@ class Import:
             # Not local.
             return {}
 
-        path = self.project.path / source_id
+        source_id_path = Path(source_id)
+        path = source_id_path if source_id_path.is_absolute() else self.project.path / source_id
         if "site-packages" in str(path) and not source_id.startswith(self.project.name):
             # Site-package dependencies must attach their name to the source ID.
             source_id = f"{self.project.name}{os.path.sep}{source_id}"

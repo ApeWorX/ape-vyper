@@ -1,3 +1,4 @@
+import os
 import re
 from collections.abc import Iterable
 from functools import cached_property
@@ -10,6 +11,7 @@ from ape.managers.project import ProjectManager
 from ape.utils import ManagerAccessMixin, clean_path, get_relative_path
 from ethpm_types import ASTNode, ContractType, SourceMap
 from ethpm_types.ast import ASTClassification
+from ethpm_types.source import Content
 from packaging.version import Version
 from vvm import compile_standard as vvm_compile_standard  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
@@ -52,14 +54,12 @@ class BaseVyperCompiler(ManagerAccessMixin):
         import_map: ImportMap,
         compiler_data: dict,
         project: Optional[ProjectManager] = None,
-        use_absolute_paths: bool = False,
     ):
         pm = project or self.local_project
         for settings_key, settings_set in settings.items():
             src_dict = self._get_sources_dictionary(
                 settings_set["outputSelection"],
                 project=pm,
-                use_absolute_paths=use_absolute_paths,
                 import_map=import_map,
             )
 
@@ -93,12 +93,15 @@ class BaseVyperCompiler(ManagerAccessMixin):
                 raise VyperCompileError(err) from err
 
             for source_id, output_items in result["contracts"].items():
-                content = {
-                    i + 1: ln
-                    for i, ln in enumerate(
-                        (pm.path / source_id).read_text(encoding="utf8").splitlines()
-                    )
-                }
+                if source_id not in src_dict:
+                    # Handle oddity from Vyper 0.3.0 where absolute paths may have
+                    # weird prefix.
+                    if f"{os.path.sep}{source_id}" in src_dict:
+                        source_id = f"{os.path.sep}{source_id}"
+                    else:
+                        continue
+
+                content = Content.model_validate(src_dict[source_id].get("content", "")).root
                 for name, output in output_items.items():
                     # De-compress source map to get PC POS map.
                     ast = ASTNode.model_validate(result["sources"][source_id]["ast"])
@@ -157,7 +160,6 @@ class BaseVyperCompiler(ManagerAccessMixin):
         source_paths: Iterable[Path],
         compiler_data: dict,
         project: Optional[ProjectManager] = None,
-        use_absolute_paths: bool = False,
     ) -> dict:
         pm = project or self.local_project
         default_optimization = self._get_default_optimization(version)
@@ -188,9 +190,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
             elif optimization == "false":
                 optimization = False
 
-            selection_dict = self._get_selection_dictionary(
-                selection, use_absolute_paths=use_absolute_paths
-            )
+            selection_dict = self._get_selection_dictionary(selection)
             search_paths = [*getsitepackages()]
             if pm.path == Path.cwd():
                 search_paths.append(".")
