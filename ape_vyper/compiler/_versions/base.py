@@ -24,6 +24,7 @@ from ape_vyper._utils import (
     get_pcmap,
 )
 from ape_vyper.exceptions import VyperCompileError
+from ape_vyper.imports import ImportMap
 
 if TYPE_CHECKING:
     from ape_vyper.compiler.api import VyperCompiler
@@ -48,7 +49,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
         self,
         vyper_version: Version,
         settings: dict,
-        import_map: dict,
+        import_map: ImportMap,
         compiler_data: dict,
         project: Optional[ProjectManager] = None,
         use_absolute_paths: bool = False,

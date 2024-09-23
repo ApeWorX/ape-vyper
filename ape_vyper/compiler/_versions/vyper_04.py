@@ -9,6 +9,7 @@ from packaging.version import Version
 
 from ape_vyper._utils import Optimization
 from ape_vyper.compiler._versions.base import BaseVyperCompiler
+from ape_vyper.imports import ImportMap
 
 
 class Vyper04Compiler(BaseVyperCompiler):
@@ -29,73 +30,37 @@ class Vyper04Compiler(BaseVyperCompiler):
         if not source_ids:
             return {}
 
-        import_map = kwargs.get("import_map", {})
+        import_map: ImportMap = kwargs["import_map"]
         src_dict = {}
         use_absolute_paths = kwargs.get("use_absolute_paths", False)
 
         for source_id in source_ids:
             path = Path(source_id)
-            if path.is_absolute() and path.is_file():
-                content = path.read_text()
-            elif (pm.path / source_id).is_file():
-                content = (pm.path / source_id).read_text()
+
+            if path.is_absolute():
+                abs_path = path
+                rel_path = get_relative_path(abs_path, pm.path)
             else:
+                abs_path = pm.path / source_id
+                rel_path = path
+
+            if not abs_path.is_file():
                 continue
 
-            if use_absolute_paths:
-                source_id = str(pm.path / source_id)
-
+            source_id = f"{abs_path}" if use_absolute_paths else f"{rel_path}"
+            content = abs_path.read_text(encoding="utf8")
             src_dict[source_id] = {"content": content}
 
-        for src in source_ids:
-            if Path(src).is_absolute():
-                src_id = (
-                    str(Path(src))
-                    if use_absolute_paths
-                    else f"{get_relative_path(Path(src), pm.path)}"
-                )
-            else:
-                src_id = src
-
-            if imports := import_map.get(Path(src)):
+            if imports := import_map.get(abs_path):
                 for imp in imports:
-                    if imp in src_dict:
+                    if imp.source_id in src_dict:
+                        continue
+                    elif not (imp_path := imp.path):
+                        continue
+                    elif not imp_path.is_file():
                         continue
 
-                    imp_path = Path(imp)
-                    abs_import = Path(imp).is_absolute()
-
-                    if not abs_import and (pm.path / imp).is_file():
-                        # Is a local file.
-                        imp_path = pm.path / imp
-                        if not imp_path.is_file():
-                            continue
-
-                        src_dict[imp] = {"content": imp_path.read_text(encoding="utf8")}
-
-                    else:
-                        # Is from a dependency.
-                        specified = {d.name: d for d in pm.dependencies.specified}
-                        is_site_packages = "site-packages" in f"{imp_path}"
-                        for parent in imp_path.parents:
-                            if parent.name == "site-packages":
-                                is_site_packages = True
-                                src_id = f"{get_relative_path(imp_path, parent)}"
-                                break
-
-                            elif not is_site_packages and parent.name in specified:
-                                dependency = specified[parent.name]
-                                src_id = f"{imp_path}"
-                                imp_path = dependency.project.path / imp_path
-                                if imp_path.is_file():
-                                    break
-
-                        # Likely from a dependency. Exclude absolute prefixes so Vyper
-                        # knows what to do.
-                        if imp_path.is_file() and (
-                            not Path(src_id).is_absolute() or is_site_packages
-                        ):
-                            src_dict[src_id] = {"content": imp_path.read_text(encoding="utf8")}
+                    src_dict[imp.source_id] = {"content": imp_path.read_text(encoding="utf8")}
 
         return src_dict
 

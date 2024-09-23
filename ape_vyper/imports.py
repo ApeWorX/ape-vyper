@@ -2,7 +2,7 @@ import os
 from collections.abc import Iterable, Iterator
 from functools import cached_property
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from ape.logging import LogLevel, logger
 from ape.managers import ProjectManager
@@ -54,7 +54,7 @@ class Import:
             return data["source_id"]
 
         elif site_pkg := self.site_package_info:
-            return f"{site_pkg[0]}"
+            return f"{site_pkg[0]}".split(f"site-packages{os.path.sep}")[-1]
 
         elif dependency_info := self.dependency_info:
             return f"{dependency_info[0]}"
@@ -125,16 +125,19 @@ class Import:
         return None
 
     @cached_property
-    def _is_site_package(self) -> bool:
-        return any(p.name == "site-packages" for p in self.path.parents)
+    def is_site_package(self) -> bool:
+        if path := self.path:
+            return any(p.name == "site-packages" for p in path.parents)
+
+        return False
+
+    @cached_property
+    def is_ape_dependency(self) -> bool:
+        return self.dependency_info is not None
 
     @property
     def use_absolute_paths(self) -> Optional[bool]:
-        if self._is_site_package:
-            # Site-packages must use absolute paths.
-            return True
-
-        elif self._use_absolute_paths is not None:
+        if self._use_absolute_paths is not None:
             return self._use_absolute_paths
 
         # Unknown.
@@ -160,41 +163,38 @@ class Import:
 
     @cached_property
     def _local_data(self) -> dict:
-        relative_path = self._relative_path_sin_ext
-        absolute_path = self._absolute_path_sin_ext
         local_prefix_relative = self._local_relative_prefix
         local_prefix_absolute = self._local_absolute_prefix
+        source_id = None
         if (self.project.path / f"{local_prefix_relative}{FileType.SOURCE}").is_file():
             # Relative source.
             source_id = f"{local_prefix_relative}{FileType.SOURCE.value}"
-            return {"path": relative_path, "source_id": source_id}
-
         elif (self.project.path / f"{local_prefix_relative}{FileType.INTERFACE}").is_file():
             # Relative interface.
             source_id = f"{local_prefix_relative}{FileType.INTERFACE.value}"
-            return {"path": relative_path, "source_id": source_id}
-
         elif (self.project.path / f"{local_prefix_relative}.json").is_file():
             # Relative JSON interface.
             source_id = f"{local_prefix_relative}.json"
-            return {"path": relative_path, "source_id": source_id}
-
         elif (self.project.path / f"{local_prefix_absolute}{FileType.SOURCE}").is_file():
             # Absolute source.
             source_id = f"{local_prefix_absolute}{FileType.SOURCE.value}"
-            return {"path": absolute_path, "source_id": source_id}
-
         elif (self.project.path / f"{local_prefix_absolute}{FileType.INTERFACE}").is_file():
             # Absolute interface.
             source_id = f"{local_prefix_absolute}{FileType.INTERFACE.value}"
-            return {"path": absolute_path, "source_id": source_id}
-
         elif (self.project.path / f"{local_prefix_absolute}.json").is_file():
             # Absolute JSON interface.
             source_id = f"{local_prefix_absolute}.json"
-            return {"path": absolute_path, "source_id": source_id}
 
-        return {}
+        if not source_id:
+            # Not local.
+            return {}
+
+        path = self.project.path / source_id
+        if "site-packages" in str(path) and not source_id.startswith(self.project.name):
+            # Site-package dependencies must attach their name to the source ID.
+            source_id = f"{self.project.name}{os.path.sep}{source_id}"
+
+        return {"path": path, "source_id": source_id}
 
     @property
     def _relative_path_sin_ext(self) -> Optional[Path]:
@@ -203,9 +203,7 @@ class Import:
             return None
 
         # NOTE: Still calculate if self.relative is None
-        return (
-            self.importer.parent / self.dots_prefix / self._pathified_value.lstrip(os.path.sep)
-        ).resolve()
+        return (self.importer.parent / self._pathified_value.lstrip(os.path.sep)).resolve()
 
     @property
     def _absolute_path_sin_ext(self) -> Optional[Path]:
@@ -248,7 +246,9 @@ class Import:
         return (
             None
             if self._relative_path_sin_ext is None
-            else str(self._relative_path_sin_ext).replace(f"{self.project.path}", "").lstrip(os.path.sep)
+            else str(self._relative_path_sin_ext)
+            .replace(f"{self.project.path}", "")
+            .lstrip(os.path.sep)
         )
 
     @property
@@ -256,11 +256,68 @@ class Import:
         return (
             None
             if self._absolute_path_sin_ext is None
-            else str(self._absolute_path_sin_ext).replace(f"{self.project.path}", "").lstrip(os.path.sep)
+            else str(self._absolute_path_sin_ext)
+            .replace(f"{self.project.path}", "")
+            .lstrip(os.path.sep)
         )
 
 
-ImportMap = dict[Path, list[Import]]
+class ImportMap(dict[Path, list[Import]]):
+    def __init__(self, project: ProjectManager, paths: list[Path]):
+        self.project = project
+
+        # Even though we build up mappings of all sources, as may be referenced
+        # later on and that prevents re-calculating over again, we only
+        # "show" the items requested.
+        self._request_view: list[Path] = paths
+
+    def __getitem__(self, item: Union[str, Path], *args, **kwargs) -> list[Import]:
+        if isinstance(item, str) or not item.is_absolute():
+            path = self.project.path / item
+            return super().__getitem__(path, *args, **kwargs)
+        else:
+            return super().__getitem__(item, *args, **kwargs)
+
+    def __setitem__(self, item: Union[str, Path], value: list[Import]):
+        if isinstance(item, str) or not item.is_absolute():
+            path = self.project.path / item
+            super().__setitem__(path, value)
+        else:
+            super().__setitem__(item, value)
+
+    def __contains__(self, item: Union[str, Path]) -> bool:  # type: ignore
+        if isinstance(item, str) or not item.is_absolute():
+            path = self.project.path / item
+            return super().__contains__(path)
+        else:
+            return super().__contains__(item)
+
+    def keys(self) -> list[Path]:  # type: ignore
+        result = []
+        for path in super().keys():
+            if path not in self._request_view:
+                continue
+
+            result.append(path)
+
+        return result
+
+    def values(self) -> list[list[Import]]:  # type: ignore
+        result = []
+        for key in self.keys():
+            result.append(self[key])
+
+        return result
+
+    def items(self) -> list[tuple[Path, list[Import]]]:  # type: ignore
+        result = []
+        for path, import_ls in super().items():
+            if path not in self._request_view:
+                continue
+
+            result.append((path, import_ls))
+
+        return result
 
 
 class ImportResolver(ManagerAccessMixin):
@@ -277,17 +334,34 @@ class ImportResolver(ManagerAccessMixin):
         project: ProjectManager,
         contract_filepaths: Iterable[Path],
         use_absolute_paths: Optional[bool] = None,
-    ) -> dict[Path, list[Import]]:
+    ) -> ImportMap:
+        paths = list(contract_filepaths)
+        reset_view = None
         if project.project_id not in self._projects:
-            self._projects[project.project_id] = {}
+            self._projects[project.project_id] = ImportMap(project, paths)
+        else:
+            # Change the items we "view". Some (or all) may need to be added as well.
+            reset_view = self._projects[project.project_id]._request_view
+            self._projects[project.project_id]._request_view = paths
 
+        try:
+            import_map = self._get_imports(paths, project, use_absolute_paths)
+        finally:
+            if reset_view is not None:
+                self._projects[project.project_id]._request_view = reset_view
+
+        return import_map
+
+    def _get_imports(
+        self, paths: list[Path], project: ProjectManager, use_absolute_paths: Optional[bool]
+    ) -> ImportMap:
         if use_absolute_paths is None:
             # When compiling projects outside the cwd, we must
             # use absolute paths.
             use_absolute_paths = project.path != Path.cwd()
 
         import_map = self._projects[project.project_id]
-        for path in contract_filepaths:
+        for path in paths:
             if path in import_map:
                 # Already handled.
                 continue
@@ -298,18 +372,15 @@ class ImportResolver(ManagerAccessMixin):
                 continue
 
             else:
-                imports: list[Import] = []
+                import_map[path] = []
                 content = path.read_text(encoding="utf8").splitlines()
                 for line in content:
                     for import_data in self._parse_imports_from_line(
                         line, path, project, use_absolute_paths
                     ):
-                        imports.append(import_data)
+                        import_map[path].append(import_data)
 
-                import_map[path] = imports
-
-        # Only return imports for the paths requested.
-        return {p: ls for p, ls in import_map.items() if p in contract_filepaths}
+        return import_map
 
     def _parse_imports_from_line(
         self, line: str, path: Path, project: ProjectManager, use_absolute_paths: bool
@@ -323,18 +394,27 @@ class ImportResolver(ManagerAccessMixin):
             value=prefix,
             use_absolute_paths=use_absolute_paths,
         )
+        # Calculate path before yielding.
+        import_path = import_data.path
+        yield import_data
+
         if import_data.is_builtin:
             # For builtins, we are already done.
-            yield import_data
             return
 
+        elif import_path is not None and import_path in self._projects[project.project_id]:
+            # Yield already-known imports of import-path.
+            if import_path in self._projects[project.project_id]:
+                yield from self._projects[project.project_id][import_path]
+
         elif sub_project := import_data.sub_project:
+            # Calculate imports of import_path for the first time.
             if dependency_info := import_data.dependency_info:
                 _, dependency = dependency_info
                 self._compile_dependency_if_needed(dependency)
 
-            if import_path := import_data.path:
-                # Imports from imports.
+            if import_path := import_path:
+                # Imports from imports. Note: this call will cache them.
                 sub_import_map = self.get_imports(
                     sub_project,
                     (import_path,),
@@ -382,7 +462,9 @@ def _parse_import_line(line: str) -> Optional[str]:
         return line.replace("import ", "").split(" ")[0]
     elif line.startswith("from ") and " import " in line:
         import_line_parts = line.replace("from ", "").strip().split(" ")
-        return ".".join([import_line_parts[0].strip(), import_line_parts[2].strip()])
+        prefix = import_line_parts[0].strip()
+        suffix = import_line_parts[2].strip()
+        return f"{prefix}{suffix}" if prefix.endswith(".") else f"{prefix}.{suffix}"
 
     # Not an import line
     return None
