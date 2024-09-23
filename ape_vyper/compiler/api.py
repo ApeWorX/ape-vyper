@@ -44,6 +44,8 @@ from ape_vyper.traceback import SourceTracer
 
 
 class VyperCompiler(CompilerAPI):
+    _dependencies_by_project: dict[str, dict[str, ProjectManager]] = {}
+
     @property
     def name(self) -> str:
         return "vyper"
@@ -101,7 +103,7 @@ class VyperCompiler(CompilerAPI):
 
         import_map: defaultdict = defaultdict(list)
         handled = handled or set()
-        dependencies = self.get_dependencies(project=pm)
+
         for path in contract_filepaths:
             if not path.is_file():
                 continue
@@ -238,7 +240,7 @@ class VyperCompiler(CompilerAPI):
                             is_local = False
                             found = True
 
-                    if not found and dep_key in dependencies:
+                    if not found and dep_key in [x.name for x in pm.dependencies.installed]:
                         for version_str, dep_project in pm.dependencies[dependency_name].items():
                             dependency = pm.dependencies.get_dependency(
                                 dependency_name, version_str
@@ -411,6 +413,9 @@ class VyperCompiler(CompilerAPI):
         self, project: Optional[ProjectManager] = None
     ) -> dict[str, ProjectManager]:
         pm = project or self.local_project
+        if pm.project_id in self._dependencies_by_project:
+            return self._dependencies_by_project[pm.project_id]
+
         config = self.get_config(project=pm)
         dependencies: dict[str, ProjectManager] = {}
         handled: set[str] = set()
@@ -446,6 +451,8 @@ class VyperCompiler(CompilerAPI):
             handled.add(dep_id)
             dependencies[dependency.name] = dependency.project
 
+        # Cache for next time.
+        self._dependencies_by_project[pm.project_id] = dependencies
         return dependencies
 
     def get_import_remapping(self, project: Optional[ProjectManager] = None) -> dict[str, dict]:
@@ -478,7 +485,7 @@ class VyperCompiler(CompilerAPI):
 
         self.compiler_settings = {**self.compiler_settings, **(settings or {})}
         contract_types: list[ContractType] = []
-        import_map = self.get_imports(contract_filepaths, project=pm)
+        import_map = self._get_imports(contract_filepaths, project=pm, handled=set())
         config = self.get_config(pm)
         version_map = self._get_version_map_from_import_map(
             contract_filepaths,
@@ -732,7 +739,7 @@ class VyperCompiler(CompilerAPI):
 
             sub_compiler = self.get_sub_compiler(version)
             settings[version] = sub_compiler.get_settings(
-                version, source_paths, data, project=pm, use_absolute_paths=use_absolute_paths
+                version, source_paths, data, project=pm, use_absolute_paths=use_absolute_paths,
             )
 
         return settings
