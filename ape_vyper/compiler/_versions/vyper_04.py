@@ -16,6 +16,12 @@ class Vyper04Compiler(BaseVyperCompiler):
     Compiler for Vyper>=0.4.0.
     """
 
+    @property
+    def import_remapping(self) -> dict[str, dict]:
+        # Import remappings are not used in 0.4.
+        # You always import via module or package name.
+        return {}
+
     def _get_sources_dictionary(
         self, source_ids: Iterable[str], project: Optional[ProjectManager] = None, **kwargs
     ) -> dict[str, dict]:

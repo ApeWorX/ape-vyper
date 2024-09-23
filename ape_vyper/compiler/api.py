@@ -53,21 +53,21 @@ class VyperCompiler(CompilerAPI):
         """
         Sub-compiler for Vyper 0.2.7 contracts.
         """
-        return Vyper02Compiler()
+        return Vyper02Compiler(self)
 
     @cached_property
     def vyper_03(self) -> Vyper03Compiler:
         """
         Sub-compiler for Vyper>=0.3.3,<0.4 contracts.
         """
-        return Vyper03Compiler()
+        return Vyper03Compiler(self)
 
     @cached_property
     def vyper_04(self) -> Vyper04Compiler:
         """
         Sub-compiler for Vyper>=0.4 contracts.
         """
-        return Vyper04Compiler()
+        return Vyper04Compiler(self)
 
     def get_sub_compiler(self, version: Version) -> BaseVyperCompiler:
         if version < Version("0.3"):
@@ -489,7 +489,6 @@ class VyperCompiler(CompilerAPI):
         compiler_data = self._get_compiler_arguments(version_map, project=pm, config=config)
         all_settings = self._get_compiler_settings_from_version_map(version_map, project=pm)
         contract_versions: dict[str, tuple[Version, str]] = {}
-        import_remapping = self.get_import_remapping(project=pm)
 
         for vyper_version, version_settings in all_settings.items():
             sub_compiler = self.get_sub_compiler(vyper_version)
@@ -497,7 +496,6 @@ class VyperCompiler(CompilerAPI):
                 vyper_version,
                 version_settings,
                 import_map,
-                import_remapping,
                 compiler_data,
                 project=pm,
                 use_absolute_paths=use_absolute_paths,
