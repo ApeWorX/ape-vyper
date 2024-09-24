@@ -5,9 +5,8 @@ from pathlib import Path
 from typing import Optional
 
 import pytest
-
-from ape.utils import create_tempdir
 from ape import Project
+from ape.utils import create_tempdir
 
 LINES_VALID = 8
 MISSES = 0
