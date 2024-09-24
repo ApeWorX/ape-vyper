@@ -108,7 +108,7 @@ jobs:
         # Since --cov does not play nicely with --coverage (low-level tracer issues),
         #  we have to run the tests separately.
         - name: Run Contract Coverage Tests
-          run: pytest tests/test_coverage.py
+          run: pytest tests/functional/test_coverage.py
 
 
 # NOTE: uncomment this block after you've marked tests with @pytest.mark.fuzzing
