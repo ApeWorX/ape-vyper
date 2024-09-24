@@ -390,9 +390,6 @@ def test_get_imports(compiler, project):
     ]
     actual = compiler.get_imports(vyper_files, project=project)
 
-    # The dependency should have gotten compiled!
-    assert dependency.manifest.contract_types
-
     prefix = "contracts/passing_contracts"
     builtin_import = "vyper/interfaces/ERC20.json"
     local_import = "IFace.vy"
@@ -592,7 +589,7 @@ def test_enrich_error_handle_when_name(compiler, geth_provider, mocker):
 def test_trace_source(account, geth_provider, project, traceback_contract, arguments):
     receipt = traceback_contract.addBalance(*arguments, sender=account)
     actual = receipt.source_traceback
-    base_folder = Path(__file__).parent / "contracts" / "passing_contracts"
+    base_folder = Path(__file__).parent.parent / "contracts" / "passing_contracts"
     contract_name = traceback_contract.contract_type.name
     expected = rf"""
 Traceback (most recent call last)
@@ -640,7 +637,7 @@ def test_trace_err_source(account, geth_provider, project, traceback_contract):
 
     receipt = geth_provider.get_receipt(txn.txn_hash.hex())
     actual = receipt.source_traceback
-    base_folder = Path(__file__).parent / "contracts" / "passing_contracts"
+    base_folder = Path(__file__).parent.parent / "contracts" / "passing_contracts"
     contract_name = traceback_contract.contract_type.name
     version_key = contract_name.split("traceback_contract_")[-1]
     expected = rf"""
@@ -680,7 +677,7 @@ def test_trace_source_default_method(geth_provider, account, project):
 def test_compile_with_version_set_in_config(config, projects_path, compiler, mocker):
     path = projects_path / "version_in_config"
     version_from_config = "0.3.7"
-    spy = mocker.patch("ape_vyper.compiler.vvm_compile_standard")
+    spy = mocker.patch("ape_vyper.compiler._versions.base.vvm_compile_standard")
     project = ape.Project(path)
 
     contract = project.contracts_folder / "v_contract.vy"

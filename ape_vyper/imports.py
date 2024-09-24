@@ -43,7 +43,10 @@ class Import:
 
     @cached_property
     def source_id(self) -> str:
-        if data := self._local_data:
+        if self.is_builtin:
+            return f"{self._pathified_value}.json"
+
+        elif data := self._local_data:
             return data["source_id"]
 
         elif site_pkg := self.site_package_info:

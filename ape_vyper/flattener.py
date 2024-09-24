@@ -1,4 +1,3 @@
-import os
 from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -50,14 +49,11 @@ class Flattener(ManagerAccessMixin):
         pm = project or self.local_project
         handled = sources_handled or set()
         handled.add(path)
-        # Get the non stdlib import paths for our contracts
-        imports = list(
-            filter(
-                lambda x: not x.startswith("vyper/"),
-                [y for x in self.vyper.get_imports((path,), project=pm).values() for y in x],
-            )
-        )
-
+        imports = {
+            imp.path
+            for imp in self.vyper._import_resolver.get_imports(pm, (path,)).get(path, [])
+            if not imp.is_builtin and imp.path
+        }
         dependencies: dict[str, PackageManifest] = {}
         dependency_projects = self.vyper.get_dependencies(project=pm)
         for key, dependency_project in dependency_projects.items():
@@ -83,47 +79,23 @@ class Flattener(ManagerAccessMixin):
         modules_prefixes: set[str] = set()
 
         for import_path in sorted(imports):
-            import_file = None
-            for base in (pm.path, pm.interfaces_folder):
-                for opt in {import_path, import_path.replace(f"interfaces{os.path.sep}", "")}:
-                    try_import_file = base / opt
-                    if try_import_file.is_file():
-                        import_file = try_import_file
-                        break
-
-            if import_file is None:
-                import_file = pm.path / import_path
-
             # Vyper imported interface names come from their file names
-            file_name = import_file.stem
+            file_name = import_path.stem
             # If we have a known alias, ("import X as Y"), use the alias as interface name
             iface_name = aliases[file_name] if file_name in aliases else file_name
 
-            def _match_source(imp_path: str) -> Optional[PackageManifest]:
-                for source_path in dependencies.keys():
-                    if source_path.endswith(imp_path):
-                        return dependencies[source_path]
-
-                return None
-
-            if matched_source := _match_source(import_path):
-                if not matched_source.contract_types:
-                    continue
-
-                abis = [
-                    el
-                    for k in matched_source.contract_types.keys()
-                    for el in matched_source.contract_types[k].abi
-                ]
+            if matched_source := dependencies.get(str(import_path)):
+                contract_types = matched_source.contract_types or {}
+                abis = [el for k in contract_types.keys() for el in contract_types[k].abi]
                 interfaces_source += generate_interface(abis, iface_name)
                 continue
 
             # Generate an ABI from the source code
-            elif import_file.is_file():
+            elif import_path.is_file():
                 if (
                     version_specifier
                     and version_specifier.contains("0.4.0")
-                    and import_file.suffix != ".vyi"
+                    and import_path.suffix != ".vyi"
                 ):
                     if warn_flattening_modules:
                         logger.warning(
@@ -132,15 +104,16 @@ class Flattener(ManagerAccessMixin):
                         )
                         warn_flattening_modules = False
 
-                    modules_prefixes.add(import_file.stem)
-                    if import_file in handled:
+                    modules_prefixes.add(import_path.stem)
+                    if import_path in handled:
                         # We have already included this source somewhere.
                         continue
 
                     # Is a module or an interface imported from a module.
                     # Copy in the source code directly.
                     flattened_module = self._flatten_source(
-                        import_file,
+                        import_path,
+                        project=pm,
                         include_pragma=False,
                         sources_handled=handled,
                         warn_flattening_modules=warn_flattening_modules,
@@ -150,7 +123,7 @@ class Flattener(ManagerAccessMixin):
                 else:
                     # Vyper <0.4 interface from folder other than interfaces/
                     # such as a .vyi file in the contracts folder.
-                    abis = source_to_abi(import_file.read_text(encoding="utf8"))
+                    abis = source_to_abi(import_path.read_text(encoding="utf8"))
                     interfaces_source += generate_interface(abis, iface_name)
 
         def no_nones(it: Iterable[Optional[str]]) -> Iterable[str]:
