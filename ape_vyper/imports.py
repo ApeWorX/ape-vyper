@@ -24,15 +24,11 @@ class Import:
         project: ProjectManager,
         importer: Path,
         value: str,
-        use_absolute_paths: Optional[bool] = None,
     ):
         self.project = project
         self.importer = importer
         self.initial_value: str = value
         self._is_relative: Optional[bool] = None  # Relative import
-        self._use_absolute_paths: Optional[bool] = (
-            use_absolute_paths  # Use absolute path source IDs
-        )
 
     def __repr__(self) -> str:
         return f"<import {self.initial_value}"
@@ -47,10 +43,7 @@ class Import:
 
     @cached_property
     def source_id(self) -> str:
-        if self.use_absolute_paths:
-            return str(self.path)
-
-        elif data := self._local_data:
+        if data := self._local_data:
             return data["source_id"]
 
         elif site_pkg := self.site_package_info:
@@ -135,14 +128,6 @@ class Import:
     @cached_property
     def is_ape_dependency(self) -> bool:
         return self.dependency_info is not None
-
-    @property
-    def use_absolute_paths(self) -> Optional[bool]:
-        if self._use_absolute_paths is not None:
-            return self._use_absolute_paths
-
-        # Unknown.
-        return None
 
     @cached_property
     def path(self) -> Optional[Path]:
@@ -340,7 +325,6 @@ class ImportResolver(ManagerAccessMixin):
         self,
         project: ProjectManager,
         contract_filepaths: Iterable[Path],
-        use_absolute_paths: Optional[bool] = None,
     ) -> ImportMap:
         paths = list(contract_filepaths)
         reset_view = None
@@ -352,21 +336,14 @@ class ImportResolver(ManagerAccessMixin):
             self._projects[project.project_id]._request_view = paths
 
         try:
-            import_map = self._get_imports(paths, project, use_absolute_paths)
+            import_map = self._get_imports(paths, project)
         finally:
             if reset_view is not None:
                 self._projects[project.project_id]._request_view = reset_view
 
         return import_map
 
-    def _get_imports(
-        self, paths: list[Path], project: ProjectManager, use_absolute_paths: Optional[bool]
-    ) -> ImportMap:
-        if use_absolute_paths is None:
-            # When compiling projects outside the cwd, we must
-            # use absolute paths.
-            use_absolute_paths = project.path != Path.cwd()
-
+    def _get_imports(self, paths: list[Path], project: ProjectManager) -> ImportMap:
         import_map = self._projects[project.project_id]
         for path in paths:
             if path in import_map:
@@ -382,15 +359,13 @@ class ImportResolver(ManagerAccessMixin):
                 import_map[path] = []
                 content = path.read_text(encoding="utf8").splitlines()
                 for line in content:
-                    for import_data in self._parse_imports_from_line(
-                        line, path, project, use_absolute_paths
-                    ):
+                    for import_data in self._parse_imports_from_line(line, path, project):
                         import_map[path].append(import_data)
 
         return import_map
 
     def _parse_imports_from_line(
-        self, line: str, path: Path, project: ProjectManager, use_absolute_paths: bool
+        self, line: str, path: Path, project: ProjectManager
     ) -> Iterator[Import]:
         if not (prefix := _parse_import_line(line)):
             return None
@@ -399,7 +374,6 @@ class ImportResolver(ManagerAccessMixin):
             project=project,
             importer=path,
             value=prefix,
-            use_absolute_paths=use_absolute_paths,
         )
         # Calculate path before yielding.
         import_path = import_data.path
@@ -434,7 +408,6 @@ class ImportResolver(ManagerAccessMixin):
                 sub_import_map = self.get_imports(
                     sub_project,
                     (import_path,),
-                    use_absolute_paths=import_data.use_absolute_paths,
                 )
                 if import_path in sub_import_map:
                     yield from sub_import_map[import_path]

@@ -79,10 +79,17 @@ class BaseVyperCompiler(ManagerAccessMixin):
             log_str = f"Compiling using Vyper compiler '{vyper_version}'.\nInput:\n\t{keys}"
             logger.info(log_str)
             comp_kwargs = self._get_compile_kwargs(vyper_version, compiler_data, project=pm)
+
+            here = Path.cwd()
+            if pm.path != here:
+                os.chdir(pm.path)
             try:
                 result = vvm_compile_standard(input_json, **comp_kwargs)
             except VyperError as err:
                 raise VyperCompileError(err) from err
+            finally:
+                if Path.cwd() != here:
+                    os.chdir(here)
 
             for source_id, output_items in result["contracts"].items():
                 if source_id not in src_dict:
@@ -184,12 +191,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
 
             selection_dict = self._get_selection_dictionary(selection, project=pm)
             search_paths = [*getsitepackages()]
-            if pm.path == Path.cwd():
-                search_paths.append(".")
-            else:
-                search_paths.append(str(pm.path))
-                # search_paths.append(str(pm.contracts_folder.parent))
-            # else: only seem to get absolute paths to work (for compiling deps alone).
+            search_paths.append(".")
 
             version_settings[settings_key] = {
                 "optimize": optimization,

@@ -32,7 +32,6 @@ class Vyper04Compiler(BaseVyperCompiler):
 
         import_map: ImportMap = kwargs["import_map"]
         src_dict = {}
-        use_absolute_paths = pm.in_tempdir
 
         for source_id in source_ids:
             path = Path(source_id)
@@ -47,7 +46,7 @@ class Vyper04Compiler(BaseVyperCompiler):
             if not abs_path.is_file():
                 continue
 
-            source_id = f"{abs_path}" if use_absolute_paths else f"{rel_path}"
+            source_id = f"{rel_path}"
             content = abs_path.read_text(encoding="utf8")
             src_dict[source_id] = {"content": content}
 
