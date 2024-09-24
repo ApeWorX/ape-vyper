@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Optional
 from ape.logging import logger
 from ape.managers import ProjectManager
 from ape.utils import ManagerAccessMixin
-from ethpm_types import PackageManifest
 from ethpm_types.source import Content
 
 from ape_vyper._utils import get_version_pragma_spec
@@ -50,22 +49,10 @@ class Flattener(ManagerAccessMixin):
         handled = sources_handled or set()
         handled.add(path)
         imports = {
-            imp.path
+            imp.path: imp
             for imp in self.vyper._import_resolver.get_imports(pm, (path,)).get(path, [])
             if not imp.is_builtin and imp.path
         }
-        dependencies: dict[str, PackageManifest] = {}
-        dependency_projects = self.vyper.get_dependencies(project=pm)
-        for key, dependency_project in dependency_projects.items():
-            package = key.split("=")[0]
-            base = dependency_project.path if hasattr(dependency_project, "path") else package
-            manifest = dependency_project.manifest
-            if manifest.sources is None:
-                continue
-
-            for source_id in manifest.sources.keys():
-                import_match = f"{base}/{source_id}"
-                dependencies[import_match] = manifest
 
         interfaces_source = ""
         og_source = (pm.path / path).read_text(encoding="utf8")
@@ -79,14 +66,24 @@ class Flattener(ManagerAccessMixin):
         modules_prefixes: set[str] = set()
 
         for import_path in sorted(imports):
+            import_info = imports[import_path]
+
             # Vyper imported interface names come from their file names
             file_name = import_path.stem
             # If we have a known alias, ("import X as Y"), use the alias as interface name
             iface_name = aliases[file_name] if file_name in aliases else file_name
 
-            if matched_source := dependencies.get(str(import_path)):
-                contract_types = matched_source.contract_types or {}
-                abis = [el for k in contract_types.keys() for el in contract_types[k].abi]
+            dependency = import_info.sub_project
+            if (
+                dependency is not None
+                and dependency.project_id != pm.project_id
+                and dependency.manifest.contract_types
+            ):
+                abis = [
+                    el
+                    for k in dependency.manifest.contract_types.keys()
+                    for el in dependency.manifest.contract_types[k].abi
+                ]
                 interfaces_source += generate_interface(abis, iface_name)
                 continue
 
