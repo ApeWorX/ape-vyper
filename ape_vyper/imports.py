@@ -287,9 +287,13 @@ class ImportMap(dict[Path, list[Import]]):
         else:
             return super().__contains__(item)
 
+    def __iter__(self):
+        yield from self.keys()  # sorted
+
     def keys(self) -> list[Path]:  # type: ignore
         result = []
-        for path in super().keys():
+        keys = sorted(list(super().keys()))
+        for path in keys:
             if path not in self._request_view:
                 continue
 
@@ -299,18 +303,18 @@ class ImportMap(dict[Path, list[Import]]):
 
     def values(self) -> list[list[Import]]:  # type: ignore
         result = []
-        for key in self.keys():
+        for key in self.keys():  # sorted
             result.append(self[key])
 
         return result
 
     def items(self) -> list[tuple[Path, list[Import]]]:  # type: ignore
         result = []
-        for path, import_ls in super().items():
+        for path in self.keys():  # sorted
             if path not in self._request_view:
                 continue
 
-            result.append((path, import_ls))
+            result.append((path, self[path]))
 
         return result
 

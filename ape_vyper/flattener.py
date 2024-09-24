@@ -71,8 +71,7 @@ class Flattener(ManagerAccessMixin):
             # Vyper imported interface names come from their file names
             file_name = import_path.stem
             # If we have a known alias, ("import X as Y"), use the alias as interface name
-            iface_name = aliases[file_name] if file_name in aliases else file_name
-
+            import_name = aliases[file_name] if file_name in aliases else file_name
             dependency = import_info.sub_project
             if (
                 dependency is not None
@@ -84,7 +83,7 @@ class Flattener(ManagerAccessMixin):
                     for k in dependency.manifest.contract_types.keys()
                     for el in dependency.manifest.contract_types[k].abi
                 ]
-                interfaces_source += generate_interface(abis, iface_name)
+                interfaces_source += generate_interface(abis, import_name)
                 continue
 
             # Generate an ABI from the source code
@@ -121,7 +120,7 @@ class Flattener(ManagerAccessMixin):
                     # Vyper <0.4 interface from folder other than interfaces/
                     # such as a .vyi file in the contracts folder.
                     abis = source_to_abi(import_path.read_text(encoding="utf8"))
-                    interfaces_source += generate_interface(abis, iface_name)
+                    interfaces_source += generate_interface(abis, import_name)
 
         def no_nones(it: Iterable[Optional[str]]) -> Iterable[str]:
             # Type guard like generator to remove Nones and make mypy happy

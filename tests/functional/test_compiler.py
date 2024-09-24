@@ -132,6 +132,15 @@ def _transfer_ownership(new_owner: address):
     log OwnershipTransferred(old_owner, new_owner)
 
 
+# Showing importing interface from module.
+interface Ballot:
+    def delegated(addr: address) -> bool: view
+
+@internal
+def moduleMethod2() -> bool:
+    return True
+
+
 # This source is also imported from `zero_four.py` to test
 # multiple imports across sources during flattening.
 
@@ -143,15 +152,6 @@ def moduleMethod() -> bool:
 @external
 def callModule2FunctionFromAnotherSource(role: bytes32) -> bool:
     return self.moduleMethod2()
-
-
-# Showing importing interface from module.
-interface Ballot:
-    def delegated(addr: address) -> bool: view
-
-@internal
-def moduleMethod2() -> bool:
-    return True
 
 
 implements: IFaceZeroFour
