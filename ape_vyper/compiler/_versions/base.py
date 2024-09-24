@@ -56,8 +56,11 @@ class BaseVyperCompiler(ManagerAccessMixin):
     ):
         pm = project or self.local_project
         for settings_key, settings_set in settings.items():
+            if not (output_selection := settings_set.get("outputSelection", {})):
+                continue
+
             src_dict = self._get_sources_dictionary(
-                settings_set["outputSelection"],
+                output_selection,
                 project=pm,
                 import_map=import_map,
             )
@@ -77,11 +80,10 @@ class BaseVyperCompiler(ManagerAccessMixin):
                     sorted(
                         [
                             clean_path(Path(x))
-                            for x in settings_set.get("outputSelection", {}).keys()
+                            for x in output_selection.keys()
                         ]
                     )
                 )
-                or "No input."
             )
             log_str = f"Compiling using Vyper compiler '{vyper_version}'.\nInput:\n\t{keys}"
             logger.info(log_str)
