@@ -201,6 +201,8 @@ def test_compile_project(project):
     assert "contract_039" in actual
     assert "contract_no_pragma" in actual
     assert "older_version" in actual
+
+
 #
 #
 # @pytest.mark.parametrize("contract_name", PASSING_CONTRACT_NAMES)
@@ -308,6 +310,7 @@ def test_get_version_map(project, compiler, all_versions):
         "zero_four_snekmate_erc20.vy",
     }
     assert actual4 == expected4
+
 
 #
 # def test_compiler_data_in_manifest(project):
