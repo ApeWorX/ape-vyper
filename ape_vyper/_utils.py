@@ -1,4 +1,5 @@
 import re
+import time
 from collections.abc import Iterable
 from enum import Enum
 from pathlib import Path
@@ -41,6 +42,9 @@ FUNCTION_AST_TYPES = (FUNCTION_DEF, "Name", "arguments")
 EMPTY_REVERT_OFFSET = 18
 NON_PAYABLE_STR = f"dev: {RuntimeErrorType.NONPAYABLE_CHECK.value}"
 
+MAX_INSTALL_RETRIES = 5
+INSTALL_RETRY_BACKOFF_FACTOR = 2  # seconds
+
 
 class FileType(str, Enum):
     SOURCE = ".vy"
@@ -51,12 +55,26 @@ class FileType(str, Enum):
 
 
 def install_vyper(version: Version):
-    try:
-        vvm.install_vyper(version, show_progress=True)
-    except Exception as err:
-        raise VyperInstallError(
-            f"Unable to install Vyper version: '{version}'.\nReason: {err}"
-        ) from err
+    for attempt in range(MAX_INSTALL_RETRIES):
+        try:
+            vvm.install_vyper(version, show_progress=True)
+            return  # If installation is successful, exit the loop
+        except Exception as err:
+            if "API rate limit exceeded" in str(err):
+                if attempt < MAX_INSTALL_RETRIES - 1:  # Don't sleep after the last attempt
+                    sleep_time = INSTALL_RETRY_BACKOFF_FACTOR * (2**attempt)
+                    logger.warning(f"Rate limit exceeded. Retrying in {sleep_time} seconds...")
+                    time.sleep(sleep_time)
+                else:
+                    raise VyperInstallError(
+                        f"Unable to install Vyper version: '{version}'"
+                        f"after {MAX_INSTALL_RETRIES} attempts due to "
+                        f"API rate limit.\nReason: {err}"
+                    ) from err
+            else:
+                raise VyperInstallError(
+                    f"Unable to install Vyper version: '{version}'.\nReason: {err}"
+                ) from err
 
 
 def get_version_pragma_spec(source: Union[str, Path]) -> Optional[SpecifierSet]:
