@@ -75,16 +75,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
                 input_json["interfaces"] = interfaces
 
             # Output compiler details.
-            keys = (
-                "\n\t".join(
-                    sorted(
-                        [
-                            clean_path(Path(x))
-                            for x in output_selection.keys()
-                        ]
-                    )
-                )
-            )
+            keys = "\n\t".join(sorted([clean_path(Path(x)) for x in output_selection.keys()]))
             log_str = f"Compiling using Vyper compiler '{vyper_version}'.\nInput:\n\t{keys}"
             logger.info(log_str)
             comp_kwargs = self._get_compile_kwargs(vyper_version, compiler_data, project=pm)
@@ -191,7 +182,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
             elif optimization == "false":
                 optimization = False
 
-            selection_dict = self._get_selection_dictionary(selection)
+            selection_dict = self._get_selection_dictionary(selection, project=pm)
             search_paths = [*getsitepackages()]
             if pm.path == Path.cwd():
                 search_paths.append(".")

@@ -1,13 +1,14 @@
+import os
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Optional
 
 from ape.managers import ProjectManager
-from ape.utils import get_relative_path
+from ape.utils import get_full_extension, get_relative_path
 from ethpm_types import SourceMap
 from packaging.version import Version
 
-from ape_vyper._utils import Optimization
+from ape_vyper._utils import FileType, Optimization
 from ape_vyper.compiler._versions.base import BaseVyperCompiler
 from ape_vyper.imports import ImportMap
 
@@ -73,3 +74,15 @@ class Vyper04Compiler(BaseVyperCompiler):
 
     def _parse_source_map(self, raw_source_map: dict) -> SourceMap:
         return SourceMap(root=raw_source_map["pc_pos_map_compressed"])
+
+    def _get_selection_dictionary(
+        self, selection: Iterable[str], project: Optional[ProjectManager] = None, **kwargs
+    ) -> dict:
+        pm = project or self.local_project
+        return {
+            s: ["*"]
+            for s in selection
+            if ((pm.path / s).is_file())
+            and f"interfaces{os.path.sep}" not in s
+            and get_full_extension(pm.path / s) != FileType.INTERFACE
+        }
