@@ -405,16 +405,25 @@ class ImportResolver(ManagerAccessMixin):
         import_path = import_data.path
         yield import_data
 
-        if import_data.is_builtin:
+        if import_data.is_builtin or import_path is None:
             # For builtins, we are already done.
             return
 
-        elif import_path is not None and import_path in self._projects[project.project_id]:
+        elif import_path in self._projects[project.project_id]:
             # Yield already-known imports of import-path.
             if import_path in self._projects[project.project_id]:
                 yield from self._projects[project.project_id][import_path]
+                return
 
         elif sub_project := import_data.sub_project:
+            if (
+                sub_project.project_id in self._projects
+                and import_path in self._projects[sub_project.project_id]
+            ):
+                # Yield already known imports from this sub-project!
+                yield from self._projects[sub_project.project_id][import_path]
+                return
+
             # Calculate imports of import_path for the first time.
             if dependency_info := import_data.dependency_info:
                 _, dependency = dependency_info
@@ -435,8 +444,6 @@ class ImportResolver(ManagerAccessMixin):
                 f"(project={project.project_id}). '{dependency_name}' may not be installed. "
                 "Could not find it in Ape dependencies or Python's site-packages."
             )
-
-        yield import_data
 
     def _compile_dependency_if_needed(self, dependency: Dependency):
         if (

@@ -1,7 +1,6 @@
 import os
 import re
 from collections.abc import Iterable
-from functools import cached_property
 from pathlib import Path
 from site import getsitepackages
 from typing import TYPE_CHECKING, Any, Optional
@@ -40,12 +39,12 @@ class BaseVyperCompiler(ManagerAccessMixin):
     def __init__(self, api: "VyperCompiler"):
         self.api = api
 
-    @cached_property
-    def import_remapping(self) -> dict[str, dict]:
+    def get_import_remapping(self, project: Optional[ProjectManager] = None) -> dict[str, dict]:
         # Overridden on 0.4 to not use.
         # Import remappings are for Vyper versions 0.2 - 0.3 to
         # create the interfaces dict.
-        return self.api.get_import_remapping()
+        pm = project or self.local_project
+        return self.api.get_import_remapping(project=pm)
 
     def compile(
         self,
@@ -69,7 +68,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
                 "sources": src_dict,
             }
 
-            if interfaces := self.import_remapping:
+            if interfaces := self.get_import_remapping(project=project):
                 input_json["interfaces"] = interfaces
 
             # Output compiler details.
