@@ -8,7 +8,7 @@ from ape_vyper.compiler._versions.base import BaseVyperCompiler
 
 class Vyper03Compiler(BaseVyperCompiler):
     """
-    Compiler for Vyper>=0.3.3,<0.4.
+    Compiler for Vyper>=0.3.0,<0.4.
     """
 
     def _get_pcmap(
