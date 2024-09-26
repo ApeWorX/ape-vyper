@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Optional
 
 import pytest
+from ape import Project
+from ape.utils import create_tempdir
 
 LINES_VALID = 8
 MISSES = 0
@@ -50,9 +52,9 @@ def coverage_project(config, coverage_project_path):
     build_dir = coverage_project_path / ".build"
     shutil.rmtree(build_dir, ignore_errors=True)
 
-    with config.Project.create_temporary_project() as tmp_project:
-        shutil.copytree(coverage_project_path, tmp_project.path, dirs_exist_ok=True)
-        yield tmp_project
+    with create_tempdir() as temp_dir:
+        shutil.copytree(coverage_project_path, temp_dir, dirs_exist_ok=True)
+        yield Project(temp_dir)
 
     shutil.rmtree(build_dir, ignore_errors=True)
 

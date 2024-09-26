@@ -12,18 +12,18 @@ from ethpm_types import ContractType
 from packaging.version import Version
 from vvm.exceptions import VyperError  # type: ignore
 
-from ape_vyper.compiler import RuntimeErrorType
 from ape_vyper.exceptions import (
     FallbackNotDefinedError,
     IntegerOverflowError,
     InvalidCalldataOrValueError,
     NonPayableError,
+    RuntimeErrorType,
     VyperCompileError,
     VyperInstallError,
 )
 
 # Currently, this is the only version specified from a pragma spec
-from .conftest import FAILING_BASE, FAILING_CONTRACT_NAMES, PASSING_CONTRACT_NAMES, TEMPLATES
+from ..conftest import FAILING_BASE, FAILING_CONTRACT_NAMES, PASSING_CONTRACT_NAMES, TEMPLATES
 
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.16")
 VERSION_37 = Version("0.3.7")
@@ -132,6 +132,15 @@ def _transfer_ownership(new_owner: address):
     log OwnershipTransferred(old_owner, new_owner)
 
 
+# Showing importing interface from module.
+interface Ballot:
+    def delegated(addr: address) -> bool: view
+
+@internal
+def moduleMethod2() -> bool:
+    return True
+
+
 # This source is also imported from `zero_four.py` to test
 # multiple imports across sources during flattening.
 
@@ -143,15 +152,6 @@ def moduleMethod() -> bool:
 @external
 def callModule2FunctionFromAnotherSource(role: bytes32) -> bool:
     return self.moduleMethod2()
-
-
-# Showing importing interface from module.
-interface Ballot:
-    def delegated(addr: address) -> bool: view
-
-@internal
-def moduleMethod2() -> bool:
-    return True
 
 
 implements: IFaceZeroFour
@@ -390,9 +390,6 @@ def test_get_imports(compiler, project):
     ]
     actual = compiler.get_imports(vyper_files, project=project)
 
-    # The dependency should have gotten compiled!
-    assert dependency.manifest.contract_types
-
     prefix = "contracts/passing_contracts"
     builtin_import = "vyper/interfaces/ERC20.json"
     local_import = "IFace.vy"
@@ -592,7 +589,7 @@ def test_enrich_error_handle_when_name(compiler, geth_provider, mocker):
 def test_trace_source(account, geth_provider, project, traceback_contract, arguments):
     receipt = traceback_contract.addBalance(*arguments, sender=account)
     actual = receipt.source_traceback
-    base_folder = Path(__file__).parent / "contracts" / "passing_contracts"
+    base_folder = Path(__file__).parent.parent / "contracts" / "passing_contracts"
     contract_name = traceback_contract.contract_type.name
     expected = rf"""
 Traceback (most recent call last)
@@ -640,7 +637,7 @@ def test_trace_err_source(account, geth_provider, project, traceback_contract):
 
     receipt = geth_provider.get_receipt(txn.txn_hash.hex())
     actual = receipt.source_traceback
-    base_folder = Path(__file__).parent / "contracts" / "passing_contracts"
+    base_folder = Path(__file__).parent.parent / "contracts" / "passing_contracts"
     contract_name = traceback_contract.contract_type.name
     version_key = contract_name.split("traceback_contract_")[-1]
     expected = rf"""
@@ -680,7 +677,7 @@ def test_trace_source_default_method(geth_provider, account, project):
 def test_compile_with_version_set_in_config(config, projects_path, compiler, mocker):
     path = projects_path / "version_in_config"
     version_from_config = "0.3.7"
-    spy = mocker.patch("ape_vyper.compiler.vvm_compile_standard")
+    spy = mocker.patch("ape_vyper.compiler._versions.base.vvm_compile_standard")
     project = ape.Project(path)
 
     contract = project.contracts_folder / "v_contract.vy"

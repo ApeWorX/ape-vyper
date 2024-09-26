@@ -175,3 +175,47 @@ RUNTIME_ERROR_MAP: dict[RuntimeErrorType, type[ContractLogicError]] = {
     RuntimeErrorType.MODULO_BY_ZERO: ModuloByZeroError,
     RuntimeErrorType.FALLBACK_NOT_DEFINED: FallbackNotDefinedError,
 }
+
+
+def enrich_error(err: ContractLogicError) -> ContractLogicError:
+    try:
+        dev_message = err.dev_message
+    except ValueError:
+        # Not available.
+        return err
+
+    if not dev_message:
+        return err
+
+    err_str = dev_message.replace("dev: ", "")
+    error_type = None
+    if err_str in [m.value for m in RuntimeErrorType]:
+        # Is a builtin compiler error.
+        error_type = RuntimeErrorType(err_str)
+
+    elif "bounds check" in err_str:
+        error_type = RuntimeErrorType.INTEGER_BOUNDS_CHECK
+
+    else:
+        # Check names
+        for name, _type in [(m.name, m) for m in RuntimeErrorType]:
+            if err_str == name:
+                error_type = _type
+                break
+
+    if not error_type:
+        # Not a builtin compiler error; cannot enrich.
+        return err
+
+    runtime_error_cls = RUNTIME_ERROR_MAP[error_type]
+    tx_kwargs: dict = {
+        "contract_address": err.contract_address,
+        "source_traceback": err.source_traceback,
+        "trace": err.trace,
+        "txn": err.txn,
+    }
+    return (
+        runtime_error_cls(err_str.split(" ")[0], **tx_kwargs)
+        if runtime_error_cls == IntegerBoundsCheck
+        else runtime_error_cls(**tx_kwargs)
+    )
