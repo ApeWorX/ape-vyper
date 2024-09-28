@@ -32,6 +32,13 @@ class VyperConfig(PluginConfig):
 
     """
 
+    enable_decimals: Optional[bool] = None
+    """
+    On Vyper 0.4, to use decimal types, you must enable it.
+    Defaults to ``None`` to avoid misleading that ``False``
+    means you cannot use decimals on a lower version.
+    """
+
     @field_validator("version", mode="before")
     def validate_version(cls, value):
         return pragma_str_to_specifier_set(value) if isinstance(value, str) else value

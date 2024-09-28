@@ -2,6 +2,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Optional, cast
 
+from ape.managers import ProjectManager
 from ape.types import SourceTraceback
 from ape.utils import ManagerAccessMixin, get_full_extension
 from eth_pydantic_types import HexBytes
@@ -20,50 +21,49 @@ class SourceTracer(ManagerAccessMixin):
     Use EVM data to create a trace of Vyper source lines.
     """
 
-    def __init__(self, contract_source: ContractSource, frames: Iterator[dict], calldata: HexBytes):
-        self.contract_source = contract_source
-        self.frames = frames
-        self.calldata = calldata
-
+    @classmethod
     def trace(
-        self,
-        contract: Optional[ContractSource] = None,
-        calldata: Optional[HexBytes] = None,
+        cls,
+        frames: Iterator[dict],
+        contract: ContractSource,
+        calldata: HexBytes,
         previous_depth: Optional[int] = None,
+        project: Optional[ProjectManager] = None,
     ) -> SourceTraceback:
-        contract_source = self.contract_source if contract is None else contract
-        calldata = self.calldata if calldata is None else calldata
+        pm = project or cls.local_project
         method_id = HexBytes(calldata[:4])
         traceback = SourceTraceback.model_validate([])
         completed = False
         pcmap = PCMap.model_validate({})
 
-        for frame in self.frames:
+        for frame in frames:
             if frame["op"] in [c.value for c in CALL_OPCODES]:
                 start_depth = frame["depth"]
-                called_contract, sub_calldata = self._create_contract_from_call(frame)
+                called_contract, sub_calldata = cls._create_contract_from_call(frame, project=pm)
                 if called_contract:
                     ext = get_full_extension(Path(called_contract.source_id))
                     if ext in [x for x in FileType]:
                         # Called another Vyper contract.
-                        sub_trace = self.trace(
-                            contract=called_contract,
-                            calldata=sub_calldata,
+                        sub_trace = cls.trace(
+                            frames,
+                            called_contract,
+                            sub_calldata,
                             previous_depth=frame["depth"],
+                            project=pm,
                         )
                         traceback.extend(sub_trace)
 
                     else:
                         # Not a Vyper contract!
-                        compiler = self.compiler_manager.registered_compilers[ext]
+                        compiler = cls.compiler_manager.registered_compilers[ext]
                         try:
                             sub_trace = compiler.trace_source(
-                                called_contract.contract_type, self.frames, sub_calldata
+                                called_contract.contract_type, frames, sub_calldata
                             )
                             traceback.extend(sub_trace)
                         except NotImplementedError:
                             # Compiler not supported. Fast forward out of this call.
-                            for fr in self.frames:
+                            for fr in frames:
                                 if fr["depth"] <= start_depth:
                                     break
 
@@ -71,7 +71,7 @@ class SourceTracer(ManagerAccessMixin):
 
                 else:
                     # Contract not found. Fast forward out of this call.
-                    for fr in self.frames:
+                    for fr in frames:
                         if fr["depth"] <= start_depth:
                             break
 
@@ -83,14 +83,14 @@ class SourceTracer(ManagerAccessMixin):
                 completed = previous_depth is not None
 
             pcs_to_try_adding = set()
-            if "PUSH" in frame["op"] and frame["pc"] in contract_source.pcmap:
+            if "PUSH" in frame["op"] and frame["pc"] in contract.pcmap:
                 # Check if next op is SSTORE to properly use AST from push op.
                 next_frame: Optional[dict] = frame
-                loc = contract_source.pcmap[frame["pc"]]
+                loc = contract.pcmap[frame["pc"]]
                 pcs_to_try_adding.add(frame["pc"])
 
                 while next_frame and "PUSH" in next_frame["op"]:
-                    next_frame = next(self.frames, None)
+                    next_frame = next(frames, None)
                     if next_frame and "PUSH" in next_frame["op"]:
                         pcs_to_try_adding.add(next_frame["pc"])
 
@@ -103,7 +103,7 @@ class SourceTracer(ManagerAccessMixin):
                     completed = True
 
                 else:
-                    pcmap = contract_source.pcmap
+                    pcmap = contract.pcmap
                     dev_val = str((loc.get("dev") or "")).replace("dev: ", "")
                     is_non_payable_hit = dev_val == RuntimeErrorType.NONPAYABLE_CHECK.value
 
@@ -111,7 +111,7 @@ class SourceTracer(ManagerAccessMixin):
                     frame = next_frame
 
             else:
-                pcmap = contract_source.pcmap
+                pcmap = contract.pcmap
 
             pcs_to_try_adding.add(frame["pc"])
             pcs_to_try_adding = {pc for pc in pcs_to_try_adding if pc in pcmap}
@@ -147,7 +147,7 @@ class SourceTracer(ManagerAccessMixin):
                     # New group.
                     pc_groups.append([location, {pc}, dev])
 
-            dev_messages = contract_source.contract_type.dev_messages or {}
+            dev_messages = contract.contract_type.dev_messages or {}
             for location, pcs, dev in pc_groups:
                 if dev in [m.value for m in RuntimeErrorType if m != RuntimeErrorType.USER_ASSERT]:
                     error_type = RuntimeErrorType(dev)
@@ -160,9 +160,9 @@ class SourceTracer(ManagerAccessMixin):
                         name = traceback.last.closure.name
                         full_name = traceback.last.closure.full_name
 
-                    elif method_id in contract_source.contract_type.methods:
+                    elif method_id in contract.contract_type.methods:
                         # For non-payable checks, they should hit here.
-                        method_checked = contract_source.contract_type.methods[method_id]
+                        method_checked = contract.contract_type.methods[method_id]
                         name = method_checked.name
                         full_name = method_checked.selector
 
@@ -186,7 +186,7 @@ class SourceTracer(ManagerAccessMixin):
                         f"dev: {dev}",
                         full_name=full_name,
                         pcs=pcs,
-                        source_path=contract_source.source_path,
+                        source_path=contract.source_path,
                     )
                     continue
 
@@ -194,7 +194,7 @@ class SourceTracer(ManagerAccessMixin):
                     # Unknown.
                     continue
 
-                if not (function := contract_source.lookup_function(location, method_id=method_id)):
+                if not (function := contract.lookup_function(location, method_id=method_id)):
                     continue
 
                 if (
@@ -213,7 +213,7 @@ class SourceTracer(ManagerAccessMixin):
                         function,
                         depth,
                         pcs=pcs,
-                        source_path=contract_source.source_path,
+                        source_path=contract.source_path,
                     )
                 else:
                     traceback.extend_last(location, pcs=pcs)
@@ -235,7 +235,11 @@ class SourceTracer(ManagerAccessMixin):
 
         return traceback
 
-    def _create_contract_from_call(self, frame: dict) -> tuple[Optional[ContractSource], HexBytes]:
+    @classmethod
+    def _create_contract_from_call(
+        cls, frame: dict, project: Optional[ProjectManager] = None
+    ) -> tuple[Optional[ContractSource], HexBytes]:
+        pm = project or cls.local_project
         evm_frame = TraceFrame(**frame)
         data = create_call_node_data(evm_frame)
         calldata = data.get("calldata", HexBytes(""))
@@ -243,12 +247,12 @@ class SourceTracer(ManagerAccessMixin):
             return None, calldata
 
         try:
-            address = self.provider.network.ecosystem.decode_address(address)
+            address = cls.provider.network.ecosystem.decode_address(address)
         except Exception:
             return None, calldata
 
-        if address not in self.chain_manager.contracts:
+        if address not in cls.chain_manager.contracts:
             return None, calldata
 
-        called_contract = self.chain_manager.contracts[address]
-        return self.local_project._create_contract_source(called_contract), calldata
+        called_contract = cls.chain_manager.contracts[address]
+        return pm._create_contract_source(called_contract), calldata

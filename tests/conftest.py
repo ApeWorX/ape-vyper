@@ -1,12 +1,11 @@
 import os
-import shutil
 from contextlib import contextmanager
 from pathlib import Path
 
 import ape
 import pytest
 import vvm  # type: ignore
-from ape.contracts import ContractContainer
+from ape.contracts import ContractContainer, ContractInstance
 from ape.utils import create_tempdir
 from click.testing import CliRunner
 
@@ -39,20 +38,6 @@ CONTRACT_VERSION_GEN_MAP = {
     ),
     "sub_reverts": [v for v in ALL_VERSIONS if "0.4.0" not in v],
 }
-
-
-@pytest.fixture(scope="session", autouse=True)
-def from_tests_dir():
-    # Makes default project correct.
-    here = Path(__file__).parent
-    orig = Path.cwd()
-    if orig != here:
-        os.chdir(f"{here}")
-
-    yield
-
-    if Path.cwd() != orig:
-        os.chdir(f"{orig}")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -150,15 +135,7 @@ def compiler(compiler_manager):
 
 @pytest.fixture(scope="session", autouse=True)
 def project(config):
-    project_source_dir = Path(__file__).parent
-
-    # Delete build / .cache that may exist pre-copy
-    cache = project_source_dir / ".build"
-    shutil.rmtree(cache, ignore_errors=True)
-
-    root_project = ape.Project(project_source_dir)
-    with root_project.isolate_in_tempdir() as tmp_project:
-        yield tmp_project
+    return config.local_project
 
 
 @pytest.fixture
@@ -207,7 +184,7 @@ def cli_runner():
     return CliRunner()
 
 
-def _get_tb_contract(version: str, project, account):
+def _get_tb_contract(version: str, project, account) -> ContractInstance:
     project.load_contracts()
 
     registry_type = project.get_contract(f"registry_{version}")

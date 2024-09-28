@@ -10,7 +10,7 @@ import exampledependency.Dependency as Dep
 from .interfaces import IFace2 as IFace2
 
 # Also use IFaceNested to show we can use nested interfaces.
-from contracts.passing_contracts.interfaces.nested import IFaceNested as IFaceNested
+from tests.contracts.passing_contracts.interfaces.nested import IFaceNested as IFaceNested
 
 
 @external

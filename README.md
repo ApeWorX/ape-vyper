@@ -109,6 +109,15 @@ Import the voting contract types like this:
 import voting.ballot as ballot
 ```
 
+### Decimals
+
+To use decimals on Vyper 0.4, use the following config:
+
+```yaml
+vyper:
+  enable_decimals: true
+```
+
 ### Pragmas
 
 Ape-Vyper supports Vyper 0.3.10's [new pragma formats](https://github.com/vyperlang/vyper/pull/3493)

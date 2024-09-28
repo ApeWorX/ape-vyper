@@ -1,10 +1,10 @@
 # Allows compiling to work from the project-level.
-contracts_folder: contracts/passing_contracts
+contracts_folder: tests/contracts/passing_contracts
 
 # Specify a dependency to use in Vyper imports.
 dependencies:
   - name: exampledependency
-    local: ./ExampleDependency
+    local: ./tests/ExampleDependency
 
   # NOTE: Snekmate does not need to be listed here since
   # it is installed in site-packages. However, we include it
@@ -12,3 +12,6 @@ dependencies:
   - python: snekmate
     config_override:
       contracts_folder: .
+
+vyper:
+  enable_decimals: true
