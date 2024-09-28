@@ -190,8 +190,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
                 optimization = False
 
             selection_dict = self._get_selection_dictionary(selection, project=pm)
-            search_paths = [*getsitepackages()]
-            search_paths.append(".")
+            search_paths = [*getsitepackages(), "."]
 
             version_settings[settings_key] = {
                 "optimize": optimization,

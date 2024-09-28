@@ -247,8 +247,17 @@ class VyperCompiler(CompilerAPI):
         settings: Optional[dict] = None,
     ) -> Iterator[ContractType]:
         pm = project or self.local_project
-
+        original_settings = self.compiler_settings
         self.compiler_settings = {**self.compiler_settings, **(settings or {})}
+        try:
+            yield from self._compile(contract_filepaths, project=pm)
+        finally:
+            self.compiler_settings = original_settings
+
+    def _compile(
+        self, contract_filepaths: Iterable[Path], project: Optional[ProjectManager] = None
+    ):
+        pm = project or self.local_project
         contract_types: list[ContractType] = []
         import_map = self._import_resolver.get_imports(pm, contract_filepaths)
         config = self.get_config(pm)
@@ -514,12 +523,11 @@ class VyperCompiler(CompilerAPI):
     def enrich_error(self, err: ContractLogicError) -> ContractLogicError:
         return enrich_error(err)
 
+    # TODO: In 0.9, make sure project is a kwarg here.
     def trace_source(
         self, contract_source: ContractSource, trace: TraceAPI, calldata: HexBytes
     ) -> SourceTraceback:
-        frames = trace.get_raw_frames()
-        tracer = SourceTracer(contract_source, frames, calldata)
-        return tracer.trace()
+        return SourceTracer.trace(trace.get_raw_frames(), contract_source, calldata)
 
     def _get_compiler_arguments(
         self,

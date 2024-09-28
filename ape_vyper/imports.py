@@ -264,7 +264,7 @@ class ImportMap(dict[Path, list[Import]]):
         # Even though we build up mappings of all sources, as may be referenced
         # later on and that prevents re-calculating over again, we only
         # "show" the items requested.
-        self._request_view: list[Path] = paths
+        self.paths: list[Path] = paths
 
     def __getitem__(self, item: Union[str, Path], *args, **kwargs) -> list[Import]:
         if isinstance(item, str) or not item.is_absolute():
@@ -294,7 +294,7 @@ class ImportMap(dict[Path, list[Import]]):
         result = []
         keys = sorted(list(super().keys()))
         for path in keys:
-            if path not in self._request_view:
+            if path not in self.paths:
                 continue
 
             result.append(path)
@@ -311,7 +311,7 @@ class ImportMap(dict[Path, list[Import]]):
     def items(self) -> list[tuple[Path, list[Import]]]:  # type: ignore
         result = []
         for path in self.keys():  # sorted
-            if path not in self._request_view:
+            if path not in self.paths:
                 continue
 
             result.append((path, self[path]))
@@ -328,30 +328,16 @@ class ImportResolver(ManagerAccessMixin):
     _projects: dict[str, ImportMap] = {}
     _dependency_attempted_compile: set[str] = set()
 
-    def get_imports(
-        self,
-        project: ProjectManager,
-        contract_filepaths: Iterable[Path],
-    ) -> ImportMap:
+    def get_imports(self, project: ProjectManager, contract_filepaths: Iterable[Path]) -> ImportMap:
         paths = list(contract_filepaths)
-        reset_view = None
         if project.project_id not in self._projects:
             self._projects[project.project_id] = ImportMap(project, paths)
-        else:
-            # Change the items we "view". Some (or all) may need to be added as well.
-            reset_view = self._projects[project.project_id]._request_view
-            self._projects[project.project_id]._request_view = paths
 
-        try:
-            import_map = self._get_imports(paths, project)
-        finally:
-            if reset_view is not None:
-                self._projects[project.project_id]._request_view = reset_view
-
-        return import_map
+        return self._get_imports(paths, project)
 
     def _get_imports(self, paths: list[Path], project: ProjectManager) -> ImportMap:
         import_map = self._projects[project.project_id]
+        import_map.paths = list({*import_map.paths, *paths})
         for path in paths:
             if path in import_map:
                 # Already handled.

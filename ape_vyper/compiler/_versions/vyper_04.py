@@ -23,6 +23,25 @@ class Vyper04Compiler(BaseVyperCompiler):
         # You always import via module or package name.
         return {}
 
+    def get_settings(
+        self,
+        version: Version,
+        source_paths: Iterable[Path],
+        compiler_data: dict,
+        project: Optional[ProjectManager] = None,
+    ) -> dict:
+        pm = project or self.local_project
+
+        enable_decimals = self.api.get_config(project=pm).enable_decimals
+        if enable_decimals is None:
+            enable_decimals = False
+
+        settings = super().get_settings(version, source_paths, compiler_data, project=pm)
+        for settings_set in settings.values():
+            settings_set["enable_decimals"] = enable_decimals
+
+        return settings
+
     def _get_sources_dictionary(
         self, source_ids: Iterable[str], project: Optional[ProjectManager] = None, **kwargs
     ) -> dict[str, dict]:
