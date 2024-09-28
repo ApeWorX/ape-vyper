@@ -56,28 +56,6 @@ interface IFaceZeroFour:
     def implementThisPlease(role: bytes32) -> bool: view
 
 
-# Showing importing interface from module.
-interface Ballot:
-    def delegated(addr: address) -> bool: view
-
-@internal
-def moduleMethod2() -> bool:
-    return True
-
-
-# This source is also imported from `zero_four.py` to test
-# multiple imports across sources during flattening.
-
-@internal
-def moduleMethod() -> bool:
-    return True
-
-
-@external
-def callModule2FunctionFromAnotherSource(role: bytes32) -> bool:
-    return self.moduleMethod2()
-
-
 # @dev Returns the address of the current owner.
 # @notice If you declare a variable as `public`,
 # Vyper automatically generates an `external`
@@ -153,6 +131,28 @@ def _transfer_ownership(new_owner: address):
     old_owner: address = self.owner
     self.owner = new_owner
     log OwnershipTransferred(old_owner, new_owner)
+
+
+# Showing importing interface from module.
+interface Ballot:
+    def delegated(addr: address) -> bool: view
+
+@internal
+def moduleMethod2() -> bool:
+    return True
+
+
+# This source is also imported from `zero_four.py` to test
+# multiple imports across sources during flattening.
+
+@internal
+def moduleMethod() -> bool:
+    return True
+
+
+@external
+def callModule2FunctionFromAnotherSource(role: bytes32) -> bool:
+    return self.moduleMethod2()
 
 
 implements: IFaceZeroFour

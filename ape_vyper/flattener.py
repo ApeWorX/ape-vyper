@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Optional
 
 from ape.logging import logger
 from ape.managers import ProjectManager
-from ape.utils import ManagerAccessMixin
+from ape.utils import ManagerAccessMixin, get_relative_path
 from ethpm_types.source import Content
 
 from ape_vyper._utils import get_version_pragma_spec
@@ -65,7 +65,10 @@ class Flattener(ManagerAccessMixin):
         flattened_modules = ""
         modules_prefixes: set[str] = set()
 
-        for import_path in sorted(imports):
+        # Source by source ID for greater consistency..
+        for import_path in sorted(
+            imports, key=lambda p: f"{get_relative_path(p.absolute(), pm.path)}"
+        ):
             import_info = imports[import_path]
 
             # Vyper imported interface names come from their file names
