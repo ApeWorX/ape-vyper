@@ -9,8 +9,7 @@ from ape.managers import ProjectManager
 from ape.managers.project import Dependency
 from ape.utils import ManagerAccessMixin, get_relative_path
 
-from ape_vyper import FileType
-from ape_vyper._utils import lookup_source_from_site_packages
+from ape_vyper._utils import FileType, lookup_source_from_site_packages
 
 BUILTIN_PREFIXES = ("vyper", "ethereum")
 
