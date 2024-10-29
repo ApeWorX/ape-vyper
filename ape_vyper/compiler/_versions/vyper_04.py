@@ -1,16 +1,18 @@
 import os
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from ape.managers import ProjectManager
 from ape.utils import get_full_extension, get_relative_path
 from ethpm_types import SourceMap
-from packaging.version import Version
 
 from ape_vyper._utils import FileType, Optimization
 from ape_vyper.compiler._versions.base import BaseVyperCompiler
 from ape_vyper.imports import ImportMap
+
+if TYPE_CHECKING:
+    from ape.managers.project import ProjectManager
+    from packaging.version import Version
 
 
 class Vyper04Compiler(BaseVyperCompiler):
@@ -18,17 +20,17 @@ class Vyper04Compiler(BaseVyperCompiler):
     Compiler for Vyper>=0.4.0.
     """
 
-    def get_import_remapping(self, project: Optional[ProjectManager] = None) -> dict[str, dict]:
+    def get_import_remapping(self, project: Optional["ProjectManager"] = None) -> dict[str, dict]:
         # Import remappings are not used in 0.4.
         # You always import via module or package name.
         return {}
 
     def get_settings(
         self,
-        version: Version,
+        version: "Version",
         source_paths: Iterable[Path],
         compiler_data: dict,
-        project: Optional[ProjectManager] = None,
+        project: Optional["ProjectManager"] = None,
     ) -> dict:
         pm = project or self.local_project
 
@@ -43,7 +45,7 @@ class Vyper04Compiler(BaseVyperCompiler):
         return settings
 
     def _get_sources_dictionary(
-        self, source_ids: Iterable[str], project: Optional[ProjectManager] = None, **kwargs
+        self, source_ids: Iterable[str], project: Optional["ProjectManager"] = None, **kwargs
     ) -> dict[str, dict]:
         pm = project or self.local_project
         if not source_ids:
@@ -83,18 +85,21 @@ class Vyper04Compiler(BaseVyperCompiler):
         return src_dict
 
     def _get_compile_kwargs(
-        self, vyper_version: Version, compiler_data: dict, project: Optional[ProjectManager] = None
+        self,
+        vyper_version: "Version",
+        compiler_data: dict,
+        project: Optional["ProjectManager"] = None,
     ) -> dict:
         return self._get_base_compile_kwargs(vyper_version, compiler_data)
 
-    def _get_default_optimization(self, vyper_version: Version) -> Optimization:
+    def _get_default_optimization(self, vyper_version: "Version") -> Optimization:
         return "gas"
 
     def _parse_source_map(self, raw_source_map: dict) -> SourceMap:
         return SourceMap(root=raw_source_map["pc_pos_map_compressed"])
 
     def _get_selection_dictionary(
-        self, selection: Iterable[str], project: Optional[ProjectManager] = None, **kwargs
+        self, selection: Iterable[str], project: Optional["ProjectManager"] = None, **kwargs
     ) -> dict:
         pm = project or self.local_project
         return {

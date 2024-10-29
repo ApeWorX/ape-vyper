@@ -3,21 +3,23 @@ import time
 from collections.abc import Iterable
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 import vvm  # type: ignore
 from ape.exceptions import ProjectError
 from ape.logging import logger
 from ape.managers import ProjectManager
-from ape.types import SourceTraceback
 from ape.utils import get_relative_path
 from eth_utils import is_0x_prefixed
 from ethpm_types import ASTNode, PCMap, SourceMapItem
-from ethpm_types.source import Function
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
-from packaging.version import Version
 
 from ape_vyper.exceptions import RuntimeErrorType, VyperInstallError
+
+if TYPE_CHECKING:
+    from ape.types.trace import SourceTraceback
+    from ethpm_types.source import Function
+    from packaging.version import Version
 
 Optimization = Union[str, bool]
 EVM_VERSION_DEFAULT = {
@@ -54,7 +56,7 @@ class FileType(str, Enum):
         return self.value
 
 
-def install_vyper(version: Version):
+def install_vyper(version: "Version"):
     for attempt in range(MAX_INSTALL_RETRIES):
         try:
             vvm.install_vyper(version, show_progress=True)
@@ -255,7 +257,7 @@ def lookup_source_from_site_packages(
     return None
 
 
-def safe_append(data: dict, version: Union[Version, SpecifierSet], paths: Union[Path, set]):
+def safe_append(data: dict, version: Union["Version", SpecifierSet], paths: Union[Path, set]):
     if isinstance(paths, Path):
         paths = {paths}
     if version in data:
@@ -478,7 +480,9 @@ def is_immutable_member_load(opcodes: list[str]):
     return not is_code_copy and opcodes and is_0x_prefixed(opcodes[0])
 
 
-def extend_return(function: Function, traceback: SourceTraceback, last_pc: int, source_path: Path):
+def extend_return(
+    function: "Function", traceback: "SourceTraceback", last_pc: int, source_path: Path
+):
     return_ast_result = [x for x in function.ast.children if x.ast_type == "Return"]
     if not return_ast_result:
         return
