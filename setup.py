@@ -15,6 +15,8 @@ extras_require = {
         "mypy>=1.13.0,<2",  # Static type analyzer
         "types-setuptools",  # Needed due to mypy typeshed
         "flake8>=7.1.1,<8",  # Style linter
+        "flake8-pydantic",  # For detecting issues with Pydantic models
+        "flake8-type-checking",  # Detect imports to move in/out of type-checking blocks
         "isort>=5.13.2",  # Import sorting linter
         "mdformat>=0.7.18",  # Auto-formatter for markdown
         "mdformat-gfm>=0.3.5",  # Needed for formatting GitHub-flavored markdown
