@@ -2,15 +2,16 @@ import os
 from collections.abc import Iterable, Iterator
 from functools import cached_property
 from pathlib import Path
-from typing import Optional, Union
+from typing import TYPE_CHECKING, Optional, Union
 
 from ape.logging import LogLevel, logger
-from ape.managers import ProjectManager
-from ape.managers.project import Dependency
 from ape.utils import ManagerAccessMixin, get_relative_path
 
-from ape_vyper import FileType
-from ape_vyper._utils import lookup_source_from_site_packages
+from ape_vyper._utils import FileType, lookup_source_from_site_packages
+
+if TYPE_CHECKING:
+    from ape.managers.project import Dependency, ProjectManager
+
 
 BUILTIN_PREFIXES = ("vyper", "ethereum")
 
@@ -21,7 +22,7 @@ _KNOWN_PACKAGES_NOT_TO_COMPILE = ("snekmate",)
 class Import:
     def __init__(
         self,
-        project: ProjectManager,
+        project: "ProjectManager",
         importer: Path,
         value: str,
     ):
@@ -62,7 +63,7 @@ class Import:
         return bool(self._local_data)
 
     @property
-    def sub_project(self) -> Optional[ProjectManager]:
+    def sub_project(self) -> Optional["ProjectManager"]:
         if self.is_builtin:
             return None
         elif self.is_local:
@@ -88,7 +89,7 @@ class Import:
         return self._pathified_value.replace(f"{self.dependency_name}{os.path.sep}", "")
 
     @cached_property
-    def site_package_info(self) -> Optional[tuple[Path, ProjectManager]]:
+    def site_package_info(self) -> Optional[tuple[Path, "ProjectManager"]]:
         if not (dependency_name := self.dependency_name):
             return None
         elif not (dependency_filestem := self.dependency_filestem):
@@ -97,7 +98,7 @@ class Import:
         return lookup_source_from_site_packages(dependency_name, dependency_filestem)
 
     @cached_property
-    def dependency_info(self) -> Optional[tuple[str, Dependency]]:
+    def dependency_info(self) -> Optional[tuple[str, "Dependency"]]:
         dependency_name = self.dependency_name
         for dependency in self.project.dependencies:
             if dependency.name != dependency_name:
@@ -258,7 +259,7 @@ class Import:
 
 
 class ImportMap(dict[Path, list[Import]]):
-    def __init__(self, project: ProjectManager, paths: list[Path]):
+    def __init__(self, project: "ProjectManager", paths: list[Path]):
         self.project = project
 
         # Even though we build up mappings of all sources, as may be referenced
@@ -328,14 +329,16 @@ class ImportResolver(ManagerAccessMixin):
     _projects: dict[str, ImportMap] = {}
     _dependency_attempted_compile: set[str] = set()
 
-    def get_imports(self, project: ProjectManager, contract_filepaths: Iterable[Path]) -> ImportMap:
+    def get_imports(
+        self, project: "ProjectManager", contract_filepaths: Iterable[Path]
+    ) -> ImportMap:
         paths = list(contract_filepaths)
         if project.project_id not in self._projects:
             self._projects[project.project_id] = ImportMap(project, paths)
 
         return self._get_imports(paths, project)
 
-    def _get_imports(self, paths: list[Path], project: ProjectManager) -> ImportMap:
+    def _get_imports(self, paths: list[Path], project: "ProjectManager") -> ImportMap:
         import_map = self._projects[project.project_id]
         import_map.paths = list({*import_map.paths, *paths})
         for path in paths:
@@ -358,7 +361,7 @@ class ImportResolver(ManagerAccessMixin):
         return import_map
 
     def _parse_imports_from_line(
-        self, line: str, path: Path, project: ProjectManager
+        self, line: str, path: Path, project: "ProjectManager"
     ) -> Iterator[Import]:
         if not (prefix := _parse_import_line(line)):
             return None
@@ -411,7 +414,7 @@ class ImportResolver(ManagerAccessMixin):
                 "Could not find it in Ape dependencies or Python's site-packages."
             )
 
-    def _compile_dependency_if_needed(self, dependency: Dependency):
+    def _compile_dependency_if_needed(self, dependency: "Dependency"):
         if (
             dependency.name in _KNOWN_PACKAGES_NOT_TO_COMPILE
             or dependency.project.manifest.contract_types

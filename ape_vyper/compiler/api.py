@@ -6,19 +6,15 @@ from collections.abc import Iterable, Iterator
 from functools import cached_property
 from importlib import import_module
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import vvm  # type: ignore
 from ape.api import CompilerAPI, PluginConfig, TraceAPI
-from ape.exceptions import ContractLogicError
 from ape.logging import logger
 from ape.managers import ProjectManager
 from ape.managers.project import LocalProject
-from ape.types import ContractSourceCoverage, SourceTraceback
 from ape.utils import get_full_extension, get_relative_path
 from ape.utils._github import _GithubClient
-from eth_pydantic_types import HexBytes
-from ethpm_types import ContractType
 from ethpm_types.source import Compiler, Content, ContractSource
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
@@ -35,6 +31,13 @@ from ape_vyper.exceptions import VyperCompileError, VyperInstallError, enrich_er
 from ape_vyper.flattener import Flattener
 from ape_vyper.imports import ImportMap, ImportResolver
 from ape_vyper.traceback import SourceTracer
+
+if TYPE_CHECKING:
+    from ape.exceptions import ContractLogicError
+    from ape.types.coverage import ContractSourceCoverage
+    from ape.types.trace import SourceTraceback
+    from eth_pydantic_types import HexBytes
+    from ethpm_types.contract_type import ContractType
 
 
 class VyperCompiler(CompilerAPI):
@@ -245,7 +248,7 @@ class VyperCompiler(CompilerAPI):
         contract_filepaths: Iterable[Path],
         project: Optional[ProjectManager] = None,
         settings: Optional[dict] = None,
-    ) -> Iterator[ContractType]:
+    ) -> Iterator["ContractType"]:
         pm = project or self.local_project
         original_settings = self.compiler_settings
         self.compiler_settings = {**self.compiler_settings, **(settings or {})}
@@ -258,7 +261,7 @@ class VyperCompiler(CompilerAPI):
         self, contract_filepaths: Iterable[Path], project: Optional[ProjectManager] = None
     ):
         pm = project or self.local_project
-        contract_types: list[ContractType] = []
+        contract_types: list["ContractType"] = []
         import_map = self._import_resolver.get_imports(pm, contract_filepaths)
         config = self.get_config(pm)
         version_map = self._get_version_map_from_import_map(
@@ -328,7 +331,7 @@ class VyperCompiler(CompilerAPI):
 
     def compile_code(
         self, code: str, project: Optional[ProjectManager] = None, **kwargs
-    ) -> ContractType:
+    ) -> "ContractType":
         # NOTE: We are unable to use `vvm.compile_code()` because it does not
         #   appear to honor altered VVM install paths, thus always re-installs
         #   Vyper in our tests because of the monkeypatch. Also, their approach
@@ -515,18 +518,18 @@ class VyperCompiler(CompilerAPI):
         return settings
 
     def init_coverage_profile(
-        self, source_coverage: ContractSourceCoverage, contract_source: ContractSource
+        self, source_coverage: "ContractSourceCoverage", contract_source: ContractSource
     ):
         profiler = CoverageProfiler(source_coverage)
         profiler.initialize(contract_source)
 
-    def enrich_error(self, err: ContractLogicError) -> ContractLogicError:
+    def enrich_error(self, err: "ContractLogicError") -> "ContractLogicError":
         return enrich_error(err)
 
     # TODO: In 0.9, make sure project is a kwarg here.
     def trace_source(
-        self, contract_source: ContractSource, trace: TraceAPI, calldata: HexBytes
-    ) -> SourceTraceback:
+        self, contract_source: ContractSource, trace: TraceAPI, calldata: "HexBytes"
+    ) -> "SourceTraceback":
         return SourceTracer.trace(trace.get_raw_frames(), contract_source, calldata)
 
     def _get_compiler_arguments(

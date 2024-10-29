@@ -1,19 +1,21 @@
 from fnmatch import fnmatch
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from ape.types import ContractSourceCoverage
 from ape.utils import ManagerAccessMixin
-from ethpm_types.source import ContractSource
 from ethpm_types.utils import SourceLocation
 
 from ape_vyper.exceptions import RuntimeErrorType
 
+if TYPE_CHECKING:
+    from ape.types import ContractSourceCoverage
+    from ethpm_types.source import ContractSource
+
 
 class CoverageProfiler(ManagerAccessMixin):
-    def __init__(self, source_coverage: ContractSourceCoverage):
+    def __init__(self, source_coverage: "ContractSourceCoverage"):
         self._coverage = source_coverage
 
-    def initialize(self, contract_source: ContractSource):
+    def initialize(self, contract_source: "ContractSource"):
         exclusions = self.config_manager.get_config("test").coverage.exclude
         contract_name = contract_source.contract_type.name or "__UnknownContract__"
 

@@ -6,12 +6,10 @@ from site import getsitepackages
 from typing import TYPE_CHECKING, Any, Optional
 
 from ape.logging import logger
-from ape.managers.project import ProjectManager
 from ape.utils import ManagerAccessMixin, clean_path, get_relative_path
 from ethpm_types import ASTNode, ContractType, SourceMap
 from ethpm_types.ast import ASTClassification
 from ethpm_types.source import Content
-from packaging.version import Version
 from vvm import compile_standard as vvm_compile_standard  # type: ignore
 from vvm.exceptions import VyperError  # type: ignore
 
@@ -25,10 +23,13 @@ from ape_vyper._utils import (
     get_pcmap,
 )
 from ape_vyper.exceptions import VyperCompileError
-from ape_vyper.imports import ImportMap
 
 if TYPE_CHECKING:
+    from ape.managers.project import ProjectManager
+    from packaging.version import Version
+
     from ape_vyper.compiler.api import VyperCompiler
+    from ape_vyper.imports import ImportMap
 
 
 class BaseVyperCompiler(ManagerAccessMixin):
@@ -39,7 +40,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
     def __init__(self, api: "VyperCompiler"):
         self.api = api
 
-    def get_import_remapping(self, project: Optional[ProjectManager] = None) -> dict[str, dict]:
+    def get_import_remapping(self, project: Optional["ProjectManager"] = None) -> dict[str, dict]:
         # Overridden on 0.4 to not use.
         # Import remappings are for Vyper versions 0.2 - 0.3 to
         # create the interfaces dict.
@@ -48,11 +49,11 @@ class BaseVyperCompiler(ManagerAccessMixin):
 
     def compile(
         self,
-        vyper_version: Version,
+        vyper_version: "Version",
         settings: dict,
-        import_map: ImportMap,
+        import_map: "ImportMap",
         compiler_data: dict,
-        project: Optional[ProjectManager] = None,
+        project: Optional["ProjectManager"] = None,
     ):
         pm = project or self.local_project
         for settings_key, settings_set in settings.items():
@@ -155,10 +156,10 @@ class BaseVyperCompiler(ManagerAccessMixin):
 
     def get_settings(
         self,
-        version: Version,
+        version: "Version",
         source_paths: Iterable[Path],
         compiler_data: dict,
-        project: Optional[ProjectManager] = None,
+        project: Optional["ProjectManager"] = None,
     ) -> dict:
         pm = project or self.local_project
         default_optimization = self._get_default_optimization(version)
@@ -210,7 +211,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
             self._classify_ast(child)
 
     def _get_sources_dictionary(
-        self, source_ids: Iterable[str], project: Optional[ProjectManager] = None, **kwargs
+        self, source_ids: Iterable[str], project: Optional["ProjectManager"] = None, **kwargs
     ) -> dict[str, dict]:
         """
         Generate input for the "sources" key in the input JSON.
@@ -225,7 +226,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
     def _get_selection_dictionary(
         self,
         selection: Iterable[str],
-        project: Optional[ProjectManager] = None,
+        project: Optional["ProjectManager"] = None,
         **kwargs,
     ) -> dict:
         """
@@ -238,7 +239,10 @@ class BaseVyperCompiler(ManagerAccessMixin):
         return {s: ["*"] for s in selection if (pm.path / s).is_file() if "interfaces" not in s}
 
     def _get_compile_kwargs(
-        self, vyper_version: Version, compiler_data: dict, project: Optional[ProjectManager] = None
+        self,
+        vyper_version: "Version",
+        compiler_data: dict,
+        project: Optional["ProjectManager"] = None,
     ) -> dict:
         """
         Generate extra kwargs to pass to Vyper.
@@ -249,14 +253,14 @@ class BaseVyperCompiler(ManagerAccessMixin):
         comp_kwargs["base_path"] = pm.path
         return comp_kwargs
 
-    def _get_base_compile_kwargs(self, vyper_version: Version, compiler_data: dict):
+    def _get_base_compile_kwargs(self, vyper_version: "Version", compiler_data: dict):
         vyper_binary = compiler_data[vyper_version]["vyper_binary"]
         comp_kwargs = {"vyper_version": vyper_version, "vyper_binary": vyper_binary}
         return comp_kwargs
 
     def _get_pcmap(
         self,
-        vyper_version: Version,
+        vyper_version: "Version",
         ast: Any,
         src_map: list,
         opcodes: list[str],
@@ -274,7 +278,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
         # All versions < 0.4 use this one
         return SourceMap(root=raw_source_map)
 
-    def _get_default_optimization(self, vyper_version: Version) -> Optimization:
+    def _get_default_optimization(self, vyper_version: "Version") -> Optimization:
         """
         The default  value for "optimize" in the settings for input JSON.
         """

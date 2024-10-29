@@ -2,7 +2,7 @@ from pathlib import Path
 
 import ape
 import click
-from ape.cli import ape_cli_context, project_option
+from ape.cli.options import ape_cli_context, project_option
 
 
 @click.group

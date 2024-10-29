@@ -2,10 +2,13 @@
 Tools for working with ABI specs and Vyper interface source code
 """
 
-from typing import Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 from ethpm_types import ABI, MethodABI
-from ethpm_types.abi import ABIType
+
+if TYPE_CHECKING:
+    from ethpm_types.abi import ABIType
+
 
 INDENT_SPACES = 4
 INDENT = " " * INDENT_SPACES
@@ -16,7 +19,7 @@ def indent_line(line: str, level=1) -> str:
     return f"{INDENT * level}{line}"
 
 
-def generate_inputs(inputs: list[ABIType]) -> str:
+def generate_inputs(inputs: list["ABIType"]) -> str:
     """Generate the source code input args from ABI inputs"""
     return ", ".join(f"{i.name}: {i.type}" for i in inputs)
 

@@ -1,8 +1,7 @@
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Optional, cast
+from typing import TYPE_CHECKING, Optional, cast
 
-from ape.managers import ProjectManager
 from ape.types import SourceTraceback
 from ape.utils import ManagerAccessMixin, get_full_extension
 from eth_pydantic_types import HexBytes
@@ -14,6 +13,9 @@ from evm_trace.geth import create_call_node_data
 
 from ape_vyper._utils import DEV_MSG_PATTERN, RETURN_OPCODES, FileType
 from ape_vyper.exceptions import RuntimeErrorType
+
+if TYPE_CHECKING:
+    from ape.managers.project import ProjectManager
 
 
 class SourceTracer(ManagerAccessMixin):
@@ -28,7 +30,7 @@ class SourceTracer(ManagerAccessMixin):
         contract: ContractSource,
         calldata: HexBytes,
         previous_depth: Optional[int] = None,
-        project: Optional[ProjectManager] = None,
+        project: Optional["ProjectManager"] = None,
     ) -> SourceTraceback:
         pm = project or cls.local_project
         method_id = HexBytes(calldata[:4])
@@ -237,7 +239,7 @@ class SourceTracer(ManagerAccessMixin):
 
     @classmethod
     def _create_contract_from_call(
-        cls, frame: dict, project: Optional[ProjectManager] = None
+        cls, frame: dict, project: Optional["ProjectManager"] = None
     ) -> tuple[Optional[ContractSource], HexBytes]:
         pm = project or cls.local_project
         evm_frame = TraceFrame(**frame)

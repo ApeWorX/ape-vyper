@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from ape.logging import logger
-from ape.managers import ProjectManager
 from ape.utils import ManagerAccessMixin, get_relative_path
 from ethpm_types.source import Content
 
@@ -17,6 +16,8 @@ from ape_vyper.interface import (
 )
 
 if TYPE_CHECKING:
+    from ape.managers.project import ProjectManager
+
     from ape_vyper.compiler import VyperCompiler
 
 
@@ -28,7 +29,7 @@ class Flattener(ManagerAccessMixin):
     def flatten(
         self,
         path: Path,
-        project: Optional[ProjectManager] = None,
+        project: Optional["ProjectManager"] = None,
     ) -> Content:
         """
         Returns the flattened contract suitable for compilation or verification as a single file
@@ -40,7 +41,7 @@ class Flattener(ManagerAccessMixin):
     def _flatten_source(
         self,
         path: Path,
-        project: Optional[ProjectManager] = None,
+        project: Optional["ProjectManager"] = None,
         include_pragma: bool = True,
         sources_handled: Optional[set[Path]] = None,
         warn_flattening_modules: bool = True,
