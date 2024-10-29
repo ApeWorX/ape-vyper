@@ -22,6 +22,7 @@ include = '\.pyi?$'
 norecursedirs = "projects"
 addopts = """
     -p no:ape_test
+    -p no:pytest_ethereum
 """
 python_files = "test_*.py"
 testpaths = "tests"
