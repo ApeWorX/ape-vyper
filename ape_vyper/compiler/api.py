@@ -251,7 +251,7 @@ class VyperCompiler(CompilerAPI):
     ) -> Iterator["ContractType"]:
         pm = project or self.local_project
         original_settings = self.compiler_settings
-        self.compiler_settings = {**self.compiler_settings, **(settings or {})}
+        self.compiler_settings: dict = {**self.compiler_settings, **(settings or {})}
         try:
             yield from self._compile(contract_filepaths, project=pm)
         finally:
