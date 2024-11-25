@@ -1,5 +1,3 @@
-from typing import Any
-
 from ape import plugins
 
 
@@ -18,7 +16,7 @@ def register_compiler():
     return tuple(e.value for e in FileType), VyperCompiler
 
 
-def __getattr__(name: str) -> Any:
+def __getattr__(name: str):
     if name == "FileType":
         from ._utils import FileType
 
