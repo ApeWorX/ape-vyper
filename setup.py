@@ -69,7 +69,7 @@ setup(
         "vvm>=0.2.0,<0.3",
         "vyper>=0.3.7,<0.5",
     ],
-    python_requires=">=3.10,<4",
+    python_requires=">=3.9,<4",
     extras_require=extras_require,
     py_modules=["ape_vyper"],
     entry_points={
