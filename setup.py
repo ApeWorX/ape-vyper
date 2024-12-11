@@ -69,7 +69,7 @@ setup(
         "vvm>=0.2.0,<0.3",
         "vyper>=0.3.7,<0.5",
     ],
-    python_requires=">=3.9,<4",
+    python_requires=">=3.10,<4",
     extras_require=extras_require,
     py_modules=["ape_vyper"],
     entry_points={
@@ -90,7 +90,6 @@ setup(
         "Operating System :: MacOS",
         "Operating System :: POSIX",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
