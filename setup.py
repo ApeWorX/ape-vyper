@@ -15,6 +15,8 @@ extras_require = {
         "mypy>=1.13.0,<2",  # Static type analyzer
         "types-setuptools",  # Needed due to mypy typeshed
         "flake8>=7.1.1,<8",  # Style linter
+        "flake8-breakpoint>=1.1.0,<2",  # Detect breakpoints left in code
+        "flake8-print>=5.0.0,<6",  # Detect print statements left in code
         "flake8-pydantic",  # For detecting issues with Pydantic models
         "flake8-type-checking",  # Detect imports to move in/out of type-checking blocks
         "isort>=5.13.2",  # Import sorting linter
