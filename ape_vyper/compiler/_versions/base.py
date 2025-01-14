@@ -5,8 +5,7 @@ from pathlib import Path
 from site import getsitepackages
 from typing import TYPE_CHECKING, Any, Optional
 
-from ape.logging import logger
-from ape.utils import ManagerAccessMixin, clean_path, get_relative_path
+from ape.utils import ManagerAccessMixin, get_relative_path
 from ethpm_types import ASTNode, ContractType, SourceMap
 from ethpm_types.ast import ASTClassification
 from ethpm_types.source import Content
@@ -22,6 +21,7 @@ from ape_vyper._utils import (
     get_optimization_pragma_map,
     get_pcmap,
 )
+from ape_vyper.compiler._versions.utils import output_details
 from ape_vyper.exceptions import VyperCompileError
 
 if TYPE_CHECKING:
@@ -42,8 +42,8 @@ class BaseVyperCompiler(ManagerAccessMixin):
 
     def get_import_remapping(self, project: Optional["ProjectManager"] = None) -> dict[str, dict]:
         # Overridden on 0.4 to not use.
-        # Import remappings are for Vyper versions 0.2 - 0.3 to
-        # create the interfaces dict.
+        # Import-remapping is for Vyper versions 0.2 - 0.3 to
+        # create the interface dict.
         pm = project or self.local_project
         return self.api.get_import_remapping(project=pm)
 
@@ -76,9 +76,8 @@ class BaseVyperCompiler(ManagerAccessMixin):
                 input_json["interfaces"] = interfaces
 
             # Output compiler details.
-            keys = "\n\t".join(sorted([clean_path(Path(x)) for x in output_selection.keys()]))
-            log_str = f"Compiling using Vyper compiler '{vyper_version}'.\nInput:\n\t{keys}"
-            logger.info(log_str)
+            output_details(*output_selection.keys(), version=vyper_version)
+
             comp_kwargs = self._get_compile_kwargs(vyper_version, compiler_data, project=pm)
 
             here = Path.cwd()
@@ -104,20 +103,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
                 content = Content.model_validate(src_dict[source_id].get("content", "")).root
                 for name, output in output_items.items():
                     # De-compress source map to get PC POS map.
-                    ast = ASTNode.model_validate(result["sources"][source_id]["ast"])
-                    self._classify_ast(ast)
-
-                    # Track function offsets.
-                    function_offsets = []
-                    for node in ast.children:
-                        lineno = node.lineno
-
-                        # NOTE: Constructor is handled elsewhere.
-                        if node.ast_type == "FunctionDef" and "__init__" not in content.get(
-                            lineno, ""
-                        ):
-                            function_offsets.append((node.lineno, node.end_lineno))
-
+                    ast = self._parse_ast(result["sources"][source_id]["ast"])
                     evm = output["evm"]
                     bytecode = evm["deployedBytecode"]
                     opcodes = bytecode["opcodes"].split(" ")
@@ -153,6 +139,21 @@ class BaseVyperCompiler(ManagerAccessMixin):
                         }
                     )
                     yield contract_type, settings_key
+
+    def _parse_ast(self, ast: dict, content: Content) -> ASTNode:
+        ast = ASTNode.model_validate(ast)
+        self._classify_ast(ast)
+
+        # Track function offsets.
+        function_offsets = []
+        for node in ast.children:
+            lineno = node.lineno
+
+            # NOTE: Constructor is handled elsewhere.
+            if node.ast_type == "FunctionDef" and "__init__" not in content.get(lineno, ""):
+                function_offsets.append((node.lineno, node.end_lineno))
+
+        return ASTNode
 
     def get_settings(
         self,
