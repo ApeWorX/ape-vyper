@@ -1,5 +1,4 @@
 import os
-import shutil
 import time
 from base64 import b64encode
 from collections.abc import Iterable, Iterator
@@ -270,7 +269,6 @@ class VyperCompiler(CompilerAPI):
             project=pm,
             config=config,
         )
-        compiler_data = self._get_compiler_arguments(version_map, project=pm, config=config)
         all_settings = self._get_compiler_settings_from_version_map(version_map, project=pm)
         contract_versions: dict[str, tuple[Version, str]] = {}
 
@@ -280,7 +278,6 @@ class VyperCompiler(CompilerAPI):
                 vyper_version,
                 version_settings,
                 import_map,
-                compiler_data,
                 project=pm,
             ):
                 contract_types.append(contract_type)
@@ -500,20 +497,13 @@ class VyperCompiler(CompilerAPI):
         project: Optional[ProjectManager] = None,
     ):
         pm = project or self.local_project
-        compiler_data = self._get_compiler_arguments(version_map, project=pm)
         settings = {}
-        for version, data in compiler_data.items():
-            source_paths = list(version_map.get(version, []))
+        for version, source_paths in version_map.items():
             if not source_paths:
                 continue
 
             sub_compiler = self.get_sub_compiler(version)
-            settings[version] = sub_compiler.get_settings(
-                version,
-                source_paths,
-                data,
-                project=pm,
-            )
+            settings[version] = sub_compiler.get_settings(version, source_paths, project=pm)
 
         return settings
 
@@ -532,26 +522,23 @@ class VyperCompiler(CompilerAPI):
     ) -> "SourceTraceback":
         return SourceTracer.trace(trace.get_raw_frames(), contract_source, calldata)
 
-    def _get_compiler_arguments(
-        self,
-        version_map: dict,
-        project: Optional[ProjectManager] = None,
-        config: Optional[PluginConfig] = None,
-    ) -> dict[Version, dict]:
-        pm = project or self.local_project
-        config = config or self.get_config(pm)
-        evm_version = config.evm_version
-        arguments_map = {}
-        for vyper_version, source_paths in version_map.items():
-            bin_arg = self._get_vyper_bin(vyper_version)
-            arguments_map[vyper_version] = {
-                "base_path": f"{pm.path}",
-                "evm_version": evm_version,
-                "vyper_version": str(vyper_version),
-                "vyper_binary": bin_arg,
-            }
-
-        return arguments_map
-
-    def _get_vyper_bin(self, vyper_version: Version):
-        return shutil.which("vyper") if vyper_version is self.package_version else None
+    # def _get_compiler_arguments(
+    #     self,
+    #     version_map: dict,
+    #     project: Optional[ProjectManager] = None,
+    #     config: Optional[PluginConfig] = None,
+    # ) -> dict[Version, dict]:
+    #     pm = project or self.local_project
+    #     config = config or self.get_config(pm)
+    #     evm_version = config.evm_version
+    #     arguments_map = {}
+    #     for vyper_version, source_paths in version_map.items():
+    #         bin_arg = self._get_vyper_bin(vyper_version)
+    #         arguments_map[vyper_version] = {
+    #             "base_path": f"{pm.path}",
+    #             "evm_version": evm_version,
+    #             "vyper_version": str(vyper_version),
+    #             "vyper_binary": bin_arg,
+    #         }
+    #
+    #     return arguments_map

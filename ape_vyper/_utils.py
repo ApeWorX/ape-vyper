@@ -1,4 +1,6 @@
+import os
 import re
+import subprocess
 import time
 from collections.abc import Iterable
 from enum import Enum
@@ -13,8 +15,9 @@ from ape.utils import get_relative_path
 from eth_utils import is_0x_prefixed
 from ethpm_types import ASTNode, PCMap, SourceMapItem
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
+from vvm.exceptions import UnknownOption, UnknownValue
 
-from ape_vyper.exceptions import RuntimeErrorType, VyperInstallError
+from ape_vyper.exceptions import RuntimeErrorType, VyperError, VyperInstallError
 
 if TYPE_CHECKING:
     from ape.types.trace import SourceTraceback
@@ -277,7 +280,7 @@ def has_empty_revert(opcodes: list[str]) -> bool:
 
 
 def get_pcmap(bytecode: dict) -> PCMap:
-    # Find the non payable value check.
+    # Find the non-payable value check.
     src_info = bytecode["sourceMapFull"] if "sourceMapFull" in bytecode else bytecode["sourceMap"]
     pc_data = {pc: {"location": ln} for pc, ln in src_info["pc_pos_map"].items()}
     if not pc_data:
@@ -515,3 +518,88 @@ def _is_fallback_check(opcodes: list[str], op: str) -> bool:
         and opcodes[6] == "SHR"
         and opcodes[5] == "0xE0"
     )
+
+
+def compile_files(
+    binary: Path,
+    source_files: list[Path],
+    project_path: Path,
+    output_format: Optional[list[str]] = None,
+    additional_paths: Optional[list[Path]] = None,
+    **kwargs,
+) -> dict[str, Any]:
+    """
+    Borrowed (and modified) from vvm.
+    """
+
+    command = [f"{binary}", *[str(f) for f in source_files]]
+    if output_format:
+        command.extend(("-f", ",".join(output_format)))
+
+    paths = [project_path, *(additional_paths or [])]
+    for path in paths:
+        command.extend(("-p", f"{path}"))
+
+    if kwargs:
+        command.extend(_kwargs_to_cli_options(**kwargs))
+
+    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if process.returncode != 0:
+        raise _handle_process_failure(process)
+
+    outputs = process.stdout.decode("utf-8").splitlines()
+    iter_length = len(output_format)
+    return {
+        f"{input_source}": dict(zip(output_format, outputs[i : i + iter_length]))
+        for i, input_source in zip(range(0, len(outputs), iter_length), source_files)
+    }
+
+
+def _kwargs_to_cli_options(**kwargs) -> list[str]:
+    options = []
+    for key, value in kwargs.items():
+        if not value:
+            continue
+
+        key = f"-{key}" if len(key) == 1 else f"--{key.replace('_', '-')}"
+        if value is True:
+            # Is a flag.
+            options.append(key)
+
+        else:
+            # Has a value.
+            value = (
+                ",".join([f"{v}" for v in value])
+                if isinstance(value, (list, tuple))
+                else f"{value}"
+            )
+            options.extend((key, value))
+
+    return options
+
+
+def _to_string(key: str, value: Any) -> str:
+    if isinstance(value, (int, str)):
+        return str(value)
+
+    if isinstance(value, (list, tuple)):
+        return ",".join(_to_string(key, i) for i in value)
+
+
+def _handle_process_failure(process) -> Exception:
+    bin_name = process.args[-1].split(os.path.sep)[-1].split("-")
+    stderr = process.stderr.decode("utf-8")
+    if stderr.startswith("unrecognised option"):
+        # unrecognised option '<FLAG>'
+        flag = stderr.split("'")[1]
+        return UnknownOption(f"{bin_name} does not support the '{flag}' option'")
+
+    if stderr.startswith("Invalid option"):
+        # Invalid option to <FLAG>: <OPTION>
+        flag, option = stderr.split(": ")
+        flag = flag.split(" ")[-1]
+        return UnknownValue(
+            f"{bin_name} does not accept '{option}' as an option for the '{flag}' flag"
+        )
+
+    return VyperError.from_process(process)

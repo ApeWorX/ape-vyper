@@ -10,7 +10,6 @@ from ethpm_types import ASTNode, ContractType, SourceMap
 from ethpm_types.ast import ASTClassification
 from ethpm_types.source import Content
 from vvm import compile_standard as vvm_compile_standard  # type: ignore
-from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper._utils import (
     DEV_MSG_PATTERN,
@@ -22,13 +21,14 @@ from ape_vyper._utils import (
     get_pcmap,
 )
 from ape_vyper.compiler._versions.utils import output_details
-from ape_vyper.exceptions import VyperCompileError
+from ape_vyper.exceptions import VyperCompileError, VyperError
 
 if TYPE_CHECKING:
     from ape.managers.project import ProjectManager
     from packaging.version import Version
 
     from ape_vyper.compiler.api import VyperCompiler
+    from ape_vyper.config import VyperConfig
     from ape_vyper.imports import ImportMap
 
 
@@ -39,6 +39,17 @@ class BaseVyperCompiler(ManagerAccessMixin):
 
     def __init__(self, api: "VyperCompiler"):
         self.api = api
+
+    @property
+    def config(self) -> "VyperConfig":
+        return self.config_manager.vyper  # type: ignore
+
+    @property
+    def output_format(self) -> list[str]:
+        return self.config.output_format or ["*"]
+
+    def get_evm_version(self, version: "Version") -> str:
+        return self.config.evm_version or EVM_VERSION_DEFAULT.get(version.base_version)
 
     def get_import_remapping(self, project: Optional["ProjectManager"] = None) -> dict[str, dict]:
         # Overridden on 0.4 to not use.
@@ -52,7 +63,6 @@ class BaseVyperCompiler(ManagerAccessMixin):
         vyper_version: "Version",
         settings: dict,
         import_map: "ImportMap",
-        compiler_data: dict,
         project: Optional["ProjectManager"] = None,
     ):
         pm = project or self.local_project
@@ -78,7 +88,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
             # Output compiler details.
             output_details(*output_selection.keys(), version=vyper_version)
 
-            comp_kwargs = self._get_compile_kwargs(vyper_version, compiler_data, project=pm)
+            comp_kwargs = self._get_compile_kwargs(vyper_version, settings, project=pm)
 
             here = Path.cwd()
             if pm.path != here:
@@ -107,7 +117,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
                     evm = output["evm"]
                     bytecode = evm["deployedBytecode"]
                     opcodes = bytecode["opcodes"].split(" ")
-                    compressed_src_map = self._parse_source_map(bytecode["sourceMap"])
+                    compressed_src_map = SourceMap(root=bytecode["sourceMap"])
                     src_map = list(compressed_src_map.parse())[1:]
                     pcmap = self._get_pcmap(vyper_version, ast, src_map, opcodes, bytecode)
 
@@ -141,25 +151,24 @@ class BaseVyperCompiler(ManagerAccessMixin):
                     yield contract_type, settings_key
 
     def _parse_ast(self, ast: dict, content: Content) -> ASTNode:
-        ast = ASTNode.model_validate(ast)
-        self._classify_ast(ast)
+        ast_model = ASTNode.model_validate(ast)
+        self._classify_ast(ast_model)
 
         # Track function offsets.
         function_offsets = []
-        for node in ast.children:
+        for node in ast_model.children:
             lineno = node.lineno
 
             # NOTE: Constructor is handled elsewhere.
             if node.ast_type == "FunctionDef" and "__init__" not in content.get(lineno, ""):
                 function_offsets.append((node.lineno, node.end_lineno))
 
-        return ASTNode
+        return ast_model
 
     def get_settings(
         self,
         version: "Version",
         source_paths: Iterable[Path],
-        compiler_data: dict,
         project: Optional["ProjectManager"] = None,
     ) -> dict:
         pm = project or self.local_project
@@ -167,9 +176,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
         output_selection: dict[str, set[str]] = {}
         optimizations_map = get_optimization_pragma_map(source_paths, pm.path, default_optimization)
         evm_version_map = get_evm_version_pragma_map(source_paths, pm.path)
-        default_evm_version = compiler_data.get(
-            "evm_version", compiler_data.get("evmVersion")
-        ) or EVM_VERSION_DEFAULT.get(version.base_version)
+        default_evm_version = self.get_evm_version(version)
         for source_path in source_paths:
             source_id = str(get_relative_path(source_path.absolute(), pm.path))
 
@@ -242,21 +249,16 @@ class BaseVyperCompiler(ManagerAccessMixin):
     def _get_compile_kwargs(
         self,
         vyper_version: "Version",
-        compiler_data: dict,
+        settings: dict,
         project: Optional["ProjectManager"] = None,
     ) -> dict:
         """
         Generate extra kwargs to pass to Vyper.
         """
         pm = project or self.local_project
-        comp_kwargs = self._get_base_compile_kwargs(vyper_version, compiler_data)
+        comp_kwargs = self._get_base_compile_kwargs(vyper_version)
         # `base_path` is required for pre-0.4 versions or else imports won't resolve.
         comp_kwargs["base_path"] = pm.path
-        return comp_kwargs
-
-    def _get_base_compile_kwargs(self, vyper_version: "Version", compiler_data: dict):
-        vyper_binary = compiler_data[vyper_version]["vyper_binary"]
-        comp_kwargs = {"vyper_version": vyper_version, "vyper_binary": vyper_binary}
         return comp_kwargs
 
     def _get_pcmap(
@@ -271,13 +273,6 @@ class BaseVyperCompiler(ManagerAccessMixin):
         Generate the PCMap.
         """
         return get_pcmap(bytecode)
-
-    def _parse_source_map(self, raw_source_map: Any) -> SourceMap:
-        """
-        Generate the SourceMap.
-        """
-        # All versions < 0.4 use this one
-        return SourceMap(root=raw_source_map)
 
     def _get_default_optimization(self, vyper_version: "Version") -> Optimization:
         """
