@@ -15,7 +15,7 @@ from ape.utils import get_relative_path
 from eth_utils import is_0x_prefixed
 from ethpm_types import ASTNode, PCMap, SourceMapItem
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
-from vvm.exceptions import UnknownOption, UnknownValue
+from vvm.exceptions import UnknownOption, UnknownValue  # type: ignore
 
 from ape_vyper.exceptions import RuntimeErrorType, VyperError, VyperInstallError
 
@@ -533,8 +533,11 @@ def compile_files(
     """
 
     command = [f"{binary}", *[str(f) for f in source_files]]
-    if output_format:
-        command.extend(("-f", ",".join(output_format)))
+    if not output_format:
+        # Mirrors Vyper's default.
+        output_format = ["bytecode"]
+
+    command.extend(("-f", ",".join(output_format)))
 
     paths = [project_path, *(additional_paths or [])]
     for path in paths:
@@ -579,11 +582,10 @@ def _kwargs_to_cli_options(**kwargs) -> list[str]:
 
 
 def _to_string(key: str, value: Any) -> str:
-    if isinstance(value, (int, str)):
-        return str(value)
-
     if isinstance(value, (list, tuple)):
         return ",".join(_to_string(key, i) for i in value)
+
+    return f"{value}"
 
 
 def _handle_process_failure(process) -> Exception:

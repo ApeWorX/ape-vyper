@@ -12,8 +12,8 @@ if TYPE_CHECKING:
 
 
 def output_details(*source_ids: str, version: "Version"):
-    source_ids = "\n\t".join(sorted([clean_path(Path(x)) for x in source_ids]))
-    log_str = f"Compiling using Vyper compiler '{version}'.\nInput:\n\t{source_ids}"
+    source_ids_str = "\n\t".join(sorted([clean_path(Path(x)) for x in source_ids]))
+    log_str = f"Compiling using Vyper compiler '{version}'.\nInput:\n\t{source_ids_str}"
     logger.info(log_str)
 
 

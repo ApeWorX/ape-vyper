@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Optional
 from ape.utils import get_full_extension, get_relative_path
 from ethpm_types import ContractType, PCMap
 from ethpm_types.source import Content
-from vvm.install import get_executable
+from vvm.install import get_executable  # type: ignore
 
 from ape_vyper._utils import FileType, Optimization, compile_files
 from ape_vyper.compiler._versions.base import BaseVyperCompiler
@@ -85,19 +85,6 @@ class Vyper04Compiler(BaseVyperCompiler):
 
         return src_dict
 
-    def _get_compile_kwargs(
-        self,
-        vyper_version: "Version",
-        settings: dict,
-        project: Optional["ProjectManager"] = None,
-    ) -> dict:
-        return {
-            "evm_version": self.get_evm_version(vyper_version),
-            "output_format": self.config.output_format or VYPER_04_OUTPUT_FORMAT,
-            "additional_paths": [*getsitepackages()],
-            "enable_decimals": settings.get("enable_decimals", False),
-        }
-
     def _get_default_optimization(self, vyper_version: "Version") -> Optimization:
         return "gas"
 
@@ -134,7 +121,12 @@ class Vyper04Compiler(BaseVyperCompiler):
             # Output compiler details.
             output_details(*output_selection.keys(), version=vyper_version)
 
-            comp_kwargs = self._get_compile_kwargs(vyper_version, settings, project=pm)
+            comp_kwargs = {
+                "evm_version": self.get_evm_version(vyper_version),
+                "output_format": self.config.output_format or VYPER_04_OUTPUT_FORMAT,
+                "additional_paths": [*getsitepackages()],
+                "enable_decimals": settings.get("enable_decimals", False),
+            }
 
             here = Path.cwd()
             if pm.path != here:
@@ -152,7 +144,7 @@ class Vyper04Compiler(BaseVyperCompiler):
                     os.chdir(here)
 
             for source_id, output_items in result.items():
-                content = Content(root=src_dict[source_id].read_text(encoding="utf-8")).root
+                content = Content(root=src_dict[source_id].read_text(encoding="utf-8"))
                 # De-compress source map to get PC POS map.
                 ast_dict = json.loads(output_items["ast"])["ast"]
                 ast = self._parse_ast(ast_dict, content)
@@ -162,7 +154,7 @@ class Vyper04Compiler(BaseVyperCompiler):
                 pcmap = PCMap.model_validate(source_map["pc_pos_map"])
 
                 # Find content-specified dev messages.
-                dev_messages = map_dev_messages(content)
+                dev_messages = map_dev_messages(content.root)
 
                 source_id_path = Path(source_id)
                 if source_id_path.is_absolute():

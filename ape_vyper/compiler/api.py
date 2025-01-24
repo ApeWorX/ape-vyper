@@ -521,24 +521,3 @@ class VyperCompiler(CompilerAPI):
         self, contract_source: ContractSource, trace: TraceAPI, calldata: "HexBytes"
     ) -> "SourceTraceback":
         return SourceTracer.trace(trace.get_raw_frames(), contract_source, calldata)
-
-    # def _get_compiler_arguments(
-    #     self,
-    #     version_map: dict,
-    #     project: Optional[ProjectManager] = None,
-    #     config: Optional[PluginConfig] = None,
-    # ) -> dict[Version, dict]:
-    #     pm = project or self.local_project
-    #     config = config or self.get_config(pm)
-    #     evm_version = config.evm_version
-    #     arguments_map = {}
-    #     for vyper_version, source_paths in version_map.items():
-    #         bin_arg = self._get_vyper_bin(vyper_version)
-    #         arguments_map[vyper_version] = {
-    #             "base_path": f"{pm.path}",
-    #             "evm_version": evm_version,
-    #             "vyper_version": str(vyper_version),
-    #             "vyper_binary": bin_arg,
-    #         }
-    #
-    #     return arguments_map

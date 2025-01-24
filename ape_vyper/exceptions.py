@@ -40,6 +40,7 @@ class VyperCompileError(VyperCompilerPluginError):
     """
 
     def __init__(self, err: Union[VyperError, str]):
+        self.base_err: Optional[VyperError]
         if isinstance(err, VyperError):
             self.base_err = err
             message = "\n\n".join(
