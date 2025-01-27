@@ -15,11 +15,12 @@ from ape_vyper.compiler._versions.base import BaseVyperCompiler
 from ape_vyper.compiler._versions.utils import map_dev_messages, output_details
 from ape_vyper.config import VYPER_04_OUTPUT_FORMAT
 from ape_vyper.exceptions import VyperCompileError, VyperError
-from ape_vyper.imports import ImportMap
 
 if TYPE_CHECKING:
     from ape.managers.project import ProjectManager
     from packaging.version import Version
+
+    from ape_vyper.imports import ImportMap
 
 
 class Vyper04Compiler(BaseVyperCompiler):
