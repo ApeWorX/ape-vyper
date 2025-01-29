@@ -54,10 +54,18 @@ class BaseVyperCompiler(ManagerAccessMixin):
 
     def get_import_remapping(self, project: Optional["ProjectManager"] = None) -> dict[str, dict]:
         # Overridden on 0.4 to not use.
-        # Import-remapping is for Vyper versions 0.2 - 0.3 to
-        # create the interface dict.
+        # Import-remapping is for Vyper versions 0.2 - 0.3 to create the interface dict.
         pm = project or self.local_project
-        return self.api.get_import_remapping(project=pm)
+        dependencies = self.api.get_dependencies(project=pm)
+        interfaces: dict[str, dict] = {}
+        for key, dependency_project in dependencies.items():
+            manifest = dependency_project.manifest
+            for name, ct in (manifest.contract_types or {}).items():
+                filename = f"{key}/{name}.json"
+                abi_list = [x.model_dump(mode="json", by_alias=True) for x in ct.abi]
+                interfaces[filename] = {"abi": abi_list}
+
+        return interfaces
 
     def compile(
         self,
@@ -93,14 +101,6 @@ class BaseVyperCompiler(ManagerAccessMixin):
             if pm.path != here:
                 os.chdir(pm.path)
             try:
-                # TODO: Delete this before before.
-                path = pm.contracts_folder / "exampledependency/Dependency.json"
-                DEBUGS = [
-                    input_json["interfaces"],
-                    path.is_file(),
-
-                ]
-                raise ValueError("\n".join([f"{x}" for x in DEBUGS]))
                 result = vvm_compile_standard(
                     input_json, vyper_version=vyper_version, base_path=pm.path
                 )

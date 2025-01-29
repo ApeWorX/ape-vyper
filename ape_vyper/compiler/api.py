@@ -231,16 +231,7 @@ class VyperCompiler(CompilerAPI):
         Configured interface imports from dependencies.
         """
         pm = project or self.local_project
-        dependencies = self.get_dependencies(project=pm)
-        interfaces: dict[str, dict] = {}
-        for key, dependency_project in dependencies.items():
-            manifest = dependency_project.manifest
-            for name, ct in (manifest.contract_types or {}).items():
-                filename = f"{key}/{name}.json"
-                abi_list = [x.model_dump(mode="json", by_alias=True) for x in ct.abi]
-                interfaces[filename] = {"abi": abi_list}
-
-        return interfaces
+        return self.vyper_03.get_import_remapping(project=pm)
 
     def compile(
         self,
