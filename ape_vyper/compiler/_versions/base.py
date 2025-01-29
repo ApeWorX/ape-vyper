@@ -10,6 +10,7 @@ from ethpm_types import ASTNode, ContractType, SourceMap
 from ethpm_types.ast import ASTClassification
 from ethpm_types.source import Content
 from vvm import compile_standard as vvm_compile_standard  # type: ignore
+from vvm.exceptions import VyperError  # type: ignore
 
 from ape_vyper._utils import (
     DEV_MSG_PATTERN,
@@ -21,7 +22,7 @@ from ape_vyper._utils import (
     get_pcmap,
 )
 from ape_vyper.compiler._versions.utils import output_details
-from ape_vyper.exceptions import VyperCompileError, VyperError
+from ape_vyper.exceptions import VyperCompileError
 
 if TYPE_CHECKING:
     from ape.managers.project import ProjectManager
