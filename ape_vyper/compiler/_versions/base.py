@@ -57,6 +57,10 @@ class BaseVyperCompiler(ManagerAccessMixin):
         # Import-remapping is for Vyper versions 0.2 - 0.3 to create the interface dict.
         pm = project or self.local_project
         dependencies = self.api.get_dependencies(project=pm)
+
+        # TODO: DEBUG!
+        raise ValueError(dependencies)
+
         interfaces: dict[str, dict] = {}
         for key, dependency_project in dependencies.items():
             manifest = dependency_project.manifest
