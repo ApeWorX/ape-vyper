@@ -56,14 +56,12 @@ class BaseVyperCompiler(ManagerAccessMixin):
         # Overridden on 0.4 to not use.
         # Import-remapping is for Vyper versions 0.2 - 0.3 to create the interface dict.
         pm = project or self.local_project
-        dependencies = self.api.get_dependencies(project=pm)
-
-        # TODO: DEBUG!
-        raise ValueError(dependencies)
+        dependencies = self.api.get_dependencies(project=pm, allow_compile=True)
 
         interfaces: dict[str, dict] = {}
         for key, dependency_project in dependencies.items():
             manifest = dependency_project.manifest
+
             for name, ct in (manifest.contract_types or {}).items():
                 filename = f"{key}/{name}.json"
                 abi_list = [x.model_dump(mode="json", by_alias=True) for x in ct.abi]

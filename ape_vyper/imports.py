@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Optional, Union
 
 from ape.logging import LogLevel, logger
 from ape.utils import ManagerAccessMixin, get_relative_path
+from packaging.version import Version
 
 from ape_vyper._utils import FileType, lookup_source_from_site_packages
 
@@ -420,8 +421,14 @@ class ImportResolver(ManagerAccessMixin):
             or dependency.project.manifest.contract_types
             or dependency.package_id in self._dependency_attempted_compile
         ):
-            # Can' compile, or already compiled or attempted.
+            # Can't compile, or already compiled or attempted.
             return
+
+        elif version := dependency.project.config.vyper.version:
+            if version > Version("0.3.10"):
+                # Version is specified, and it is less than the max 0.3 version.
+                # It is safe to attempt compiling.
+                return
 
         self._dependency_attempted_compile.add(dependency.package_id)
         # In this case, the dependency *must* be compiled

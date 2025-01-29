@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 from collections.abc import Iterable
 from pathlib import Path
 from site import getsitepackages
@@ -133,7 +134,14 @@ class Vyper04Compiler(BaseVyperCompiler):
             if pm.path != here:
                 os.chdir(pm.path)
 
-            binary = get_executable(version=vyper_version)
+            if self.api.package_version == vyper_version:
+                if path_str := shutil.which("vyper"):
+                    binary = Path(path_str)
+                else:
+                    # Last attempt - but this state is unlikely (cli failure in vyper?)
+                    binary = get_executable(version=vyper_version)
+            else:
+                binary = get_executable(version=vyper_version)
 
             try:
                 result = compile_files(binary, [Path(p) for p in src_dict], pm.path, **comp_kwargs)

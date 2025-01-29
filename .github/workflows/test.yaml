@@ -100,20 +100,18 @@ jobs:
             pip install .[test]
 
         - name: Run Tests
-          # TODO: Put back before merge.
-          run: ape compile flatten_me
-#          run: |
-#            pytest -k "not test_coverage" -m "not fuzzing" -n 0 -s \
-#              --cov=ape_vyper \
-#              --cov-branch \
-#              --cov-report term \
-#              --cov-report html \
-#              --cov-report xml
+          run: |
+            pytest -k "not test_coverage" -m "not fuzzing" -n 0 -s \
+              --cov=ape_vyper \
+              --cov-branch \
+              --cov-report term \
+              --cov-report html \
+              --cov-report xml
 
         # Since --cov does not play nicely with --coverage (low-level tracer issues),
         #  we have to run the tests separately.
-#        - name: Run Contract Coverage Tests
-#          run: pytest tests/functional/test_coverage.py
+        - name: Run Contract Coverage Tests
+          run: pytest tests/functional/test_coverage.py
 
 
 # NOTE: uncomment this block after you've marked tests with @pytest.mark.fuzzing

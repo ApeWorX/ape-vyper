@@ -181,7 +181,9 @@ class VyperCompiler(CompilerAPI):
             return None
 
     def get_dependencies(
-        self, project: Optional[ProjectManager] = None
+        self,
+        project: Optional[ProjectManager] = None,
+        allow_compile: bool = False,
     ) -> dict[str, ProjectManager]:
         pm = project or self.local_project
         if pm.project_id in self._dependencies_by_project:
@@ -210,6 +212,8 @@ class VyperCompiler(CompilerAPI):
 
             handled.add(dep_id)
             dependencies[remapping.key] = dependency.project
+            if allow_compile:
+                self._import_resolver._compile_dependency_if_needed(dependency)
 
         # Add auto-remapped dependencies.
         for dependency in pm.dependencies.specified:
@@ -221,9 +225,12 @@ class VyperCompiler(CompilerAPI):
 
             handled.add(dep_id)
             dependencies[dependency.name] = dependency.project
+            if allow_compile:
+                self._import_resolver._compile_dependency_if_needed(dependency)
 
         # Cache for next time.
         self._dependencies_by_project[pm.project_id] = dependencies
+
         return dependencies
 
     def get_import_remapping(self, project: Optional[ProjectManager] = None) -> dict[str, dict]:
