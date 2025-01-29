@@ -93,6 +93,14 @@ class BaseVyperCompiler(ManagerAccessMixin):
             if pm.path != here:
                 os.chdir(pm.path)
             try:
+                # TODO: Delete this before before.
+                path = pm.contracts_folder / "exampledependency/Dependency.json"
+                DEBUGS = [
+                    input_json["interfaces"],
+                    path.is_file(),
+
+                ]
+                raise ValueError("\n".join([f"{x}" for x in DEBUGS]))
                 result = vvm_compile_standard(
                     input_json, vyper_version=vyper_version, base_path=pm.path
                 )
