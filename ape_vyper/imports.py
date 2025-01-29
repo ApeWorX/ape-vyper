@@ -426,8 +426,9 @@ class ImportResolver(ManagerAccessMixin):
 
         elif version := dependency.project.config.vyper.version:
             if version > Version("0.3.10"):
-                # Version is specified, and it is less than the max 0.3 version.
-                # It is safe to attempt compiling.
+                # Version is specified, and it is greater than the max 0.3 version.
+                # It is unsafe to attempt compiling. 0.4 dependencies shouldn't need
+                # to compile on their own; they can be used as modules.
                 return
 
         self._dependency_attempted_compile.add(dependency.package_id)
