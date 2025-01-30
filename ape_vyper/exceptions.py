@@ -3,7 +3,7 @@ from typing import Optional, Union
 
 from ape.exceptions import CompilerError, ContractLogicError
 from ape.utils import USER_ASSERT_TAG
-from vvm.exceptions import VyperError  # type: ignore
+from vvm.exceptions import VyperError as VVMVyperError  # type: ignore
 
 
 class VyperCompilerPluginError(CompilerError):
@@ -18,13 +18,30 @@ class VyperInstallError(VyperCompilerPluginError):
     """
 
 
+class VyperError(VVMVyperError):
+    """
+    A wrapper around VVM's VyperError so we can use the same error
+    regardless of how we are compiling.
+    """
+
+    @classmethod
+    def from_process(cls, process):
+        raise VyperError(
+            command=process.args,
+            return_code=process.returncode,
+            stdout_data=process.stdout.decode("utf-8"),
+            stderr_data=process.stderr.decode("utf-8"),
+        )
+
+
 class VyperCompileError(VyperCompilerPluginError):
     """
     A compiler-specific error in Vyper.
     """
 
     def __init__(self, err: Union[VyperError, str]):
-        if isinstance(err, VyperError):
+        self.base_err: Optional[VyperError]
+        if isinstance(err, VVMVyperError):
             self.base_err = err
             message = "\n\n".join(
                 f"{e['sourceLocation']['file']}\n{e['type']}:"
