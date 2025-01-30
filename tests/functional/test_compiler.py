@@ -833,3 +833,16 @@ def test_get_compiler_settings(project, compiler):
         "tests/contracts/passing_contracts/zero_four.vy": ["*"]
     }
     assert vyper4_settings[v4_version_used]["gas%shanghai"]["evmVersion"] == "shanghai"
+
+
+def test_compile_configured_output_format(project, compiler):
+    paths = [
+        project.contracts_folder / "zero_four.vy",
+        project.contracts_folder / "non_payable_default.vy",
+    ]
+    with project.temp_config(vyper={"output_format": ["abi"]}):
+        result = list(compiler.compile(paths))
+        assert len(result) == 2
+        for contract_type in result:
+            assert contract_type.abi is not None
+            assert contract_type.runtime_bytecode.bytecode is None
