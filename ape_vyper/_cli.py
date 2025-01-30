@@ -3,6 +3,7 @@ from pathlib import Path
 
 import ape
 import click
+import requests
 from ape.cli.options import ape_cli_context, project_option
 from vvm import get_installed_vyper_versions, get_vvm_install_folder, install_vyper  # type: ignore
 
@@ -36,12 +37,41 @@ def vvm():
 
 
 @vvm.command("list", short_help="List vyper installed versions")
-def _list():
+@click.option("--available", is_flag=True, help="Show available vyper versions")
+def _list(available: bool):
+    if available:
+        available_versions = _get_available_vyper_versions()
+        if available_versions:
+            # First, show the installed.
+            _list_installed()
+
+            # Show available.
+            click.echo("\nAvailable vyper versions:")
+            for version in available_versions:
+                click.echo(version)
+
+    else:
+        _list_installed(allow_pager=True)
+
+
+def _get_available_vyper_versions() -> list[str]:
+    url = "https://pypi.org/pypi/vyper/json"
+    response = requests.get(url)
+    if response.status_code != 200:
+        click.echo(f"Failed getting Vyper versions: {response.text}", err=True)
+        sys.exit(1)
+
+    data = response.json()
+    return list(data["releases"].keys())
+
+
+def _list_installed(allow_pager: bool = False):
     versions = get_installed_vyper_versions()
-    if len(versions) > 10:
+    if allow_pager and len(versions) > 10:
         click.echo_via_pager(versions)
     else:
-        for version in get_installed_vyper_versions():
+        click.echo("Installed vyper versions:")
+        for version in versions:
             click.echo(version)
 
 

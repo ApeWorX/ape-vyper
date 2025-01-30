@@ -49,9 +49,20 @@ def test_compile():
     assert "zero_four_in_subdir.vy" in output
 
 
-def test_vvm_list(cli_runner):
+def test_vvm_list(mocker, cli_runner):
+    mock_installed = mocker.patch("ape_vyper._cli.get_installed_vyper_versions")
+    mock_installed.return_value = ["0.3.3"]
     result = cli_runner.invoke(cli, ["vvm", "list"])
     assert result.exit_code == 0
+    assert "Installed vyper versions:\n0.3.3" in result.stdout
+
+
+def test_vvm_list_available(mocker, cli_runner):
+    mock_available = mocker.patch("ape_vyper._cli._get_available_vyper_versions")
+    mock_available.return_value = ["0.3.3"]
+    result = cli_runner.invoke(cli, ["vvm", "list", "--available"])
+    assert result.exit_code == 0
+    assert "Available vyper versions:\n0.3.3" in result.stdout
 
 
 def test_vvm_install(cli_runner):
