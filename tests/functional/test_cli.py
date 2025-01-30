@@ -47,3 +47,13 @@ def test_compile():
     output = completed_process.stdout.decode(encoding="utf8")
     assert "SUCCESS" in output
     assert "zero_four_in_subdir.vy" in output
+
+
+def test_vvm_list(cli_runner):
+    result = cli_runner.invoke(cli, ["vvm", "list"])
+    assert result.exit_code == 0
+
+
+def test_vvm_install(cli_runner):
+    result = cli_runner.invoke(cli, ["vvm", "install", "0.4.0"])
+    assert result.exit_code == 0
