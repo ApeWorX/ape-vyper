@@ -139,3 +139,35 @@ Ape-Vyper supports Vyper 0.3.10's [new pragma formats](https://github.com/vyperl
 ```python
 #pragma optimize codesize
 ```
+
+### VVM CLI
+
+You can install versions of Vyper using the `ape vyper vvm` CLI tools.
+List installed versions using:
+
+```shell
+ape vyper vvm list
+```
+
+Install more versions using the command:
+
+```shell
+ape vyper vvm install 0.3.7 0.3.10
+```
+
+### Custom Output Format
+
+To customize Vyper's output format (like the native `-f` flag), you can configure the output format:
+For example, to only get the ABI, do:
+
+```shell
+vyper:
+  output_format:
+    - abi
+```
+
+To do this using the CLI only (adhoc), use the following command:
+
+```shell
+ape compile --config-override '{"vyper": {"output_format": ["abi"]}}'
+```

@@ -154,13 +154,22 @@ class Vyper04Compiler(BaseVyperCompiler):
 
             for source_id, output_items in result.items():
                 content = Content(root=src_dict[source_id].read_text(encoding="utf-8"))
-                # De-compress source map to get PC POS map.
-                ast_dict = json.loads(output_items["ast"])["ast"]
-                ast = self._parse_ast(ast_dict, content)
-                bytecode = output_items["bytecode_runtime"]
 
-                source_map = json.loads(output_items["source_map"])
-                pcmap = PCMap.model_validate(source_map["pc_pos_map"])
+                if "ast" in output_items:
+                    # De-compress source map to get PC POS map.
+                    ast_dict = json.loads(output_items["ast"])["ast"]
+                    ast = self._parse_ast(ast_dict, content)
+                else:
+                    ast = None
+
+                bytecode = output_items.get("bytecode_runtime")
+
+                if "source_map" in output_items:
+                    source_map = json.loads(output_items["source_map"])
+                    pcmap = PCMap.model_validate(source_map["pc_pos_map"])
+                else:
+                    source_map = None
+                    pcmap = None
 
                 # Find content-specified dev messages.
                 dev_messages = map_dev_messages(content.root)
@@ -176,13 +185,25 @@ class Vyper04Compiler(BaseVyperCompiler):
                         "ast": ast,
                         "contractName": f"{Path(final_source_id).stem}",
                         "sourceId": final_source_id,
-                        "deploymentBytecode": {"bytecode": output_items["bytecode"]},
-                        "runtimeBytecode": {"bytecode": bytecode},
-                        "abi": json.loads(output_items["abi"]),
-                        "sourcemap": output_items["source_map"],
+                        "deploymentBytecode": (
+                            {"bytecode": output_items["bytecode"]}
+                            if "bytecode" in output_items
+                            else {}
+                        ),
+                        "runtimeBytecode": {"bytecode": bytecode} if bytecode else {},
+                        "abi": json.loads(output_items["abi"]) if "abi" in output_items else None,
+                        "sourcemap": (
+                            output_items["source_map"] if "source_map" in output_items else None
+                        ),
                         "pcmap": pcmap,
-                        "userdoc": json.loads(output_items["userdoc"]),
-                        "devdoc": json.loads(output_items["devdoc"]),
+                        "userdoc": (
+                            json.loads(output_items["userdoc"])
+                            if "userdoc" in output_items
+                            else None
+                        ),
+                        "devdoc": (
+                            json.loads(output_items["devdoc"]) if "devdoc" in output_items else None
+                        ),
                         "dev_messages": dev_messages,
                     }
                 )

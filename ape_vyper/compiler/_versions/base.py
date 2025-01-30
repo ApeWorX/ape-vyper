@@ -124,13 +124,25 @@ class BaseVyperCompiler(ManagerAccessMixin):
                 content = Content.model_validate(src_dict[source_id].get("content", ""))
                 for name, output in output_items.items():
                     # De-compress source map to get PC POS map.
-                    ast = self._parse_ast(result["sources"][source_id]["ast"], content)
-                    evm = output["evm"]
-                    bytecode = evm["deployedBytecode"]
-                    opcodes = bytecode["opcodes"].split(" ")
-                    compressed_src_map = SourceMap(root=bytecode["sourceMap"])
-                    src_map = list(compressed_src_map.parse())[1:]
-                    pcmap = self._get_pcmap(vyper_version, ast, src_map, opcodes, bytecode)
+                    if "ast" in result["sources"][source_id]:
+                        ast = self._parse_ast(result["sources"][source_id]["ast"], content)
+                    else:
+                        ast = None
+
+                    evm = output.get("evm", {})
+                    runtime_bytecode = evm.get("deployedBytecode", {})
+                    opcodes = runtime_bytecode.get("opcodes", "").split(" ")
+
+                    if "sourceMap" in runtime_bytecode:
+                        compressed_src_map = SourceMap(root=runtime_bytecode["sourceMap"])
+                        src_map = list(compressed_src_map.parse())[1:]
+                        pcmap = self._get_pcmap(
+                            vyper_version, ast, src_map, opcodes, runtime_bytecode
+                        )
+                    else:
+                        compressed_src_map = None
+                        src_map = None
+                        pcmap = None
 
                     # Find content-specified dev messages.
                     dev_messages = {}
@@ -144,18 +156,23 @@ class BaseVyperCompiler(ManagerAccessMixin):
                     else:
                         final_source_id = source_id
 
+                    deployment_bytecode = evm.get("bytecode", {}).get("object")
                     contract_type = ContractType.model_validate(
                         {
                             "ast": ast,
                             "contractName": name,
                             "sourceId": final_source_id,
-                            "deploymentBytecode": {"bytecode": evm["bytecode"]["object"]},
-                            "runtimeBytecode": {"bytecode": bytecode["object"]},
-                            "abi": output["abi"],
+                            "deploymentBytecode": (
+                                {"bytecode": deployment_bytecode} if deployment_bytecode else {}
+                            ),
+                            "runtimeBytecode": (
+                                {"bytecode": runtime_bytecode["object"]} if runtime_bytecode else {}
+                            ),
+                            "abi": output.get("abi"),
                             "sourcemap": compressed_src_map,
                             "pcmap": pcmap,
-                            "userdoc": output["userdoc"],
-                            "devdoc": output["devdoc"],
+                            "userdoc": output.get("userdoc"),
+                            "devdoc": output.get("devdoc"),
                             "dev_messages": dev_messages,
                         }
                     )
@@ -255,7 +272,12 @@ class BaseVyperCompiler(ManagerAccessMixin):
         #   Interfaces cannot be in the sources dict for those versions
         #   (whereas in Vyper0.4, they must).
         pm = project or self.local_project
-        return {s: ["*"] for s in selection if (pm.path / s).is_file() if "interfaces" not in s}
+        return {
+            s: self.output_format
+            for s in selection
+            if (pm.path / s).is_file()
+            if "interfaces" not in s
+        }
 
     def _get_pcmap(
         self,
