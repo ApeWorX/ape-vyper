@@ -5,6 +5,16 @@ from ape.utils import pragma_str_to_specifier_set
 from packaging.specifiers import SpecifierSet
 from pydantic import field_serializer, field_validator, model_validator
 
+VYPER_04_OUTPUT_FORMAT = [
+    "bytecode",
+    "bytecode_runtime",
+    "abi",
+    "source_map",
+    "userdoc",
+    "devdoc",
+    "ast",
+]
+
 
 class VyperConfig(PluginConfig):
     version: Optional[SpecifierSet] = None
@@ -38,6 +48,8 @@ class VyperConfig(PluginConfig):
     Defaults to ``None`` to avoid misleading that ``False``
     means you cannot use decimals on a lower version.
     """
+
+    output_format: Optional[list[str]] = None
 
     @field_validator("version", mode="before")
     def validate_version(cls, value):
