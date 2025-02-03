@@ -145,6 +145,8 @@ class Vyper04Compiler(BaseVyperCompiler):
             else:
                 binary = get_executable(version=vyper_version)
 
+            files = [Path(p) for p in src_dict]
+
             if "solc_json" in comp_kwargs.get("output_format", []):
                 # 'solc_json' output format does not work with other formats.
                 # So, we handle it separately.
@@ -156,9 +158,7 @@ class Vyper04Compiler(BaseVyperCompiler):
                 }
                 solc_json_comp_kwargs["output_format"] = ["solc_json"]
                 try:
-                    result = compile_files(
-                        binary, [Path(p) for p in src_dict], pm.path, **solc_json_comp_kwargs
-                    )
+                    result = compile_files(binary, files, pm.path, **solc_json_comp_kwargs)
                 except VyperError as err:
                     raise VyperCompileError(err) from err
 
@@ -166,7 +166,7 @@ class Vyper04Compiler(BaseVyperCompiler):
                     self._output_solc_json(source_id, output_items["solc_json"], project=pm)
 
             try:
-                result = compile_files(binary, [Path(p) for p in src_dict], pm.path, **comp_kwargs)
+                result = compile_files(binary, files, pm.path, **comp_kwargs)
             except VyperError as err:
                 raise VyperCompileError(err) from err
 
