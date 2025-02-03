@@ -112,6 +112,7 @@ class Vyper04Compiler(BaseVyperCompiler):
         project: Optional["ProjectManager"] = None,
     ):
         pm = project or self.local_project
+        pm.chdir()
         for settings_key, settings_set in settings.items():
             if not (output_selection := settings_set.get("outputSelection", {})):
                 continue
@@ -131,10 +132,6 @@ class Vyper04Compiler(BaseVyperCompiler):
                 "additional_paths": [*getsitepackages()],
                 "enable_decimals": settings.get("enable_decimals", False),
             }
-
-            here = Path.cwd()
-            if pm.path != here:
-                os.chdir(pm.path)
 
             if self.api.package_version == vyper_version:
                 if path_str := shutil.which("vyper"):
@@ -170,10 +167,6 @@ class Vyper04Compiler(BaseVyperCompiler):
             except VyperError as err:
                 raise VyperCompileError(err) from err
 
-            finally:
-                if Path.cwd() != here:
-                    os.chdir(here)
-
             for source_id, output_items in result.items():
                 content = Content(root=src_dict[source_id].read_text(encoding="utf-8"))
 
@@ -190,7 +183,6 @@ class Vyper04Compiler(BaseVyperCompiler):
                     source_map = json.loads(output_items["source_map"])
                     pcmap = PCMap.model_validate(source_map["pc_pos_map"])
                 else:
-                    source_map = None
                     pcmap = None
 
                 # Find content-specified dev messages.

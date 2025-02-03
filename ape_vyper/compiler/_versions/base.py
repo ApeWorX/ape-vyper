@@ -77,6 +77,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
         project: Optional["ProjectManager"] = None,
     ):
         pm = project or self.local_project
+        pm.chdir()
         for settings_key, settings_set in settings.items():
             if not (output_selection := settings_set.get("outputSelection", {})):
                 continue
@@ -99,18 +100,12 @@ class BaseVyperCompiler(ManagerAccessMixin):
             # Output compiler details.
             output_details(*output_selection.keys(), version=vyper_version)
 
-            here = Path.cwd()
-            if pm.path != here:
-                os.chdir(pm.path)
             try:
                 result = vvm_compile_standard(
                     input_json, vyper_version=vyper_version, base_path=pm.path
                 )
             except VyperError as err:
                 raise VyperCompileError(err) from err
-            finally:
-                if Path.cwd() != here:
-                    os.chdir(here)
 
             for source_id, output_items in result["contracts"].items():
                 if source_id not in src_dict:
