@@ -1,0 +1,21 @@
+[tool.ape.ethereum.local]
+default_provider = "node"
+
+[tool.ape.node.ethereum.local]
+uri = "http://127.0.0.1:5550"
+
+[[tool.ape.test.coverage.exclude]]
+method_name = "DEBUG_*"
+
+[[tool.ape.test.coverage.exclude]]
+contract_name = "exclude_whole_*"
+
+[[tool.ape.test.coverage.exclude]]
+contract_name = "exclude_part_*"
+method_name = "exclude_*"
+
+[tool.ape.test.reports]
+terminal = {"verbose" = true}
+html = true
+xml = true
+verbose = true

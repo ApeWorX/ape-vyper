@@ -273,7 +273,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
         #   (whereas in Vyper0.4, they must).
         pm = project or self.local_project
         return {
-            s: self.output_format
+            s: self.get_output_format(project=pm)
             for s in selection
             if (pm.path / s).is_file()
             if "interfaces" not in s

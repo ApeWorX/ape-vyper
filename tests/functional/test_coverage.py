@@ -74,7 +74,7 @@ def setup_pytester(pytester, coverage_project):
             elif file.is_file():
                 name = (prefix / file.name).as_posix() if prefix else file.name
 
-                if name == "ape-config.yaml":
+                if name == "pyproject.toml":
                     # Hack in in-memory overrides for testing purposes.
                     text = str(coverage_project.config)
                 else:

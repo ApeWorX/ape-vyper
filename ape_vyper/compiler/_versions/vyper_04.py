@@ -6,7 +6,9 @@ from pathlib import Path
 from site import getsitepackages
 from typing import TYPE_CHECKING, Optional
 
+from ape.logging import logger
 from ape.utils import get_full_extension, get_relative_path
+from ape.utils.os import clean_path
 from ethpm_types import ContractType, PCMap
 from ethpm_types.source import Content
 from vvm.install import get_executable  # type: ignore
@@ -29,9 +31,9 @@ class Vyper04Compiler(BaseVyperCompiler):
     Compiler for Vyper>=0.4.0.
     """
 
-    @property
-    def output_format(self) -> list[str]:
-        return self.config.output_format or VYPER_04_OUTPUT_FORMAT
+    def get_output_format(self, project: Optional["ProjectManager"] = None) -> list[str]:
+        pm = project or self.local_project
+        return pm.config.vyper.output_format or VYPER_04_OUTPUT_FORMAT
 
     def get_import_remapping(self, project: Optional["ProjectManager"] = None) -> dict[str, dict]:
         # Import remappings are not used in 0.4.
@@ -125,7 +127,7 @@ class Vyper04Compiler(BaseVyperCompiler):
 
             comp_kwargs = {
                 "evm_version": self.get_evm_version(vyper_version),
-                "output_format": self.config.output_format or VYPER_04_OUTPUT_FORMAT,
+                "output_format": self.get_output_format(project=pm),
                 "additional_paths": [*getsitepackages()],
                 "enable_decimals": settings.get("enable_decimals", False),
             }
@@ -142,6 +144,28 @@ class Vyper04Compiler(BaseVyperCompiler):
                     binary = get_executable(version=vyper_version)
             else:
                 binary = get_executable(version=vyper_version)
+
+            if "solc_json" in comp_kwargs.get("output_format", []):
+                # 'solc_json' output format does not work with other formats.
+                # So, we handle it separately.
+                comp_kwargs["output_format"] = [
+                    f for f in comp_kwargs["output_format"] if f != "solc_json"
+                ]
+                solc_json_comp_kwargs = {
+                    k: v for k, v in comp_kwargs.items() if k != "output_format"
+                }
+                solc_json_comp_kwargs["output_format"] = ["solc_json"]
+                try:
+                    result = compile_files(
+                        binary, [Path(p) for p in src_dict], pm.path, **solc_json_comp_kwargs
+                    )
+                except VyperError as err:
+                    raise VyperCompileError(err) from err
+
+                for source_id, output_items in result.items():
+                    self._output_solc_json(source_id, output_items["solc_json"], project=pm)
+
+                continue
 
             try:
                 result = compile_files(binary, [Path(p) for p in src_dict], pm.path, **comp_kwargs)
@@ -208,3 +232,18 @@ class Vyper04Compiler(BaseVyperCompiler):
                     }
                 )
                 yield contract_type, settings_key
+
+    def _output_solc_json(
+        self, source_id: str, solc_json: str, project: Optional["ProjectManager"] = None
+    ):
+        pm = project or self.local_project
+        output_path = pm.manifest_path.parent
+        source_path = Path(source_id)
+        output_file = output_path / f"{source_path.stem}_solc.json"
+        logger.info(
+            f"Writing 'solc_json' output for source {clean_path(Path(source_id))} "
+            f"to {clean_path(output_file)}"
+        )
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.unlink(missing_ok=True)
+        output_file.write_text(solc_json, encoding="utf-8")

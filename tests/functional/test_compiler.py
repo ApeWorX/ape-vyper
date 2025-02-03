@@ -1,3 +1,4 @@
+import json
 import re
 from pathlib import Path
 from typing import Optional
@@ -8,7 +9,8 @@ import vvm  # type: ignore
 from ape.exceptions import CompilerError, ContractLogicError
 from ape.types import SourceTraceback
 from ape.utils import get_full_extension
-from ethpm_types import ContractType
+from ethpm_types import ConstructorABI, ContractType
+from ethpm_types.abi import ABIType
 from packaging.version import Version
 from vvm.exceptions import VyperError  # type: ignore
 
@@ -846,3 +848,53 @@ def test_compile_configured_output_format(project, compiler):
         for contract_type in result:
             assert contract_type.abi is not None
             assert contract_type.runtime_bytecode.bytecode is None
+
+
+def test_solc_json_format(compiler, projects_path):
+    project = ape.Project(projects_path / "solc_json")
+    project.chdir()
+
+    contracts = project.load_contracts(use_cache=False)
+    contract = contracts["ContractForSolcJSON"]
+
+    # First, show we still get the ABI. This is significant because in Vyper,
+    # solc_json typically does not work with any other format. However,
+    # allow it to work in ape-vyper.
+    abi = contract.contract_type.abi
+    assert abi == [
+        ConstructorABI(
+            type="constructor",
+            stateMutability="nonpayable",
+            inputs=[ABIType(name="_name", type="string", components=None, internal_type=None)],
+        )
+    ]
+
+    # Now, show the solc_json output was also handled (being written to disk for the user).
+    expected_path = project.manifest_path.parent / "ContractForSolcJSON_solc.json"
+    assert expected_path.is_file()
+    solc_json = json.loads(expected_path.read_text(encoding="utf-8"))
+    assert solc_json == {
+        "compiler_version": "v0.4.0+commit.e9db8d9",
+        "integrity": "31bec6a1a057f4d62545cb1aaf7ee960951b277d040efae56eefcc0baa0deaad",
+        "language": "Vyper",
+        "settings": {
+            "evmVersion": "shanghai",
+            "outputSelection": {
+                "contracts/ContractForSolcJSON.vy": [
+                    "*",
+                ],
+            },
+            "search_paths": [
+                ".",
+            ],
+        },
+        "sources": {
+            "contracts/ContractForSolcJSON.vy": {
+                "content": "# pragma version ~=0.4.0\n"
+                "@deploy\n"
+                "def __init__(_name: String[25]):\n"
+                "    pass\n",
+                "sha256sum": "b264df51334290034b250140a0d920f2a419b603ca9b84bc648391b8036fcfee",
+            },
+        },
+    }
