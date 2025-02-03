@@ -179,7 +179,7 @@ output_format = ["solc_json"]
 ```
 
 **Note**: Normally, in Vyper, you cannot use `solc_json` with other formats.
-However, `ape-vyper` handles this by running separately for the `solc_json` request. 
+However, `ape-vyper` handles this by running separately for the `solc_json` request.
 
 Be sure to use the `--force` flag when compiling to ensure you get the solc JSON output.
 
