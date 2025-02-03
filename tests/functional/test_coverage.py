@@ -73,15 +73,19 @@ def setup_pytester(pytester, coverage_project):
                 _make_all_files(file, prefix=Path(file.name))
             elif file.is_file():
                 name = (prefix / file.name).as_posix() if prefix else file.name
+                name_to_make = name
 
                 if name == "pyproject.toml":
                     # Hack in in-memory overrides for testing purposes.
                     text = str(coverage_project.config)
+                    suffix = ".yaml"
+                    name_to_make = "ape-config.yaml"
                 else:
                     text = file.read_text(encoding="utf8")
+                    suffix = file.suffix
 
-                src = {name: text.splitlines()}
-                pytester.makefile(file.suffix, **src)
+                src = {name_to_make: text.splitlines()}
+                pytester.makefile(suffix, **src)
 
     # Assume all tests should pass
     num_passes = 0

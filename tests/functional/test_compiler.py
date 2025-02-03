@@ -851,23 +851,8 @@ def test_compile_configured_output_format(project, compiler):
 
 def test_solc_json_format(compiler, projects_path):
     project = ape.Project(projects_path / "solc_json")
-    project.chdir()
 
-    contracts = project.load_contracts(use_cache=False)
-    contract = contracts["ContractForSolcJSON"]
-
-    # First, show we still get the ABI. This is significant because in Vyper,
-    # solc_json typically does not work with any other format. However,
-    # allow it to work in ape-vyper.
-    abi = contract.contract_type.abi
-    assert len(abi) == 1
-    assert abi[0].type == "constructor"
-
-    # Now, show the solc_json output was also handled (being written to disk for the user).
-    expected_path = project.manifest_path.parent / "ContractForSolcJSON_solc.json"
-    assert expected_path.is_file()
-    solc_json = json.loads(expected_path.read_text(encoding="utf-8"))
-    assert solc_json == {
+    expected_json = {
         "compiler_version": "v0.4.0+commit.e9db8d9",
         "integrity": "31bec6a1a057f4d62545cb1aaf7ee960951b277d040efae56eefcc0baa0deaad",
         "language": "Vyper",
@@ -892,3 +877,20 @@ def test_solc_json_format(compiler, projects_path):
             },
         },
     }
+
+    with project.within_project_path():
+        contracts = project.load_contracts(use_cache=False)
+        contract = contracts["ContractForSolcJSON"]
+
+        # First, show we still get the ABI. This is significant because in Vyper,
+        # solc_json typically does not work with any other format. However,
+        # allow it to work in ape-vyper.
+        abi = contract.contract_type.abi
+        assert len(abi) == 1
+        assert abi[0].type == "constructor"
+
+        # Now, show the solc_json output was also handled (being written to disk for the user).
+        expected_path = project.manifest_path.parent / "ContractForSolcJSON_solc.json"
+        assert expected_path.is_file()
+        solc_json = json.loads(expected_path.read_text(encoding="utf-8"))
+        assert solc_json == expected_json
