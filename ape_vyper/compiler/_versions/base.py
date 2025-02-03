@@ -45,9 +45,9 @@ class BaseVyperCompiler(ManagerAccessMixin):
     def config(self) -> "VyperConfig":
         return self.config_manager.vyper  # type: ignore
 
-    @property
-    def output_format(self) -> list[str]:
-        return self.config.output_format or ["*"]
+    def get_output_format(self, project: Optional["ProjectManager"] = None) -> list[str]:
+        pm = project or self.local_project
+        return pm.config.vyper.output_format or ["*"]
 
     def get_evm_version(self, version: "Version") -> Optional[str]:
         return self.config.evm_version or EVM_VERSION_DEFAULT.get(version.base_version)
