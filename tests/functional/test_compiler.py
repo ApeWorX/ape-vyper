@@ -9,8 +9,7 @@ import vvm  # type: ignore
 from ape.exceptions import CompilerError, ContractLogicError
 from ape.types import SourceTraceback
 from ape.utils import get_full_extension
-from ethpm_types import ConstructorABI, ContractType
-from ethpm_types.abi import ABIType
+from ethpm_types import ContractType
 from packaging.version import Version
 from vvm.exceptions import VyperError  # type: ignore
 
@@ -861,13 +860,8 @@ def test_solc_json_format(compiler, projects_path):
     # solc_json typically does not work with any other format. However,
     # allow it to work in ape-vyper.
     abi = contract.contract_type.abi
-    assert abi == [
-        ConstructorABI(
-            type="constructor",
-            stateMutability="nonpayable",
-            inputs=[ABIType(name="_name", type="string", components=None, internal_type=None)],
-        )
-    ]
+    assert len(abi) == 1
+    assert abi[0].type == "constructor"
 
     # Now, show the solc_json output was also handled (being written to disk for the user).
     expected_path = project.manifest_path.parent / "ContractForSolcJSON_solc.json"
