@@ -165,8 +165,6 @@ class Vyper04Compiler(BaseVyperCompiler):
                 for source_id, output_items in result.items():
                     self._output_solc_json(source_id, output_items["solc_json"], project=pm)
 
-                continue
-
             try:
                 result = compile_files(binary, [Path(p) for p in src_dict], pm.path, **comp_kwargs)
             except VyperError as err:
