@@ -2,6 +2,7 @@ import subprocess
 
 import pytest
 from ape.utils import create_tempdir
+from semantic_version import Version
 
 from ape_vyper._cli import cli
 
@@ -58,8 +59,8 @@ def test_vvm_list(mocker, cli_runner):
 
 
 def test_vvm_list_available(mocker, cli_runner):
-    mock_available = mocker.patch("ape_vyper._cli._get_available_vyper_versions")
-    mock_available.return_value = ["0.3.3"]
+    mock_available = mocker.patch("ape_vyper._cli.get_installable_vyper_versions")
+    mock_available.return_value = [Version("0.3.3")]
     result = cli_runner.invoke(cli, ["vvm", "list", "--available"])
     assert result.exit_code == 0
     assert "Available vyper versions:\n0.3.3" in result.stdout
