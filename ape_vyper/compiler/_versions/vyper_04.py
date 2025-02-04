@@ -112,7 +112,6 @@ class Vyper04Compiler(BaseVyperCompiler):
         project: Optional["ProjectManager"] = None,
     ):
         pm = project or self.local_project
-        pm.chdir()
         for settings_key, settings_set in settings.items():
             if not (output_selection := settings_set.get("outputSelection", {})):
                 continue
@@ -162,10 +161,12 @@ class Vyper04Compiler(BaseVyperCompiler):
                 for source_id, output_items in result.items():
                     self._output_solc_json(source_id, output_items["solc_json"], project=pm)
 
-            try:
-                result = compile_files(binary, files, pm.path, **comp_kwargs)
-            except VyperError as err:
-                raise VyperCompileError(err) from err
+            result = {}
+            with pm.within_project_path():
+                try:
+                    result = compile_files(binary, files, pm.path, **comp_kwargs)
+                except VyperError as err:
+                    raise VyperCompileError(err) from err
 
             for source_id, output_items in result.items():
                 content = Content(root=src_dict[source_id].read_text(encoding="utf-8"))

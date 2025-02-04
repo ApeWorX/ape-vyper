@@ -77,7 +77,6 @@ class BaseVyperCompiler(ManagerAccessMixin):
         project: Optional["ProjectManager"] = None,
     ):
         pm = project or self.local_project
-        pm.chdir()
         for settings_key, settings_set in settings.items():
             if not (output_selection := settings_set.get("outputSelection", {})):
                 continue
