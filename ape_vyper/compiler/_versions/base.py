@@ -45,9 +45,9 @@ class BaseVyperCompiler(ManagerAccessMixin):
     def config(self) -> "VyperConfig":
         return self.config_manager.vyper  # type: ignore
 
-    @property
-    def output_format(self) -> list[str]:
-        return self.config.output_format or ["*"]
+    def get_output_format(self, project: Optional["ProjectManager"] = None) -> list[str]:
+        pm = project or self.local_project
+        return pm.config.vyper.output_format or ["*"]
 
     def get_evm_version(self, version: "Version") -> Optional[str]:
         return self.config.evm_version or EVM_VERSION_DEFAULT.get(version.base_version)
@@ -99,18 +99,12 @@ class BaseVyperCompiler(ManagerAccessMixin):
             # Output compiler details.
             output_details(*output_selection.keys(), version=vyper_version)
 
-            here = Path.cwd()
-            if pm.path != here:
-                os.chdir(pm.path)
             try:
                 result = vvm_compile_standard(
                     input_json, vyper_version=vyper_version, base_path=pm.path
                 )
             except VyperError as err:
                 raise VyperCompileError(err) from err
-            finally:
-                if Path.cwd() != here:
-                    os.chdir(here)
 
             for source_id, output_items in result["contracts"].items():
                 if source_id not in src_dict:
@@ -273,7 +267,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
         #   (whereas in Vyper0.4, they must).
         pm = project or self.local_project
         return {
-            s: self.output_format
+            s: self.get_output_format(project=pm)
             for s in selection
             if (pm.path / s).is_file()
             if "interfaces" not in s

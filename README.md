@@ -54,11 +54,11 @@ ape vyper flatten contracts/MyContract.vy build/MyContractFlattened.vy
 ### Compiler Version
 
 By default, the `ape-vyper` plugin uses version pragma for version specification.
-However, you can also configure the version directly in your `ape-config.yaml` file:
+However, you can also configure the version directly in your `pyproject.toml` file:
 
-```yaml
-vyper:
-  version: 0.3.7
+```toml
+[tool.vyper.version]
+version = "0.3.7"
 ```
 
 ### EVM Versioning
@@ -68,9 +68,9 @@ or based on what the `#pragma evm-version ...` pragma comment specifies (availab
 Sometimes, you might want to use a different version, such as deploying on Arbitrum or Optimism where new opcodes are not supported yet.
 If you want to require a different version of EVM rules to use in the configuration of the compiler, set it in your `ape-config.yaml` like this:
 
-```yaml
-vyper:
-  evm_version: paris
+```toml
+[tool.ape.vyper]
+evm_version = "paris"
 ```
 
 **NOTE**: The config value chosen will not override if a pragma is set in a contract.
@@ -87,18 +87,15 @@ import interfaces.IFace as IFace
 
 Alternatively, use JSON interfaces from dependency contract types by listing them under the `import_remapping` key:
 
-```yaml
-# Use `voting` example contracts from Vyperlang repo.
-dependencies:
-  - name: VyperVoting
-    github: vyperlang/vyper
-    contracts_folder: examples/voting/
-    version: v0.3.8
+```toml
+[[tool.ape.dependencies]]
+name = "VyperVoting"
+github = "vyperlang/vyper"
+contracts_folder = "examples/voting/"
+version = "v0.3.8"
 
-# Automatically allow importing voting contracts in your project.
-vyper:
-  import_remapping:
-    - "voting=VyperVoting@v0.3.8"
+[tool.ape.vyper]
+import_remapping = ["voting=VyperVoting@v0.3.8"]
 ```
 
 Import the voting contract types like this:
@@ -113,9 +110,9 @@ import voting.ballot as ballot
 
 To use decimals on Vyper 0.4, use the following config:
 
-```yaml
-vyper:
-  enable_decimals: true
+```toml
+[tool.ape.vyper]
+enable_decimals = true
 ```
 
 ### Pragmas
@@ -160,14 +157,46 @@ ape vyper vvm install 0.3.7 0.3.10
 To customize Vyper's output format (like the native `-f` flag), you can configure the output format:
 For example, to only get the ABI, do:
 
-```shell
-vyper:
-  output_format:
-    - abi
+```toml
+[tool.ape.vyper]
+output_format = ["abi"]
 ```
 
 To do this using the CLI only (adhoc), use the following command:
 
 ```shell
 ape compile --config-override '{"vyper": {"output_format": ["abi"]}}'
+```
+
+#### Solc JSON Format
+
+`ape-vyper` supports the `socl_json` format.
+To use this format, configure `ape-vyper` like:
+
+```toml
+[tool.ape.vyper]
+output_format = ["solc_json"]
+```
+
+**Note**: Normally, in Vyper, you cannot use `solc_json` with other formats.
+However, `ape-vyper` handles this by running separately for the `solc_json` request.
+
+Be sure to use the `--force` flag when compiling to ensure you get the solc JSON output.
+
+```shell
+ape compile file_needing_solc_json_format.vy -f
+```
+
+To get a dependency source file in this format, configure and compile the dependency.
+
+```toml
+[[tool.ape.dependencies]]
+name = "my_dep"
+config_override = { "vyper" = { "output_format" = ["solc_json"] } }
+```
+
+And then run:
+
+```shell
+ape pm compile --force
 ```

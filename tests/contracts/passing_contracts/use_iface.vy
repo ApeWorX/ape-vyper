@@ -4,7 +4,7 @@
 implements: IFaceNested
 from .interfaces import IFace as IFace
 
-# Import from input JSON (ape-config.yaml).
+# Import from input JSON (pyproject.toml).
 import exampledependency.Dependency as Dep
 
 from .interfaces import IFace2 as IFace2

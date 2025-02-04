@@ -1,0 +1,2 @@
+[[tool.ape.dependencies]]
+site_package = "snekmate"
