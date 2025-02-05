@@ -146,6 +146,12 @@ List installed versions using:
 ape vyper vvm list
 ```
 
+To list the available Vyper versions, do:
+
+```shell
+ape vyper vvm list --available
+```
+
 Install more versions using the command:
 
 ```shell

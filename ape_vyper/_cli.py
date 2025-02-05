@@ -4,7 +4,12 @@ from pathlib import Path
 import ape
 import click
 from ape.cli.options import ape_cli_context, project_option
-from vvm import get_installed_vyper_versions, get_vvm_install_folder, install_vyper  # type: ignore
+from vvm import (  # type: ignore
+    get_installable_vyper_versions,
+    get_installed_vyper_versions,
+    get_vvm_install_folder,
+    install_vyper,
+)
 
 
 @click.group
@@ -36,12 +41,29 @@ def vvm():
 
 
 @vvm.command("list", short_help="List vyper installed versions")
-def _list():
+@click.option("--available", is_flag=True, help="Show available vyper versions")
+def _list(available: bool):
+    if available:
+        if available_versions := get_installable_vyper_versions():
+            # First, show the installed.
+            _list_installed()
+
+            # Show available.
+            click.echo("\nAvailable vyper versions:")
+            for version in available_versions:
+                click.echo(f"{version}")
+
+    else:
+        _list_installed(allow_pager=True)
+
+
+def _list_installed(allow_pager: bool = False):
     versions = get_installed_vyper_versions()
-    if len(versions) > 10:
+    if allow_pager and len(versions) > 10:
         click.echo_via_pager(versions)
     else:
-        for version in get_installed_vyper_versions():
+        click.echo("Installed vyper versions:")
+        for version in versions:
             click.echo(version)
 
 
