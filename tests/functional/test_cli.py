@@ -2,7 +2,7 @@ import subprocess
 
 import pytest
 from ape.utils import create_tempdir
-from semantic_version import Version
+from packaging.version import Version
 
 from ape_vyper._cli import cli
 

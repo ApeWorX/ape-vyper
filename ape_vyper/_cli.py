@@ -3,7 +3,6 @@ from pathlib import Path
 
 import ape
 import click
-import requests
 from ape.cli.options import ape_cli_context, project_option
 from vvm import (  # type: ignore
     get_installable_vyper_versions,
