@@ -66,7 +66,7 @@ class VyperConfig(PluginConfig):
 class Remapping(PluginConfig):
     key: str
     dependency_name: str
-    dependency_version: Optional[None] = None
+    dependency_version: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod
