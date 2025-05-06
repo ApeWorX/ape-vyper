@@ -30,7 +30,7 @@ from ..conftest import FAILING_BASE, FAILING_CONTRACT_NAMES, PASSING_CONTRACT_NA
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.16")
 VERSION_37 = Version("0.3.7")
 VERSION_FROM_PRAGMA = Version("0.3.10")
-VERSION_04 = Version("0.4.0")
+VERSION_04 = Version("0.4.1")
 
 
 @pytest.fixture
@@ -853,7 +853,7 @@ def test_solc_json_format(compiler, projects_path):
     project = ape.Project(projects_path / "solc_json")
 
     expected_json = {
-        "compiler_version": "v0.4.0+commit.e9db8d9",
+        "compiler_version": "v0.4.1+commit.8a93dd27",
         "integrity": "31bec6a1a057f4d62545cb1aaf7ee960951b277d040efae56eefcc0baa0deaad",
         "language": "Vyper",
         "settings": {
