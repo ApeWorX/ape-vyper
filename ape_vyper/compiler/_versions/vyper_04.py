@@ -129,7 +129,7 @@ class Vyper04Compiler(BaseVyperCompiler):
                 "evm_version": self.get_evm_version(vyper_version),
                 "output_format": self.get_output_format(project=pm),
                 "additional_paths": [*getsitepackages()],
-                "enable_decimals": settings.get("enable_decimals", False),
+                "enable_decimals": settings_set.get("enable_decimals", False),
             }
 
             if self.api.package_version == vyper_version:
