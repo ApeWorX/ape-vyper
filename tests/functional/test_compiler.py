@@ -131,7 +131,7 @@ def _transfer_ownership(new_owner: address):
     \"\"\"
     old_owner: address = self.owner
     self.owner = new_owner
-    log OwnershipTransferred(old_owner, new_owner)
+    log OwnershipTransferred(previous_owner=old_owner, new_owner=new_owner)
 
 
 # Showing importing interface from module.
@@ -304,6 +304,7 @@ def test_get_version_map(project, compiler, all_versions):
     expected4 = {
         "contract_no_pragma.vy",
         "empty.vy",
+        "sub_reverts_041.vy",
         "zero_four.vy",
         "zero_four_module.vy",
         "zero_four_module_2.vy",
@@ -828,12 +829,11 @@ def test_get_compiler_settings(project, compiler):
     assert v4_version_used >= Version(
         "0.4.0"
     ), f"version={v4_version_used} full_data={vyper4_settings}"
-    assert vyper4_settings[v4_version_used]["gas%shanghai"]["enable_decimals"] is True
-    assert vyper4_settings[v4_version_used]["gas%shanghai"]["optimize"] == "gas"
-    assert vyper4_settings[v4_version_used]["gas%shanghai"]["outputSelection"] == {
+    assert vyper4_settings[v4_version_used]["gas%none"]["enable_decimals"] is True
+    assert vyper4_settings[v4_version_used]["gas%none"]["optimize"] == "gas"
+    assert vyper4_settings[v4_version_used]["gas%none"]["outputSelection"] == {
         "tests/contracts/passing_contracts/zero_four.vy": ["*"]
     }
-    assert vyper4_settings[v4_version_used]["gas%shanghai"]["evmVersion"] == "shanghai"
 
 
 def test_compile_configured_output_format(project, compiler):
