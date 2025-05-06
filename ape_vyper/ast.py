@@ -2,6 +2,7 @@
 
 from ethpm_types import ABI, MethodABI
 from ethpm_types.abi import ABIType
+
 from vyper.ast import parse_to_ast  # type: ignore
 from vyper.ast.nodes import FunctionDef, Module, Name, Subscript  # type: ignore
 
