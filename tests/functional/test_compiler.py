@@ -857,7 +857,6 @@ def test_solc_json_format(compiler, projects_path):
         "integrity": "31bec6a1a057f4d62545cb1aaf7ee960951b277d040efae56eefcc0baa0deaad",
         "language": "Vyper",
         "settings": {
-            "evmVersion": "shanghai",
             "outputSelection": {
                 "contracts/ContractForSolcJSON.vy": [
                     "*",
