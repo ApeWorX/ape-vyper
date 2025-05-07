@@ -28,6 +28,7 @@ ALL_VERSIONS = (
     "0.3.9",
     "0.3.10",
     "0.4.0",
+    "0.4.1",
 )
 
 CONTRACT_VERSION_GEN_MAP = {
