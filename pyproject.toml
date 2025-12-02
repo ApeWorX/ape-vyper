@@ -42,6 +42,9 @@ dependencies = [
 [project.entry-points."ape_cli_subcommands"]
 ape_vyper = "ape_vyper._cli:cli"
 
+[project.entry-points."pytest11"]
+ape_vyper = "ape_vyper._pytest"
+
 [dependency-groups]
 test = [
     "pytest-cov",  # Coverage analyzer (also supported by plugin)
