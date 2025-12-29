@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from ape.logging import logger
 from ape.utils import ManagerAccessMixin, get_relative_path
@@ -29,7 +29,7 @@ class Flattener(ManagerAccessMixin):
     def flatten(
         self,
         path: Path,
-        project: Optional["ProjectManager"] = None,
+        project: "ProjectManager | None" = None,
     ) -> Content:
         """
         Returns the flattened contract suitable for compilation or verification as a single file
@@ -41,9 +41,9 @@ class Flattener(ManagerAccessMixin):
     def _flatten_source(
         self,
         path: Path,
-        project: Optional["ProjectManager"] = None,
+        project: "ProjectManager | None" = None,
         include_pragma: bool = True,
-        sources_handled: Optional[set[Path]] = None,
+        sources_handled: set[Path] | None = None,
         warn_flattening_modules: bool = True,
     ) -> str:
         pm = project or self.local_project
@@ -126,7 +126,7 @@ class Flattener(ManagerAccessMixin):
                     abis = source_to_abi(import_path.read_text(encoding="utf8"))
                     interfaces_source += generate_interface(abis, import_name)
 
-        def no_nones(it: Iterable[Optional[str]]) -> Iterable[str]:
+        def no_nones(it: Iterable[str | None]) -> Iterable[str]:
             # Type guard like generator to remove Nones and make mypy happy
             for el in it:
                 if el is not None:

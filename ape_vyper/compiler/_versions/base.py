@@ -3,7 +3,7 @@ import re
 from collections.abc import Iterable
 from pathlib import Path
 from site import getsitepackages
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from ape.utils import ManagerAccessMixin, get_relative_path
 from ethpm_types import ASTNode, ContractType, SourceMap
@@ -45,14 +45,14 @@ class BaseVyperCompiler(ManagerAccessMixin):
     def config(self) -> "VyperConfig":
         return self.config_manager.vyper  # type: ignore
 
-    def get_output_format(self, project: Optional["ProjectManager"] = None) -> list[str]:
+    def get_output_format(self, project: "ProjectManager | None" = None) -> list[str]:
         pm = project or self.local_project
         return pm.config.vyper.output_format or ["*"]
 
-    def get_evm_version(self, version: "Version") -> Optional[str]:
+    def get_evm_version(self, version: "Version") -> str | None:
         return self.config.evm_version or EVM_VERSION_DEFAULT.get(version.base_version)
 
-    def get_import_remapping(self, project: Optional["ProjectManager"] = None) -> dict[str, dict]:
+    def get_import_remapping(self, project: "ProjectManager | None" = None) -> dict[str, dict]:
         # Overridden on 0.4 to not use.
         # Import-remapping is for Vyper versions 0.2 - 0.3 to create the interface dict.
         pm = project or self.local_project
@@ -74,7 +74,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
         vyper_version: "Version",
         settings: dict,
         import_map: "ImportMap",
-        project: Optional["ProjectManager"] = None,
+        project: "ProjectManager | None" = None,
     ):
         pm = project or self.local_project
         for settings_key, settings_set in settings.items():
@@ -191,7 +191,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
         self,
         version: "Version",
         source_paths: Iterable[Path],
-        project: Optional["ProjectManager"] = None,
+        project: "ProjectManager | None" = None,
     ) -> dict:
         pm = project or self.local_project
         default_optimization = self._get_default_optimization(version)
@@ -241,7 +241,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
             self._classify_ast(child)
 
     def _get_sources_dictionary(
-        self, source_ids: Iterable[str], project: Optional["ProjectManager"] = None, **kwargs
+        self, source_ids: Iterable[str], project: "ProjectManager | None" = None, **kwargs
     ) -> dict[str, dict]:
         """
         Generate input for the "sources" key in the input JSON.
@@ -256,7 +256,7 @@ class BaseVyperCompiler(ManagerAccessMixin):
     def _get_selection_dictionary(
         self,
         selection: Iterable[str],
-        project: Optional["ProjectManager"] = None,
+        project: "ProjectManager | None" = None,
         **kwargs,
     ) -> dict:
         """

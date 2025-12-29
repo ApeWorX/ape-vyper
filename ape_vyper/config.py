@@ -1,5 +1,3 @@
-from typing import Optional
-
 from ape.api import PluginConfig
 from ape.utils import pragma_str_to_specifier_set
 from packaging.specifiers import SpecifierSet
@@ -17,13 +15,13 @@ VYPER_04_OUTPUT_FORMAT = [
 
 
 class VyperConfig(PluginConfig):
-    version: Optional[SpecifierSet] = None
+    version: SpecifierSet | None = None
     """
     Configure a version to use for all files,
     regardless of pragma.
     """
 
-    evm_version: Optional[str] = None
+    evm_version: str | None = None
     """
     The evm-version or hard-fork name.
     """
@@ -42,21 +40,21 @@ class VyperConfig(PluginConfig):
 
     """
 
-    enable_decimals: Optional[bool] = None
+    enable_decimals: bool | None = None
     """
     On Vyper 0.4, to use decimal types, you must enable it.
     Defaults to ``None`` to avoid misleading that ``False``
     means you cannot use decimals on a lower version.
     """
 
-    output_format: Optional[list[str]] = None
+    output_format: list[str] | None = None
 
     @field_validator("version", mode="before")
     def validate_version(cls, value):
         return pragma_str_to_specifier_set(value) if isinstance(value, str) else value
 
     @field_serializer("version")
-    def serialize_version(self, value: Optional[SpecifierSet], _info) -> Optional[str]:
+    def serialize_version(self, value: SpecifierSet | None, _info) -> str | None:
         if version := value:
             return str(version)
 
@@ -66,7 +64,7 @@ class VyperConfig(PluginConfig):
 class Remapping(PluginConfig):
     key: str
     dependency_name: str
-    dependency_version: Optional[str] = None
+    dependency_version: str | None = None
 
     @model_validator(mode="before")
     @classmethod

@@ -2,7 +2,7 @@ import os
 from collections.abc import Iterable, Iterator
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING
 
 from ape.logging import LogLevel, logger
 from ape.utils import ManagerAccessMixin, get_relative_path
@@ -30,7 +30,7 @@ class Import:
         self.project = project
         self.importer = importer
         self.initial_value: str = value
-        self._is_relative: Optional[bool] = None  # Relative import
+        self._is_relative: bool | None = None  # Relative import
 
     def __repr__(self) -> str:
         return f"<import {self.initial_value}"
@@ -64,7 +64,7 @@ class Import:
         return bool(self._local_data)
 
     @property
-    def sub_project(self) -> Optional["ProjectManager"]:
+    def sub_project(self) -> "ProjectManager | None":
         if self.is_builtin:
             return None
         elif self.is_local:
@@ -77,7 +77,7 @@ class Import:
         return None
 
     @cached_property
-    def dependency_name(self) -> Optional[str]:
+    def dependency_name(self) -> str | None:
         # NOTE: May not be a dependency though.
         if self.is_relative:
             return None
@@ -85,12 +85,12 @@ class Import:
         return self._pathified_value.split(os.path.sep)[0]
 
     @cached_property
-    def dependency_filestem(self) -> Optional[str]:
+    def dependency_filestem(self) -> str | None:
         # NOTE: May not be a dependency though.
         return self._pathified_value.replace(f"{self.dependency_name}{os.path.sep}", "")
 
     @cached_property
-    def site_package_info(self) -> Optional[tuple[Path, "ProjectManager"]]:
+    def site_package_info(self) -> tuple[Path, "ProjectManager"] | None:
         if not (dependency_name := self.dependency_name):
             return None
         elif not (dependency_filestem := self.dependency_filestem):
@@ -99,7 +99,7 @@ class Import:
         return lookup_source_from_site_packages(dependency_name, dependency_filestem)
 
     @cached_property
-    def dependency_info(self) -> Optional[tuple[str, "Dependency"]]:
+    def dependency_info(self) -> tuple[str, "Dependency"] | None:
         dependency_name = self.dependency_name
         for dependency in self.project.dependencies:
             if dependency.name != dependency_name:
@@ -135,7 +135,7 @@ class Import:
         return self.dependency_info is not None
 
     @cached_property
-    def path(self) -> Optional[Path]:
+    def path(self) -> Path | None:
         if self.is_builtin:
             return None
 
@@ -194,7 +194,7 @@ class Import:
         return {"path": path, "source_id": source_id}
 
     @property
-    def _relative_path_sin_ext(self) -> Optional[Path]:
+    def _relative_path_sin_ext(self) -> Path | None:
         # NOTE: Cannot use `self.path` - must only use string value.
         if self.is_relative is False:
             return None
@@ -203,7 +203,7 @@ class Import:
         return (self.importer.parent / self._pathified_value.lstrip(os.path.sep)).resolve()
 
     @property
-    def _absolute_path_sin_ext(self) -> Optional[Path]:
+    def _absolute_path_sin_ext(self) -> Path | None:
         # NOTE: Cannot use `self.path` - must only use string value.
         if self._relative_path_sin_ext is True:
             return None
@@ -226,7 +226,7 @@ class Import:
         return dots
 
     @property
-    def is_relative(self) -> Optional[bool]:
+    def is_relative(self) -> bool | None:
         if self._is_relative is not None:
             return self._is_relative
 
@@ -239,7 +239,7 @@ class Import:
         return None
 
     @property
-    def _local_relative_prefix(self) -> Optional[str]:
+    def _local_relative_prefix(self) -> str | None:
         return (
             None
             if self._relative_path_sin_ext is None
@@ -249,7 +249,7 @@ class Import:
         )
 
     @property
-    def _local_absolute_prefix(self) -> Optional[str]:
+    def _local_absolute_prefix(self) -> str | None:
         return (
             None
             if self._absolute_path_sin_ext is None
@@ -268,21 +268,21 @@ class ImportMap(dict[Path, list[Import]]):
         # "show" the items requested.
         self.paths: list[Path] = paths
 
-    def __getitem__(self, item: Union[str, Path], *args, **kwargs) -> list[Import]:
+    def __getitem__(self, item: str | Path, *args, **kwargs) -> list[Import]:
         if isinstance(item, str) or not item.is_absolute():
             path = self.project.path / item
             return super().__getitem__(path, *args, **kwargs)
         else:
             return super().__getitem__(item, *args, **kwargs)
 
-    def __setitem__(self, item: Union[str, Path], value: list[Import]):
+    def __setitem__(self, item: str | Path, value: list[Import]):
         if isinstance(item, str) or not item.is_absolute():
             path = self.project.path / item
             super().__setitem__(path, value)
         else:
             super().__setitem__(item, value)
 
-    def __contains__(self, item: Union[str, Path]) -> bool:  # type: ignore
+    def __contains__(self, item: str | Path) -> bool:  # type: ignore
         if isinstance(item, str) or not item.is_absolute():
             path = self.project.path / item
             return super().__contains__(path)
@@ -448,7 +448,7 @@ class ImportResolver(ManagerAccessMixin):
                 )
 
 
-def _parse_import_line(line: str) -> Optional[str]:
+def _parse_import_line(line: str) -> str | None:
     if line.startswith("import "):
         return line.replace("import ", "").split(" ")[0]
     elif line.startswith("from ") and " import " in line:

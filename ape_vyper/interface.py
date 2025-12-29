@@ -2,7 +2,7 @@
 Tools for working with ABI specs and Vyper interface source code
 """
 
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 from ethpm_types import ABI, MethodABI
 
@@ -31,19 +31,19 @@ def generate_method(abi: MethodABI) -> str:
     return f"def {abi.name}({inputs}){return_maybe}: {abi.stateMutability}\n"
 
 
-def abi_to_type(iface: dict[str, Any]) -> Optional[ABI]:
+def abi_to_type(iface: dict[str, Any]) -> ABI | None:
     """Convert a dict JSON-like interface to an ethpm-types ABI type"""
     if iface["type"] == "function":
         return MethodABI.model_validate(iface)
     return None
 
 
-def generate_interface(abi: Union[list[dict[str, Any]], list[ABI]], iface_name: str) -> str:
+def generate_interface(abi: list[dict[str, Any]] | list[ABI], iface_name: str) -> str:
     """
     Generate a Vyper interface source code from an ABI spec
 
     Args:
-        abi (List[Union[Dict[str, Any], ABI]]): An ABI spec for a contract
+        abi (list[dict[str, Any] | ABI]): An ABI spec for a contract
         iface_name (str): The name of the interface
 
     Returns:
@@ -67,9 +67,9 @@ def generate_interface(abi: Union[list[dict[str, Any]], list[ABI]], iface_name: 
     return f"{source}\n"
 
 
-def extract_meta(source_code: str) -> tuple[Optional[str], str]:
+def extract_meta(source_code: str) -> tuple[str | None, str]:
     """Extract version pragma, and return cleaned source"""
-    version_pragma: Optional[str] = None
+    version_pragma: str | None = None
     cleaned_source_lines: list[str] = []
 
     """

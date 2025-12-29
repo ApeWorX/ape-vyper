@@ -5,7 +5,7 @@ import time
 from collections.abc import Iterable
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 import vvm  # type: ignore
 from ape.exceptions import ProjectError
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from ethpm_types.source import Function
     from packaging.version import Version
 
-Optimization = Union[str, bool]
+Optimization = str | bool
 EVM_VERSION_DEFAULT = {
     "0.2.15": "berlin",
     "0.2.16": "berlin",
@@ -82,7 +82,7 @@ def install_vyper(version: "Version"):
                 ) from err
 
 
-def get_version_pragma_spec(source: Union[str, Path]) -> Optional[SpecifierSet]:
+def get_version_pragma_spec(source: str | Path) -> SpecifierSet | None:
     """
     Extracts version pragma information from Vyper source code.
 
@@ -113,12 +113,12 @@ def get_version_pragma_spec(source: Union[str, Path]) -> Optional[SpecifierSet]:
     return None
 
 
-def get_optimization_pragma(source: Union[str, Path]) -> Optional[str]:
+def get_optimization_pragma(source: str | Path) -> str | None:
     """
     Extracts optimization pragma information from Vyper source code.
 
     Args:
-        source (Union[str, Path]): Vyper source code
+        source (str | Path): Vyper source code
 
     Returns:
         ``str``, or None if no valid pragma is found.
@@ -138,12 +138,12 @@ def get_optimization_pragma(source: Union[str, Path]) -> Optional[str]:
     return None
 
 
-def get_evm_version_pragma(source: Union[str, Path]) -> Optional[str]:
+def get_evm_version_pragma(source: str | Path) -> str | None:
     """
     Extracts evm version pragma information from Vyper source code.
 
     Args:
-        source (Union[str, Path]): Vyper source code
+        source (str | Path): Vyper source code
 
     Returns:
         ``str``, or None if no valid pragma is found.
@@ -197,8 +197,8 @@ def get_evm_version_pragma_map(
 def lookup_source_from_site_packages(
     dependency_name: str,
     filestem: str,
-    config_override: Optional[dict] = None,
-) -> Optional[tuple[Path, ProjectManager]]:
+    config_override: dict | None = None,
+) -> tuple[Path, ProjectManager] | None:
     # Attempt looking up dependency from site-packages.
     config_override = config_override or {}
     if "contracts_folder" not in config_override:
@@ -219,7 +219,7 @@ def lookup_source_from_site_packages(
 
     extensions = [*[f"{t}" for t in FileType], ".json"]
 
-    def seek() -> Optional[Path]:
+    def seek() -> Path | None:
         for ext in extensions:
             try_source_id = f"{filestem}{ext}"
             if source_path := imported_project.sources.lookup(try_source_id):
@@ -260,7 +260,7 @@ def lookup_source_from_site_packages(
     return None
 
 
-def safe_append(data: dict, version: Union["Version", SpecifierSet], paths: Union[Path, set]):
+def safe_append(data: dict, version: "Version | SpecifierSet", paths: Path | set):
     if isinstance(paths, Path):
         paths = {paths}
     if version in data:
@@ -269,7 +269,7 @@ def safe_append(data: dict, version: Union["Version", SpecifierSet], paths: Unio
         data[version] = paths
 
 
-def is_revert_jump(op: str, value: Optional[int], revert_pc: int) -> bool:
+def is_revert_jump(op: str, value: int | None, revert_pc: int) -> bool:
     return op == "JUMPI" and value is not None and value == revert_pc
 
 
@@ -350,7 +350,7 @@ def get_legacy_pcmap(ast: ASTNode, src_map: list[SourceMapItem], opcodes: list[s
     """
 
     pc = 0
-    pc_map_list: list[tuple[int, dict[str, Optional[Any]]]] = []
+    pc_map_list: list[tuple[int, dict[str, Any | None]]] = []
     last_value = None
     revert_pc = -1
     if has_empty_revert(opcodes):
@@ -435,7 +435,7 @@ def get_legacy_pcmap(ast: ASTNode, src_map: list[SourceMapItem], opcodes: list[s
     return PCMap.model_validate(pcmap_data)
 
 
-def find_non_payable_check(src_map: list[SourceMapItem], opcodes: list[str]) -> Optional[int]:
+def find_non_payable_check(src_map: list[SourceMapItem], opcodes: list[str]) -> int | None:
     pc = 0
     revert_pc = -1
     if has_empty_revert(opcodes):
@@ -524,8 +524,8 @@ def compile_files(
     binary: Path,
     source_files: list[Path],
     project_path: Path,
-    output_format: Optional[list[str]] = None,
-    additional_paths: Optional[list[Path]] = None,
+    output_format: list[str] | None = None,
+    additional_paths: list[Path] | None = None,
     **kwargs,
 ) -> dict[str, Any]:
     """
@@ -546,15 +546,15 @@ def compile_files(
     if kwargs:
         command.extend(_kwargs_to_cli_options(**kwargs))
 
-    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.run(command, capture_output=True)
     if process.returncode != 0:
         raise _handle_process_failure(process)
 
     outputs = process.stdout.decode("utf-8").splitlines()
     iter_length = len(output_format)
     return {
-        f"{input_source}": dict(zip(output_format, outputs[i : i + iter_length]))
-        for i, input_source in zip(range(0, len(outputs), iter_length), source_files)
+        f"{input_source}": dict(zip(output_format, outputs[i : i + iter_length], strict=False))
+        for i, input_source in zip(range(0, len(outputs), iter_length), source_files, strict=False)
     }
 
 

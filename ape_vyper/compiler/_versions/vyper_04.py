@@ -4,7 +4,7 @@ import shutil
 from collections.abc import Iterable
 from pathlib import Path
 from site import getsitepackages
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from ape.logging import logger
 from ape.utils import get_full_extension, get_relative_path
@@ -31,11 +31,11 @@ class Vyper04Compiler(BaseVyperCompiler):
     Compiler for Vyper>=0.4.0.
     """
 
-    def get_output_format(self, project: Optional["ProjectManager"] = None) -> list[str]:
+    def get_output_format(self, project: "ProjectManager | None" = None) -> list[str]:
         pm = project or self.local_project
         return pm.config.vyper.output_format or VYPER_04_OUTPUT_FORMAT
 
-    def get_import_remapping(self, project: Optional["ProjectManager"] = None) -> dict[str, dict]:
+    def get_import_remapping(self, project: "ProjectManager | None" = None) -> dict[str, dict]:
         # Import remappings are not used in 0.4.
         # You always import via module or package name.
         return {}
@@ -44,7 +44,7 @@ class Vyper04Compiler(BaseVyperCompiler):
         self,
         version: "Version",
         source_paths: Iterable[Path],
-        project: Optional["ProjectManager"] = None,
+        project: "ProjectManager | None" = None,
     ) -> dict:
         pm = project or self.local_project
 
@@ -59,7 +59,7 @@ class Vyper04Compiler(BaseVyperCompiler):
         return settings
 
     def _get_sources_dictionary(
-        self, source_ids: Iterable[str], project: Optional["ProjectManager"] = None, **kwargs
+        self, source_ids: Iterable[str], project: "ProjectManager | None" = None, **kwargs
     ) -> dict:
         pm = project or self.local_project
         if not source_ids:
@@ -93,7 +93,7 @@ class Vyper04Compiler(BaseVyperCompiler):
         return "gas"
 
     def _get_selection_dictionary(
-        self, selection: Iterable[str], project: Optional["ProjectManager"] = None, **kwargs
+        self, selection: Iterable[str], project: "ProjectManager | None" = None, **kwargs
     ) -> dict:
         pm = project or self.local_project
         return {
@@ -109,7 +109,7 @@ class Vyper04Compiler(BaseVyperCompiler):
         vyper_version: "Version",
         settings: dict,
         import_map: "ImportMap",
-        project: Optional["ProjectManager"] = None,
+        project: "ProjectManager | None" = None,
     ):
         pm = project or self.local_project
         for settings_key, settings_set in settings.items():
@@ -225,7 +225,7 @@ class Vyper04Compiler(BaseVyperCompiler):
                 yield contract_type, settings_key
 
     def _output_solc_json(
-        self, source_id: str, solc_json: str, project: Optional["ProjectManager"] = None
+        self, source_id: str, solc_json: str, project: "ProjectManager | None" = None
     ):
         pm = project or self.local_project
         output_path = pm.manifest_path.parent

@@ -1,14 +1,14 @@
 from fnmatch import fnmatch
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from ape.utils import ManagerAccessMixin
-from ethpm_types.utils import SourceLocation
 
 from ape_vyper.exceptions import RuntimeErrorType
 
 if TYPE_CHECKING:
     from ape.types import ContractSourceCoverage
     from ethpm_types.source import ContractSource
+    from ethpm_types.utils import SourceLocation
 
 
 class CoverageProfiler(ManagerAccessMixin):
@@ -67,7 +67,7 @@ class CoverageProfiler(ManagerAccessMixin):
             if pc_int < 0:
                 continue
 
-            location: Optional[SourceLocation]
+            location: SourceLocation | None
             if item.get("location"):
                 location_list = item["location"]
                 if not isinstance(location_list, (list, tuple)):

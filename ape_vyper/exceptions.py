@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import Optional, Union
 
 from ape.exceptions import CompilerError, ContractLogicError
 from ape.utils import USER_ASSERT_TAG
@@ -39,8 +38,8 @@ class VyperCompileError(VyperCompilerPluginError):
     A compiler-specific error in Vyper.
     """
 
-    def __init__(self, err: Union[VyperError, str]):
-        self.base_err: Optional[VyperError]
+    def __init__(self, err: VyperError | str):
+        self.base_err: VyperError | None
         if isinstance(err, VVMVyperError):
             self.base_err = err
             message = "\n\n".join(
@@ -75,7 +74,7 @@ class RuntimeErrorType(Enum):
     USER_ASSERT = USER_ASSERT_TAG
 
     @classmethod
-    def from_operator(cls, operator: str) -> Optional["RuntimeErrorType"]:
+    def from_operator(cls, operator: str) -> "RuntimeErrorType | None":
         if operator == "Add":
             return cls.INTEGER_OVERFLOW
         elif operator == "Sub":
@@ -95,7 +94,7 @@ class VyperRuntimeError(ContractLogicError):
     compiler and not directly from the source.
     """
 
-    def __init__(self, error_type: Union[RuntimeErrorType, str], **kwargs):
+    def __init__(self, error_type: RuntimeErrorType | str, **kwargs):
         super().__init__(error_type if isinstance(error_type, str) else error_type.value, **kwargs)
 
 

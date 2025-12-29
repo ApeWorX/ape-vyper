@@ -1,6 +1,6 @@
 from collections.abc import Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, cast
+from typing import TYPE_CHECKING, cast
 
 from ape.types import SourceTraceback
 from ape.utils import ManagerAccessMixin, get_full_extension
@@ -29,8 +29,8 @@ class SourceTracer(ManagerAccessMixin):
         frames: Iterator[dict],
         contract: ContractSource,
         calldata: HexBytes,
-        previous_depth: Optional[int] = None,
-        project: Optional["ProjectManager"] = None,
+        previous_depth: int | None = None,
+        project: "ProjectManager | None" = None,
     ) -> SourceTraceback:
         pm = project or cls.local_project
         method_id = HexBytes(calldata[:4])
@@ -87,7 +87,7 @@ class SourceTracer(ManagerAccessMixin):
             pcs_to_try_adding = set()
             if "PUSH" in frame["op"] and frame["pc"] in contract.pcmap:
                 # Check if next op is SSTORE to properly use AST from push op.
-                next_frame: Optional[dict] = frame
+                next_frame: dict | None = frame
                 loc = contract.pcmap[frame["pc"]]
                 pcs_to_try_adding.add(frame["pc"])
 
@@ -106,7 +106,7 @@ class SourceTracer(ManagerAccessMixin):
 
                 else:
                     pcmap = contract.pcmap
-                    dev_val = str((loc.get("dev") or "")).replace("dev: ", "")
+                    dev_val = str(loc.get("dev") or "").replace("dev: ", "")
                     is_non_payable_hit = dev_val == RuntimeErrorType.NONPAYABLE_CHECK.value
 
                 if not is_non_payable_hit and next_frame:
@@ -239,8 +239,8 @@ class SourceTracer(ManagerAccessMixin):
 
     @classmethod
     def _create_contract_from_call(
-        cls, frame: dict, project: Optional["ProjectManager"] = None
-    ) -> tuple[Optional[ContractSource], HexBytes]:
+        cls, frame: dict, project: "ProjectManager | None" = None
+    ) -> tuple[ContractSource | None, HexBytes]:
         pm = project or cls.local_project
         evm_frame = TraceFrame(**frame)
         data = create_call_node_data(evm_frame)

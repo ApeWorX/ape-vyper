@@ -1,7 +1,6 @@
 import json
 import re
 from pathlib import Path
-from typing import Optional
 
 import ape
 import pytest
@@ -579,7 +578,7 @@ def test_enrich_error_handle_when_name(compiler, geth_provider, mocker):
 
     class TB(SourceTraceback):
         @property
-        def revert_type(self) -> Optional[str]:
+        def revert_type(self) -> str | None:
             return "NONPAYABLE_CHECK"
 
     tb = TB([{"statements": [], "closure": {"name": "fn"}, "depth": 0}])  # type: ignore
@@ -826,9 +825,9 @@ def test_get_compiler_settings(project, compiler):
 
     assert len(vyper4_settings) == 1, f"extra keys={''.join([f'{x}' for x in vyper4_settings])}"
     v4_version_used = next(iter(vyper4_settings.keys()))
-    assert v4_version_used >= Version(
-        "0.4.0"
-    ), f"version={v4_version_used} full_data={vyper4_settings}"
+    assert v4_version_used >= Version("0.4.0"), (
+        f"version={v4_version_used} full_data={vyper4_settings}"
+    )
     assert vyper4_settings[v4_version_used]["gas%none"]["enable_decimals"] is True
     assert vyper4_settings[v4_version_used]["gas%none"]["optimize"] == "gas"
     assert vyper4_settings[v4_version_used]["gas%none"]["outputSelection"] == {
