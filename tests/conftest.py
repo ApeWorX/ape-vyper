@@ -1,4 +1,5 @@
 import os
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -141,12 +142,32 @@ def project(config):
     return config.local_project
 
 
+def _wait_for_geth_ready(provider, max_retries: int = 10, backoff_factor: float = 0.5):
+    """
+    Wait for Geth to be ready by checking if it responds to RPC calls.
+    Uses exponential backoff to handle startup delays.
+    """
+    for attempt in range(max_retries):
+        try:
+            # Try to get the chain ID to verify Geth is responding
+            provider.get_chain_id()
+            return  # Success - Geth is ready
+        except Exception:
+            if attempt < max_retries - 1:
+                sleep_time = backoff_factor * (2**attempt)
+                time.sleep(sleep_time)
+            else:
+                # Final attempt failed
+                raise
+
+
 @pytest.fixture
 def geth_provider():
     if not ape.networks.active_provider or ape.networks.provider.name != "node":
         with ape.networks.ethereum.local.use_provider(
             "node", provider_settings={"uri": "http://127.0.0.1:5550"}
         ) as provider:
+            _wait_for_geth_ready(provider)
             yield provider
     else:
         yield ape.networks.provider
