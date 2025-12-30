@@ -853,7 +853,7 @@ def test_solc_json_format(compiler, projects_path):
 
     expected_json = {
         "compiler_version": "v0.4.1+commit.8a93dd27",
-        "integrity": "31bec6a1a057f4d62545cb1aaf7ee960951b277d040efae56eefcc0baa0deaad",
+        "integrity": "d07d3774791fc58474a29e320328d8f4b0b95fbeebed2cbf8d56a8c729499545",
         "language": "Vyper",
         "settings": {
             "outputSelection": {
@@ -867,11 +867,11 @@ def test_solc_json_format(compiler, projects_path):
         },
         "sources": {
             "contracts/ContractForSolcJSON.vy": {
-                "content": "# pragma version ~=0.4.0\n"
+                "content": "# pragma version 0.4.1\n\n"
                 "@deploy\n"
                 "def __init__(_name: String[25]):\n"
                 "    pass\n",
-                "sha256sum": "b264df51334290034b250140a0d920f2a419b603ca9b84bc648391b8036fcfee",
+                "sha256sum": "d8da95d32655aacd4918dbd6b6b70e6b8c4b2386230e08da89cb47039ceb6601",
             },
         },
     }
