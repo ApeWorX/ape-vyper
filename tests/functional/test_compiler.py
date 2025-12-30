@@ -29,7 +29,6 @@ from ..conftest import FAILING_BASE, FAILING_CONTRACT_NAMES, PASSING_CONTRACT_NA
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.16")
 VERSION_37 = Version("0.3.7")
 VERSION_FROM_PRAGMA = Version("0.3.10")
-VERSION_04 = Version("0.4.1")
 
 
 @pytest.fixture
@@ -298,18 +297,31 @@ def test_get_version_map(project, compiler, all_versions):
 
     assert not failures, "\n".join(failures)
 
-    # Vyper 0.4.0 assertions.
-    actual4 = {x.name for x in actual[VERSION_04]}
-    expected4 = {
-        "contract_no_pragma.vy",
-        "empty.vy",
-        "sub_reverts_041.vy",
-        "zero_four.vy",
-        "zero_four_module.vy",
-        "zero_four_module_2.vy",
-        "zero_four_snekmate_erc20.vy",
-    }
-    assert actual4 == expected4
+    # Vyper 0.4 assertions.
+    def is_04x(v: Version) -> bool:
+        # NOTE: We skip 0.4.0 because it was yanked
+        return Version("0.4.1") <= v < Version("0.5.0")
+
+    for version in filter(is_04x, expected_versions):
+        actual04x = {x.name for x in actual[version]}
+
+        short_version = str(version).replace(".", "")
+        if version < max(expected_versions):
+            expected04x = {f"sub_reverts_{short_version}.vy"}
+
+        else:
+            # NOTE: All these use latest 0.4.x series
+            expected04x = {
+                "contract_no_pragma.vy",
+                "empty.vy",
+                f"sub_reverts_{short_version}.vy",
+                "zero_four.vy",
+                "zero_four_module.vy",
+                "zero_four_module_2.vy",
+                "zero_four_snekmate_erc20.vy",
+            }
+
+        assert actual04x == expected04x
 
 
 def test_compiler_data_in_manifest(project):
