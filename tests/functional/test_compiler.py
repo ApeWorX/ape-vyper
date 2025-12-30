@@ -216,7 +216,7 @@ def test_compile_individual_contracts(project, contract_name, compiler):
 def test_compile_failures(contract_name, compiler):
     failing_project = ape.Project(FAILING_BASE)
     path = FAILING_BASE / contract_name
-    with pytest.raises(VyperCompileError, match=EXPECTED_FAIL_PATTERNS[path.stem]) as err:
+    with pytest.raises(VyperCompileError, match=EXPECTED_FAIL_PATTERNS[path.stem]) as err:  # type: ignore[call-overload]
         list(compiler.compile((path,), project=failing_project))
 
     assert isinstance(err.value.base_err, VyperError)
@@ -715,8 +715,8 @@ def test_compile_code(project, compiler, dev_revert_source):
     assert isinstance(actual, ContractType)
     assert actual.name == "MyContract"
     assert len(actual.abi) > 1
-    assert len(actual.deployment_bytecode.bytecode) > 1
-    assert len(actual.runtime_bytecode.bytecode) > 1
+    assert len(actual.deployment_bytecode.bytecode) > 1  # type: ignore[union-attr,arg-type]
+    assert len(actual.runtime_bytecode.bytecode) > 1  # type: ignore[union-attr,arg-type]
 
     # Ensure temp-file was deleted.
     file = project.path / "MyContract.vy"
