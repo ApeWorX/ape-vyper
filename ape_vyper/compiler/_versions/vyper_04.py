@@ -1,9 +1,9 @@
 import json
 import os
 import shutil
+import sys
 from collections.abc import Iterable
 from pathlib import Path
-from site import getsitepackages
 from typing import TYPE_CHECKING
 
 from ape.logging import logger
@@ -128,7 +128,7 @@ class Vyper04Compiler(BaseVyperCompiler):
             comp_kwargs = {
                 "evm_version": self.get_evm_version(vyper_version),
                 "output_format": self.get_output_format(project=pm),
-                "additional_paths": [*getsitepackages()],
+                "additional_paths": sys.path,
                 "enable_decimals": settings_set.get("enable_decimals", False),
             }
 
