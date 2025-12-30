@@ -2,7 +2,6 @@ import re
 import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Optional
 
 import pytest
 from ape import Project
@@ -64,12 +63,12 @@ def setup_pytester(pytester, coverage_project):
     tests_path = coverage_project.tests_folder
 
     # Make other files
-    def _make_all_files(base: Path, prefix: Optional[Path] = None):
+    def _make_all_files(base: Path, prefix: Path | None = None):
         if not base.is_dir():
             return
 
         for file in base.iterdir():
-            if file.is_dir() and not file.name == "tests":
+            if file.is_dir() and file.name != "tests":
                 _make_all_files(file, prefix=Path(file.name))
             elif file.is_file():
                 name = (prefix / file.name).as_posix() if prefix else file.name
@@ -165,7 +164,7 @@ def _get_coverage_report(lines: list[str]) -> list[str]:
 
 
 def _assert_coverage(actual: list[str], expected: list[str]):
-    for idx, (a_line, e_line) in enumerate(zip(actual, expected)):
+    for idx, (a_line, e_line) in enumerate(zip(actual, expected, strict=False)):
         message = f"Failed at index {idx}. Expected={e_line}, Actual={a_line}"
         assert re.match(e_line, a_line), message
 
@@ -176,7 +175,7 @@ def _assert_xml(xml_path: Path):
     assert '<?xml version="1.0" ?>' in xml
 
     # Show is valid XML.
-    tree = ET.parse(str(xml_path))
+    tree = ET.parse(str(xml_path))  # noqa: S314
 
     # Assert there are sources.
     sources = tree.find("sources")

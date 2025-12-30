@@ -1,7 +1,6 @@
 import json
 import re
 from pathlib import Path
-from typing import Optional
 
 import ape
 import pytest
@@ -30,7 +29,6 @@ from ..conftest import FAILING_BASE, FAILING_CONTRACT_NAMES, PASSING_CONTRACT_NA
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.16")
 VERSION_37 = Version("0.3.7")
 VERSION_FROM_PRAGMA = Version("0.3.10")
-VERSION_04 = Version("0.4.1")
 
 
 @pytest.fixture
@@ -217,7 +215,7 @@ def test_compile_individual_contracts(project, contract_name, compiler):
 def test_compile_failures(contract_name, compiler):
     failing_project = ape.Project(FAILING_BASE)
     path = FAILING_BASE / contract_name
-    with pytest.raises(VyperCompileError, match=EXPECTED_FAIL_PATTERNS[path.stem]) as err:
+    with pytest.raises(VyperCompileError, match=EXPECTED_FAIL_PATTERNS[path.stem]) as err:  # type: ignore[call-overload]
         list(compiler.compile((path,), project=failing_project))
 
     assert isinstance(err.value.base_err, VyperError)
@@ -299,18 +297,31 @@ def test_get_version_map(project, compiler, all_versions):
 
     assert not failures, "\n".join(failures)
 
-    # Vyper 0.4.0 assertions.
-    actual4 = {x.name for x in actual[VERSION_04]}
-    expected4 = {
-        "contract_no_pragma.vy",
-        "empty.vy",
-        "sub_reverts_041.vy",
-        "zero_four.vy",
-        "zero_four_module.vy",
-        "zero_four_module_2.vy",
-        "zero_four_snekmate_erc20.vy",
-    }
-    assert actual4 == expected4
+    # Vyper 0.4 assertions.
+    def is_04x(v: Version) -> bool:
+        # NOTE: We skip 0.4.0 because it was yanked
+        return Version("0.4.1") <= v < Version("0.5.0")
+
+    for version in filter(is_04x, expected_versions):
+        actual04x = {x.name for x in actual[version]}
+
+        short_version = str(version).replace(".", "")
+        if version < max(expected_versions):
+            expected04x = {f"sub_reverts_{short_version}.vy"}
+
+        else:
+            # NOTE: All these use latest 0.4.x series
+            expected04x = {
+                "contract_no_pragma.vy",
+                "empty.vy",
+                f"sub_reverts_{short_version}.vy",
+                "zero_four.vy",
+                "zero_four_module.vy",
+                "zero_four_module_2.vy",
+                "zero_four_snekmate_erc20.vy",
+            }
+
+        assert actual04x == expected04x
 
 
 def test_compiler_data_in_manifest(project):
@@ -579,7 +590,7 @@ def test_enrich_error_handle_when_name(compiler, geth_provider, mocker):
 
     class TB(SourceTraceback):
         @property
-        def revert_type(self) -> Optional[str]:
+        def revert_type(self) -> str | None:
             return "NONPAYABLE_CHECK"
 
     tb = TB([{"statements": [], "closure": {"name": "fn"}, "depth": 0}])  # type: ignore
@@ -716,8 +727,8 @@ def test_compile_code(project, compiler, dev_revert_source):
     assert isinstance(actual, ContractType)
     assert actual.name == "MyContract"
     assert len(actual.abi) > 1
-    assert len(actual.deployment_bytecode.bytecode) > 1
-    assert len(actual.runtime_bytecode.bytecode) > 1
+    assert len(actual.deployment_bytecode.bytecode) > 1  # type: ignore[union-attr,arg-type]
+    assert len(actual.runtime_bytecode.bytecode) > 1  # type: ignore[union-attr,arg-type]
 
     # Ensure temp-file was deleted.
     file = project.path / "MyContract.vy"
@@ -826,9 +837,9 @@ def test_get_compiler_settings(project, compiler):
 
     assert len(vyper4_settings) == 1, f"extra keys={''.join([f'{x}' for x in vyper4_settings])}"
     v4_version_used = next(iter(vyper4_settings.keys()))
-    assert v4_version_used >= Version(
-        "0.4.0"
-    ), f"version={v4_version_used} full_data={vyper4_settings}"
+    assert v4_version_used >= Version("0.4.0"), (
+        f"version={v4_version_used} full_data={vyper4_settings}"
+    )
     assert vyper4_settings[v4_version_used]["gas%none"]["enable_decimals"] is True
     assert vyper4_settings[v4_version_used]["gas%none"]["optimize"] == "gas"
     assert vyper4_settings[v4_version_used]["gas%none"]["outputSelection"] == {
@@ -854,7 +865,7 @@ def test_solc_json_format(compiler, projects_path):
 
     expected_json = {
         "compiler_version": "v0.4.1+commit.8a93dd27",
-        "integrity": "31bec6a1a057f4d62545cb1aaf7ee960951b277d040efae56eefcc0baa0deaad",
+        "integrity": "d07d3774791fc58474a29e320328d8f4b0b95fbeebed2cbf8d56a8c729499545",
         "language": "Vyper",
         "settings": {
             "outputSelection": {
@@ -868,11 +879,11 @@ def test_solc_json_format(compiler, projects_path):
         },
         "sources": {
             "contracts/ContractForSolcJSON.vy": {
-                "content": "# pragma version ~=0.4.0\n"
+                "content": "# pragma version 0.4.1\n\n"
                 "@deploy\n"
                 "def __init__(_name: String[25]):\n"
                 "    pass\n",
-                "sha256sum": "b264df51334290034b250140a0d920f2a419b603ca9b84bc648391b8036fcfee",
+                "sha256sum": "d8da95d32655aacd4918dbd6b6b70e6b8c4b2386230e08da89cb47039ceb6601",
             },
         },
     }

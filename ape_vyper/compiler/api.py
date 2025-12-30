@@ -5,7 +5,7 @@ from collections.abc import Iterable, Iterator
 from functools import cached_property
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import vvm  # type: ignore
 from ape.api import CompilerAPI, PluginConfig, TraceAPI
@@ -15,7 +15,6 @@ from ape.managers.project import LocalProject
 from ape.utils import get_full_extension, get_relative_path
 from ape.utils._github import _GithubClient
 from ethpm_types.source import Compiler, Content, ContractSource
-from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
 from ape_vyper._utils import FileType, get_version_pragma_spec, install_vyper, safe_append
@@ -37,6 +36,7 @@ if TYPE_CHECKING:
     from ape.types.trace import SourceTraceback
     from eth_pydantic_types import HexBytes
     from ethpm_types.contract_type import ContractType
+    from packaging.specifiers import SpecifierSet
 
 
 class VyperCompiler(CompilerAPI):
@@ -82,7 +82,7 @@ class VyperCompiler(CompilerAPI):
     def get_imports(
         self,
         contract_filepaths: Iterable[Path],
-        project: Optional[ProjectManager] = None,
+        project: ProjectManager | None = None,
     ) -> dict[str, list[str]]:
         pm = project or self.local_project
         imports = self._import_resolver.get_imports(pm, contract_filepaths)
@@ -115,7 +115,7 @@ class VyperCompiler(CompilerAPI):
         return versions
 
     @cached_property
-    def package_version(self) -> Optional[Version]:
+    def package_version(self) -> Version | None:
         try:
             vyper = import_module("vyper")
         except ModuleNotFoundError:
@@ -182,7 +182,7 @@ class VyperCompiler(CompilerAPI):
 
     def get_dependencies(
         self,
-        project: Optional[ProjectManager] = None,
+        project: ProjectManager | None = None,
         allow_compile: bool = False,
     ) -> dict[str, ProjectManager]:
         pm = project or self.local_project
@@ -233,7 +233,7 @@ class VyperCompiler(CompilerAPI):
 
         return dependencies
 
-    def get_import_remapping(self, project: Optional[ProjectManager] = None) -> dict[str, dict]:
+    def get_import_remapping(self, project: ProjectManager | None = None) -> dict[str, dict]:
         """
         Configured interface imports from dependencies.
         """
@@ -243,8 +243,8 @@ class VyperCompiler(CompilerAPI):
     def compile(
         self,
         contract_filepaths: Iterable[Path],
-        project: Optional[ProjectManager] = None,
-        settings: Optional[dict] = None,
+        project: ProjectManager | None = None,
+        settings: dict | None = None,
     ) -> Iterator["ContractType"]:
         pm = project or self.local_project
         original_settings = self.compiler_settings
@@ -254,11 +254,9 @@ class VyperCompiler(CompilerAPI):
         finally:
             self.compiler_settings = original_settings
 
-    def _compile(
-        self, contract_filepaths: Iterable[Path], project: Optional[ProjectManager] = None
-    ):
+    def _compile(self, contract_filepaths: Iterable[Path], project: ProjectManager | None = None):
         pm = project or self.local_project
-        contract_types: list["ContractType"] = []
+        contract_types: list[ContractType] = []
         import_map = self._import_resolver.get_imports(pm, contract_filepaths)
         config = self.get_config(pm)
         version_map = self._get_version_map_from_import_map(
@@ -325,7 +323,7 @@ class VyperCompiler(CompilerAPI):
         pm.add_compiler_data(compilers_ls)
 
     def compile_code(
-        self, code: str, project: Optional[ProjectManager] = None, **kwargs
+        self, code: str, project: ProjectManager | None = None, **kwargs
     ) -> "ContractType":
         # NOTE: We are unable to use `vvm.compile_code()` because it does not
         #   appear to honor altered VVM install paths, thus always re-installs
@@ -350,7 +348,7 @@ class VyperCompiler(CompilerAPI):
         """Given source code, figure out which Vyper version to use"""
         version_spec = get_version_pragma_spec(code)
 
-        def first_full_release(versions: Iterable[Version]) -> Optional[Version]:
+        def first_full_release(versions: Iterable[Version]) -> Version | None:
             for vers in versions:
                 if not vers.is_devrelease and not vers.is_postrelease and not vers.is_prerelease:
                     return vers
@@ -368,7 +366,7 @@ class VyperCompiler(CompilerAPI):
     def flatten_contract(
         self,
         path: Path,
-        project: Optional[ProjectManager] = None,
+        project: ProjectManager | None = None,
         **kwargs,
     ) -> Content:
         """
@@ -381,7 +379,7 @@ class VyperCompiler(CompilerAPI):
     def get_version_map(
         self,
         contract_filepaths: Iterable[Path],
-        project: Optional[ProjectManager] = None,
+        project: ProjectManager | None = None,
     ) -> dict[Version, set[Path]]:
         pm = project or self.local_project
         import_map = self._import_resolver.get_imports(pm, contract_filepaths)
@@ -391,8 +389,8 @@ class VyperCompiler(CompilerAPI):
         self,
         contract_filepaths: Iterable[Path],
         import_map: ImportMap,
-        project: Optional[ProjectManager] = None,
-        config: Optional[PluginConfig] = None,
+        project: ProjectManager | None = None,
+        config: PluginConfig | None = None,
     ) -> dict[Version, set[Path]]:
         pm = project or self.local_project
         self.compiler_settings = {**self.compiler_settings}
@@ -474,7 +472,7 @@ class VyperCompiler(CompilerAPI):
     def get_compiler_settings(
         self,
         contract_filepaths: Iterable[Path],
-        project: Optional[ProjectManager] = None,
+        project: ProjectManager | None = None,
         **kwargs,
     ) -> dict[Version, dict]:
         pm = project or self.local_project
@@ -492,7 +490,7 @@ class VyperCompiler(CompilerAPI):
     def _get_compiler_settings_from_version_map(
         self,
         version_map: dict[Version, set[Path]],
-        project: Optional[ProjectManager] = None,
+        project: ProjectManager | None = None,
     ):
         pm = project or self.local_project
         settings = {}

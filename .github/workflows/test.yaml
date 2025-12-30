@@ -17,48 +17,35 @@ jobs:
         runs-on: ubuntu-latest
 
         steps:
-        - uses: actions/checkout@v4
+        - uses: actions/checkout@v5
 
         - name: Setup Python
-          uses: actions/setup-python@v5
+          uses: astral-sh/setup-uv@v7
           with:
               python-version: "3.10"
 
-        - name: Install Dependencies
-          run: |
-            python -m pip install --upgrade pip
-            pip install .[lint]
+        - name: Run Ruff Lint
+          run: uv run --group lint ruff check .
 
-        - name: Run Black
-          run: black --check .
-
-        - name: Run isort
-          run: isort --check-only .
-
-        - name: Run flake8
-          run: flake8 .
+        - name: Run Ruff Format
+          run: uv run --group lint ruff format --check .
 
         - name: Run mdformat
-          run: mdformat . --check
+          run: uv run --group lint mdformat --check *.md
 
     type-check:
         runs-on: ubuntu-latest
 
         steps:
-        - uses: actions/checkout@v4
+        - uses: actions/checkout@v5
 
         - name: Setup Python
-          uses: actions/setup-python@v5
+          uses: astral-sh/setup-uv@v7
           with:
               python-version: "3.10"
 
-        - name: Install Dependencies
-          run: |
-            python -m pip install --upgrade pip
-            pip install .[lint,test]  # Might need test deps
-
         - name: Run MyPy
-          run: mypy .
+          run: uv run --group lint --group test mypy .
 
     functional:
         runs-on: ${{ matrix.os }}
@@ -66,73 +53,26 @@ jobs:
         strategy:
             matrix:
                 os: [ubuntu-latest, macos-latest]   # eventually add `windows-latest`
-                python-version: ["3.10", "3.11", "3.12", "3.13"]
+                python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
         env:
           GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
         steps:
-        - uses: actions/checkout@v4
+        - uses: actions/checkout@v5
 
         - name: Setup Python
-          uses: actions/setup-python@v5
+          uses: astral-sh/setup-uv@v7
           with:
               python-version: ${{ matrix.python-version }}
 
-        - name: Setup Go
-          uses: actions/setup-go@v4
-          with:
-            go-version: '^1.20.1'
-
-        - name: Setup Go
-          uses: actions/setup-go@v5
-          with:
-            go-version: '^1.20.7'
-
         - name: Install Geth
-          uses: gacts/install-geth-tools@v1
-          with:
-            version: 1.14.5
-
-        - name: Install Dependencies
-          run: |
-            python -m pip install --upgrade pip
-            pip install .[test]
+          uses: ApeWorX/geth-action@v1
 
         - name: Run Tests
-          run: |
-            pytest -k "not test_coverage" -m "not fuzzing" -n 0 -s \
-              --cov=ape_vyper \
-              --cov-branch \
-              --cov-report term \
-              --cov-report html \
-              --cov-report xml
+          run: uv run --group test ape test -k "not test_coverage" -n 0 -s
 
         # Since --cov does not play nicely with --coverage (low-level tracer issues),
         #  we have to run the tests separately.
-        - name: Run Contract Coverage Tests
-          run: pytest tests/functional/test_coverage.py
-
-
-# NOTE: uncomment this block after you've marked tests with @pytest.mark.fuzzing
-#    fuzzing:
-#        runs-on: ubuntu-latest
-#
-#        strategy:
-#            fail-fast: true
-#
-#        steps:
-#        - uses: actions/checkout@v4
-#
-#        - name: Setup Python
-#          uses: actions/setup-python@v5
-#          with:
-#              python-version: "3.10"
-#
-#        - name: Install Dependencies
-#          run: |
-#             python -m pip install --upgrade pip
-#             pip install .[test]
-#
-#        - name: Run Tests
-#          run: pytest -m "fuzzing" --no-cov -s
+        - name: Run Coverage Tests
+          run: uv run --group test ape test -k test_coverage --no-cov -n 0 -s
