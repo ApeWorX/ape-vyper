@@ -6,7 +6,6 @@ from ape.logging import logger
 from ape.utils import ManagerAccessMixin, get_relative_path
 from ethpm_types.source import Content
 
-from ape_vyper._utils import get_version_pragma_spec
 from ape_vyper.ast import source_to_abi
 from ape_vyper.interface import (
     extract_import_aliases,
@@ -60,8 +59,8 @@ class Flattener(ManagerAccessMixin):
 
         # Get info about imports and source meta
         aliases = extract_import_aliases(og_source)
-        pragma, source_without_meta = extract_meta(og_source)
-        version_specifier = get_version_pragma_spec(pragma) if pragma else None
+        pragmas, source_without_meta = extract_meta(og_source)
+        version_specifier = pragmas.get("version")
         stdlib_imports, _, source_without_imports = extract_imports(source_without_meta)
         flattened_modules = ""
         modules_prefixes: set[str] = set()
@@ -132,13 +131,28 @@ class Flattener(ManagerAccessMixin):
                 if el is not None:
                     yield el
 
-        pragma_to_include = pragma if include_pragma else ""
+        if include_pragma:
+            pragma_formatter = {
+                "version": lambda v: str(v),
+                "nonreentrancy": lambda v: "on" if v else "off",
+                "experimental-codegen": lambda v: "" if v else None,
+                "optimization": lambda v: v,
+            }
+            pragmas_to_include = "# " + "\n# ".join(
+                f"pragma {name} {formatted_value}".strip()
+                for name, value in pragmas.items()
+                if (fmt := pragma_formatter.get(name))
+                and (formatted_value := fmt(value)) is not None
+            )
+
+        else:
+            pragmas_to_include = ""
 
         # Join all the OG and generated parts back together
         flattened_source = "\n\n".join(
             no_nones(
                 (
-                    pragma_to_include,
+                    pragmas_to_include,
                     stdlib_imports,
                     interfaces_source,
                     flattened_modules,

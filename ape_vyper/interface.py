@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Any
 
 from ethpm_types import ABI, MethodABI
 
+from ape_vyper._utils import get_version_pragma_spec
+
 if TYPE_CHECKING:
     from ethpm_types.abi import ABIType
 
@@ -67,9 +69,10 @@ def generate_interface(abi: list[dict[str, Any]] | list[ABI], iface_name: str) -
     return f"{source}\n"
 
 
-def extract_meta(source_code: str) -> tuple[str | None, str]:
-    """Extract version pragma, and return cleaned source"""
-    version_pragma: str | None = None
+def extract_meta(source_code: str) -> tuple[dict, str]:
+    """Extract any pragma(s), and return cleaned source (without them)"""
+
+    pragmas: dict = {"experimental-codegen": False}
     cleaned_source_lines: list[str] = []
 
     """
@@ -81,14 +84,32 @@ def extract_meta(source_code: str) -> tuple[str | None, str]:
     Both are valid until 0.4 where the latter may be deprecated
     """
     for line in source_code.splitlines():
-        if line.startswith("#") and (
-            ("pragma version" in line or "@version" in line) and version_pragma is None
-        ):
-            version_pragma = line
+        if line.startswith("#"):
+            if "@version" in line and not pragmas.get("version"):
+                pragmas["version"] = get_version_pragma_spec(line)
+
+            elif "pragma version" in line:
+                pragmas["version"] = get_version_pragma_spec(line)
+
+            elif "pragma nonreentrancy" in line:
+                pragmas["nonreentrancy"] = line[1:].strip().split(" ")[-1] == "on"
+
+            elif "pragma experimental-codegen" in line:
+                # NOTE: Defaults to False above
+                pragmas["experimental-codegen"] = True
+
+            elif "pragma" in line:
+                # NOTE: Treat everything else as string "key value" pairs
+                _, pragma_name, pragma_value = line[1:].strip().split(" ")
+                pragmas[pragma_name] = pragma_value
+
+            else:  # Just a regular comment, so include it
+                cleaned_source_lines.append(line)
+
         else:
             cleaned_source_lines.append(line)
 
-    return (version_pragma, "\n".join(cleaned_source_lines))
+    return (pragmas, "\n".join(cleaned_source_lines))
 
 
 def extract_imports(source: str) -> tuple[str, str, str]:
