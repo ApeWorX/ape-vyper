@@ -17,15 +17,14 @@ def cli():
     """`vyper` command group"""
 
 
-@cli.command(short_help="Flatten select contract source files")
+@cli.command()
 @ape_cli_context()
 @project_option()
 @click.argument("CONTRACT", type=click.Path(exists=True, resolve_path=True))
 @click.argument("OUTFILE", type=click.Path(exists=False, resolve_path=True, writable=True))
 def flatten(cli_ctx, project, contract: Path, outfile: Path):
-    """
-    Flatten a contract into a single file
-    """
+    """Flatten select contract source files into a single file"""
+
     with Path(outfile).open("w") as fout:
         content = ape.compilers.vyper.flatten_contract(
             Path(contract),
@@ -40,9 +39,11 @@ def vvm():
     """`vvm` command group"""
 
 
-@vvm.command("list", short_help="List vyper installed versions")
+@vvm.command(name="list")
 @click.option("--available", is_flag=True, help="Show available vyper versions")
-def _list(available: bool):
+def list_installed(available: bool):
+    """List vyper installed versions"""
+
     if available:
         if available_versions := get_installable_vyper_versions():
             # First, show the installed.
@@ -60,7 +61,7 @@ def _list(available: bool):
 def _list_installed(allow_pager: bool = False):
     versions = get_installed_vyper_versions()
     if allow_pager and len(versions) > 10:
-        click.echo_via_pager(versions)
+        click.echo_via_pager(f"{v}\n" for v in versions)
     else:
         click.echo("Installed vyper versions:")
         for version in versions:
@@ -72,9 +73,8 @@ def _list_installed(allow_pager: bool = False):
 @click.option("--vvm-binary-path", help="The path to Vyper binaries")
 @click.option("--hide-progress", is_flag=True)
 def install(versions, vvm_binary_path, hide_progress):
-    """
-    Install Vyper
-    """
+    """Install Vyper binaries by version"""
+
     if versions:
         for version in versions:
             base_path = get_vvm_install_folder(vvm_binary_path=vvm_binary_path)
