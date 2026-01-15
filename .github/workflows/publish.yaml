@@ -6,14 +6,12 @@ on:
 
 jobs:
   deploy:
-
     runs-on: ubuntu-latest
-
+    permissions:
+      id-token: write
     steps:
     - uses: actions/checkout@v5
-
-    - name: Set up Python
-      uses: astral-sh/setup-uv@v7
+    - uses: astral-sh/setup-uv@v7
 
     - name: Build Package
       run: uv build
