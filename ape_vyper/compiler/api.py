@@ -17,7 +17,13 @@ from ape.utils._github import _GithubClient
 from ethpm_types.source import Compiler, Content, ContractSource
 from packaging.version import Version
 
-from ape_vyper._utils import FileType, get_version_pragma_spec, install_vyper, safe_append
+from ape_vyper._utils import (
+    FileType,
+    VyperVersionSpecifier,
+    get_version_pragma_spec,
+    install_vyper,
+    safe_append,
+)
 from ape_vyper.compiler._versions import (
     BaseVyperCompiler,
     Vyper02Compiler,
@@ -396,7 +402,7 @@ class VyperCompiler(CompilerAPI):
         self.compiler_settings = {**self.compiler_settings}
         config = config or self.get_config(pm)
         version_map: dict[Version, set[Path]] = {}
-        source_path_by_version_spec: dict[SpecifierSet, set[Path]] = {}
+        source_path_by_version_spec: dict[SpecifierSet | VyperVersionSpecifier, set[Path]] = {}
         source_paths_without_pragma = set()
 
         # Sort contract_filepaths to promote consistent, reproduce-able behavior

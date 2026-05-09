@@ -12,7 +12,7 @@ from ethpm_types import ContractType
 from packaging.version import Version
 from vvm.exceptions import VyperError  # type: ignore
 
-from ape_vyper._utils import EVM_VERSION_DEFAULT
+from ape_vyper._utils import EVM_VERSION_DEFAULT, get_version_pragma_spec
 from ape_vyper.exceptions import (
     FallbackNotDefinedError,
     IntegerOverflowError,
@@ -29,6 +29,30 @@ from ..conftest import FAILING_BASE, FAILING_CONTRACT_NAMES, PASSING_CONTRACT_NA
 OLDER_VERSION_FROM_PRAGMA = Version("0.2.16")
 VERSION_37 = Version("0.3.7")
 VERSION_FROM_PRAGMA = Version("0.3.10")
+
+VYPER_PEP440_VALID_PRAGMAS = (
+    "0.3.10",
+    ">0.3.9",
+    "^0.3.10",
+    "<=1.0.0,>=0.3.10",
+    "~=0.3.10",
+)
+VYPER_PEP440_INVALID_PRAGMAS = (
+    "0.3.9",
+    ">1.0.0",
+    "^0.4.0",
+    "0.2",
+    "1",
+)
+VYPER_PEP440_INVALID_SYNTAX_PRAGMAS = (
+    "<=0.3.9 >=1.1.1",
+    "1.0.0 - 2.0.0",
+    "~1.0.0",
+    "1.x",
+    "0.2.x",
+    "0.2.0 || 0.1.3",
+    "abc",
+)
 
 
 @pytest.fixture
@@ -239,6 +263,81 @@ def test_install_failure(compiler):
     path = FAILING_BASE / "contract_unknown_pragma.vy"
     with pytest.raises(VyperInstallError, match="No available version to install."):
         list(compiler.compile((path,), project=failing_project))
+
+
+@pytest.mark.parametrize(
+    "source,version,expected",
+    (
+        ("# @version ^0.3.8", VERSION_FROM_PRAGMA, True),
+        ("# @version ~=0.3.10", Version("0.3.10"), True),
+        ("# @version >=0.3.8 <0.4.0", Version("0.3.9"), True),
+        ("# @version >=0.3.8 <0.4.0", VERSION_FROM_PRAGMA, False),
+        ("# pragma version ^0.3.10", VERSION_FROM_PRAGMA, True),
+        ("# pragma version ^0.3.8", Version("0.3.9"), False),
+        ("#pragma version >=0.4.2", Version("0.4.2"), True),
+    ),
+)
+def test_get_version_pragma_spec(source, version, expected):
+    pragma_spec = get_version_pragma_spec(source)
+    assert pragma_spec is not None
+    assert pragma_spec.match(version) is expected
+
+
+def test_get_version_pragma_spec_no_pragma():
+    assert get_version_pragma_spec("# dev: no compiler version here") is None
+
+
+def test_get_version_pragma_spec_invalid():
+    with pytest.raises(
+        VyperCompileError, match="Invalid Vyper version pragma.*definitely-not-a-spec"
+    ):
+        get_version_pragma_spec("# pragma version definitely-not-a-spec")
+
+
+def test_get_version_pragma_spec_invalid_modern_grammar():
+    with pytest.raises(VyperCompileError, match="Invalid Vyper version pragma.*>=0.3.8"):
+        get_version_pragma_spec("# pragma version >=0.3.8 <0.4.0")
+
+
+@pytest.mark.parametrize("pragma_string", VYPER_PEP440_VALID_PRAGMAS)
+def test_get_version_pragma_spec_vyper_pep440_valid_versions(pragma_string):
+    pragma_spec = get_version_pragma_spec(f"# pragma version {pragma_string}")
+    assert pragma_spec is not None
+    assert pragma_spec.match(VERSION_FROM_PRAGMA)
+
+
+@pytest.mark.parametrize("pragma_string", VYPER_PEP440_INVALID_PRAGMAS)
+def test_get_version_pragma_spec_vyper_pep440_invalid_versions(pragma_string):
+    pragma_spec = get_version_pragma_spec(f"# pragma version {pragma_string}")
+    assert pragma_spec is not None
+    assert not pragma_spec.match(VERSION_FROM_PRAGMA)
+
+
+@pytest.mark.parametrize("pragma_string", VYPER_PEP440_INVALID_SYNTAX_PRAGMAS)
+def test_get_version_pragma_spec_vyper_pep440_invalid_syntax(pragma_string):
+    with pytest.raises(VyperCompileError, match="Invalid Vyper version pragma"):
+        get_version_pragma_spec(f"# pragma version {pragma_string}")
+
+
+def test_get_version_map_modern_pragma(tmp_path, compiler, monkeypatch):
+    versions = [Version("0.3.9"), VERSION_FROM_PRAGMA]
+    monkeypatch.setattr(type(compiler), "installed_versions", property(lambda _: versions))
+    contracts = tmp_path / "contracts"
+    contracts.mkdir()
+    path = contracts / "modern_pragma.vy"
+    path.write_text("# pragma version ^0.3.8\n", encoding="utf8")
+    actual = compiler.get_version_map([path], project=ape.Project(tmp_path))
+    assert actual == {VERSION_FROM_PRAGMA: {path}}
+
+
+def test_get_version_map_invalid_pragma(tmp_path, compiler):
+    project = ape.Project(tmp_path)
+    contracts = tmp_path / "contracts"
+    contracts.mkdir()
+    path = contracts / "invalid_pragma.vy"
+    path.write_text("# pragma version definitely-not-a-spec\n", encoding="utf8")
+    with pytest.raises(VyperCompileError, match=f"Invalid Vyper version pragma.*{path}"):
+        compiler.get_version_map([path], project=project)
 
 
 def test_get_version_map(project, compiler, all_versions):
