@@ -123,8 +123,10 @@ class Flattener(ManagerAccessMixin):
                     # such as a .vyi file in the contracts folder.
                     try:
                         from ape_vyper.ast import source_to_abi
+
                     except ImportError as err:
-                        raise UsageError("Must install `vyper` for this feature to work") from err
+                        raise RuntimeError("Must install `vyper` for this feature to work") from err
+
                     abis = source_to_abi(import_path.read_text(encoding="utf8"))
                     interfaces_source += generate_interface(abis, import_name)
 
