@@ -6,7 +6,6 @@ from ape.logging import logger
 from ape.utils import ManagerAccessMixin, get_relative_path
 from ethpm_types.source import Content
 
-from ape_vyper.ast import source_to_abi
 from ape_vyper.interface import (
     extract_import_aliases,
     extract_imports,
@@ -122,6 +121,10 @@ class Flattener(ManagerAccessMixin):
                 else:
                     # Vyper <0.4 interface from folder other than interfaces/
                     # such as a .vyi file in the contracts folder.
+                    try:
+                        from ape_vyper.ast import source_to_abi
+                    except ImportError as err:
+                        raise UsageError("Must install `vyper` for this feature to work") from err
                     abis = source_to_abi(import_path.read_text(encoding="utf8"))
                     interfaces_source += generate_interface(abis, import_name)
 
