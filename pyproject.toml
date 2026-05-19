@@ -1,5 +1,6 @@
 [build-system]
 requires = ["setuptools>=75.6.0", "wheel", "setuptools_scm[toml]>=5.0"]
+build-backend = "setuptools.build_meta"
 
 [project.urls]
 Repository = "https://github.com/ApeWorX/ape-vyper"
@@ -61,7 +62,7 @@ lint = [
 dev = [
     "pytest-xdist",  # Multi-process test runner (speeds up local testing)
     "commitlint",  # Manage commits and publishing releases
-    "pre-commit",  # Ensure that linters are run prior to committing
+    "prek",  # Ensure that linters are run prior to committing
     "IPython",  # Console for interacting
     "ipdb",  # Debugger (Must use `export PYTHONBREAKPOINT=ipdb.set_trace`)
     {include-group = "test"},
