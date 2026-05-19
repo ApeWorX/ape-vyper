@@ -126,3 +126,5 @@ version.py
 
 # Generated contracts
 tests/contracts/passing_contracts/*_0*.vy
+
+uv.lock
