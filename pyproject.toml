@@ -35,9 +35,9 @@ requires-python = ">=3.10,<4"
 dependencies = [
     "eth-ape>=0.8.25,<0.9",
     "ethpm-types",  # Use same version as eth-ape
+    "semantic-version>=2.10,<3",
     "tqdm",  # Use same version as eth-ape
     "vvm>=0.2.0,<0.4",
-    "vyper>=0.3.7,<0.5",
 ]
 
 [project.entry-points."ape_cli_subcommands"]
@@ -48,6 +48,7 @@ test = [
     "pytest-cov",  # Coverage analyzer (also supported by plugin)
     "pytest-mock",  # Needed to mock certain CLI interactions
     "snekmate",  # Python package source for integration testing
+    "vyper>=0.3.7",  # For testing flattener
 ]
 lint = [
     "ruff>=0.14,<1",  # Auto-formatter and linter

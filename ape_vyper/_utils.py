@@ -2,7 +2,7 @@ import os
 import re
 import subprocess
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -15,14 +15,16 @@ from ape.utils import get_relative_path
 from eth_utils import is_0x_prefixed
 from ethpm_types import ASTNode, PCMap, SourceMapItem
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
+from packaging.version import Version
+from semantic_version import NpmSpec  # type: ignore[import-untyped]
+from semantic_version import Version as NpmVersion  # type: ignore[import-untyped]
 from vvm.exceptions import UnknownOption, UnknownValue  # type: ignore
 
-from ape_vyper.exceptions import RuntimeErrorType, VyperError, VyperInstallError
+from ape_vyper.exceptions import RuntimeErrorType, VyperCompileError, VyperError, VyperInstallError
 
 if TYPE_CHECKING:
     from ape.types.trace import SourceTraceback
     from ethpm_types.source import Function
-    from packaging.version import Version
 
 Optimization = str | bool
 EVM_VERSION_DEFAULT = {
@@ -82,7 +84,82 @@ def install_vyper(version: "Version"):
                 ) from err
 
 
-def get_version_pragma_spec(source: str | Path) -> SpecifierSet | None:
+VERSION_PRAGMA_PATTERN = re.compile(
+    r"(?:\n|^)\s*#\s*(?P<style>@version|pragma\s+version)\s*(?P<version>[^\n]*)"
+)
+# Vyper 0.3.10 switched version pragma matching from NpmSpec to SpecifierSet.
+VYPER_PEP440_PRAGMA_START_VERSION = Version("0.3.10")
+
+
+def _as_pep440_spec(pragma_str: str) -> str:
+    pragma_str = pragma_str.replace("^", "~=")
+    if pragma_str and pragma_str[0].isnumeric():
+        return f"=={pragma_str}"
+
+    return pragma_str
+
+
+def _as_npm_version(version: Version) -> NpmVersion:
+    version_str = str(version)
+    version_str = re.sub(r"(?<=\d)a(?=\d)", "-alpha.", version_str)
+    version_str = re.sub(r"(?<=\d)b(?=\d)", "-beta.", version_str)
+    version_str = re.sub(r"(?<=\d)rc(?=\d)", "-rc.", version_str)
+    return NpmVersion(version_str)
+
+
+class VyperVersionSpecifier:
+    def __init__(self, pragma_str: str, style: str, source_path: Path | None = None):
+        self.pragma_str = pragma_str
+        self.style = style
+        self.source_path = source_path
+        self._npm_spec: NpmSpec | None = None
+        self._pep440_spec: SpecifierSet | None = None
+
+        try:
+            self._npm_spec = NpmSpec(pragma_str)
+        except ValueError:
+            pass
+
+        try:
+            self._pep440_spec = SpecifierSet(_as_pep440_spec(pragma_str))
+        except InvalidSpecifier:
+            pass
+
+        if not self._npm_spec and not self._pep440_spec:
+            raise self._error()
+
+        if self.is_modern_pragma and not self._pep440_spec:
+            raise self._error()
+
+    @property
+    def is_modern_pragma(self) -> bool:
+        return self.style.startswith("pragma")
+
+    def match(self, version: Version) -> bool:
+        if version >= VYPER_PEP440_PRAGMA_START_VERSION:
+            return bool(self._pep440_spec and self._pep440_spec.contains(version, prereleases=True))
+
+        return not self.is_modern_pragma and bool(
+            self._npm_spec and self._npm_spec.match(_as_npm_version(version))
+        )
+
+    def contains(self, version: str | Version) -> bool:
+        return self.match(version if isinstance(version, Version) else Version(version))
+
+    def filter(self, versions: Iterable[Version]) -> Iterator[Version]:
+        return (version for version in versions if self.match(version))
+
+    def _error(self) -> VyperCompileError:
+        source_label = f" in '{self.source_path}'" if self.source_path else ""
+        return VyperCompileError(
+            f"Invalid Vyper version pragma{source_label}: '{self.pragma_str}'."
+        )
+
+    def __str__(self) -> str:
+        return self.pragma_str
+
+
+def get_version_pragma_spec(source: str | Path) -> VyperVersionSpecifier | None:
     """
     Extracts version pragma information from Vyper source code.
 
@@ -90,26 +167,23 @@ def get_version_pragma_spec(source: str | Path) -> SpecifierSet | None:
         source (str): Vyper source code
 
     Returns:
-        ``packaging.specifiers.SpecifierSet``, or None if no valid pragma is found.
+        ``VyperVersionSpecifier``, or None if no pragma is found.
     """
-    _version_pragma_patterns: tuple[str, str] = (
-        r"(?:\n|^)\s*#\s*@version\s*([^\n]*)",
-        r"(?:\n|^)\s*#\s*pragma\s+version\s*([^\n]*)",
-    )
-
     source_str = source if isinstance(source, str) else source.read_text(encoding="utf8")
-    for pattern in _version_pragma_patterns:
-        for match in re.finditer(pattern, source_str):
-            raw_pragma = match.groups()[0]
-            pragma_str = " ".join(raw_pragma.split()).replace("^", "~=")
-            if pragma_str and pragma_str[0].isnumeric():
-                pragma_str = f"=={pragma_str}"
+    source_path = source if isinstance(source, Path) else None
+    if pragma_match := next(re.finditer(VERSION_PRAGMA_PATTERN, source_str), None):
+        raw_pragma = pragma_match.group("version")
+        pragma_str = " ".join(raw_pragma.split())
+        if not pragma_str:
+            source_label = f" in '{source_path}'" if source_path else ""
+            raise VyperCompileError(f"Invalid Vyper version pragma{source_label}: missing version.")
 
-            try:
-                return SpecifierSet(pragma_str)
-            except InvalidSpecifier:
-                logger.warning(f"Invalid pragma spec: '{raw_pragma}'. Trying latest.")
-                return None
+        return VyperVersionSpecifier(
+            pragma_str,
+            style=" ".join(pragma_match.group("style").split()),
+            source_path=source_path,
+        )
+
     return None
 
 
@@ -260,7 +334,9 @@ def lookup_source_from_site_packages(
     return None
 
 
-def safe_append(data: dict, version: "Version | SpecifierSet", paths: Path | set):
+def safe_append(
+    data: dict, version: "Version | SpecifierSet | VyperVersionSpecifier", paths: Path | set
+):
     if isinstance(paths, Path):
         paths = {paths}
     if version in data:
