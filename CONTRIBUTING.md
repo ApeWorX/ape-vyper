@@ -11,23 +11,19 @@ cd ape-vyper
 python3 -m venv venv
 source venv/bin/activate
 
-# install ape-vyper into the virtual environment
-python setup.py install
-
 # install the developer dependencies (-e is interactive mode)
-pip install -e . --group dev
+uv sync --group dev
 ```
 
 ## Pre-Commit Hooks
 
-We use [`pre-commit`](https://pre-commit.com/) hooks to simplify linting and ensure consistent formatting among contributors.
-Use of `pre-commit` is not a requirement, but is highly recommended.
+We use [`prek`](https://github.com/j178/prek) to run repository hooks and keep contributor workflows
+consistent. Use of `prek` is not a requirement, but is highly recommended.
 
-Install `pre-commit` locally from the root folder:
+Install hooks locally from the root folder:
 
 ```bash
-pip install pre-commit
-pre-commit install
+uv run prek install
 ```
 
 Committing will now automatically run the local hooks and ensure that your commit passes all lint checks.
