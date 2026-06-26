@@ -96,12 +96,31 @@ class Vyper04Compiler(BaseVyperCompiler):
     ) -> dict:
         pm = project or self.local_project
         return {
-            s: ["*"]
+            s: ["abi"] if get_full_extension(pm.path / s) == FileType.INTERFACE else ["*"]
             for s in selection
-            if ((pm.path / s).is_file())
-            and f"interfaces{os.path.sep}" not in s
-            and get_full_extension(pm.path / s) != FileType.INTERFACE
+            if ((pm.path / s).is_file()) and f"interfaces{os.path.sep}" not in s
         }
+
+    def _get_files_by_output_format(
+        self,
+        output_selection: dict[str, list[str]],
+        source_ids: Iterable[str],
+        project: "ProjectManager | None" = None,
+    ) -> dict[tuple[str, ...], list[Path]]:
+        pm = project or self.local_project
+        default_output_format = tuple(self.get_output_format(project=pm))
+        files_by_output_format: dict[tuple[str, ...], list[Path]] = {}
+
+        for source_id in source_ids:
+            source_output_format = output_selection.get(source_id, ["*"])
+            output_format = (
+                default_output_format
+                if "*" in source_output_format
+                else tuple(source_output_format)
+            )
+            files_by_output_format.setdefault(output_format, []).append(Path(source_id))
+
+        return files_by_output_format
 
     def compile(
         self,
@@ -126,7 +145,6 @@ class Vyper04Compiler(BaseVyperCompiler):
 
             comp_kwargs = {
                 "evm_version": self.get_evm_version(vyper_version),
-                "output_format": self.get_output_format(project=pm),
                 "enable_decimals": settings_set.get("enable_decimals", False),
             }
 
@@ -139,30 +157,42 @@ class Vyper04Compiler(BaseVyperCompiler):
             else:
                 binary = get_executable(version=vyper_version)
 
-            files = [Path(p) for p in src_dict]
-
-            if "solc_json" in comp_kwargs.get("output_format", []):
-                # 'solc_json' output format does not work with other formats.
-                # So, we handle it separately.
-                comp_kwargs["output_format"] = [
-                    f for f in comp_kwargs["output_format"] if f != "solc_json"
-                ]
-                solc_json_comp_kwargs = {
-                    k: v for k, v in comp_kwargs.items() if k != "output_format"
-                }
-                solc_json_comp_kwargs["output_format"] = ["solc_json"]
-                try:
-                    result = compile_files(binary, files, pm.path, **solc_json_comp_kwargs)
-                except VyperError as err:
-                    raise VyperCompileError(err) from err
-
-                for source_id, output_items in result.items():
-                    self._output_solc_json(source_id, output_items["solc_json"], project=pm)
+            files_by_output_format = self._get_files_by_output_format(
+                output_selection,
+                src_dict,
+                project=pm,
+            )
 
             result = {}
             with pm.within_project_path():
                 try:
-                    result = compile_files(binary, files, pm.path, **comp_kwargs)
+                    for output_format, files in files_by_output_format.items():
+                        compile_kwargs = {
+                            **comp_kwargs,
+                            "output_format": list(output_format),
+                        }
+
+                        if "solc_json" in compile_kwargs["output_format"]:
+                            # 'solc_json' output format does not work with other formats.
+                            # So, we handle it separately.
+                            compile_kwargs["output_format"] = [
+                                f for f in compile_kwargs["output_format"] if f != "solc_json"
+                            ]
+                            solc_json_result = compile_files(
+                                binary,
+                                files,
+                                pm.path,
+                                output_format=["solc_json"],
+                                **comp_kwargs,
+                            )
+
+                            for source_id, output_items in solc_json_result.items():
+                                self._output_solc_json(
+                                    source_id, output_items["solc_json"], project=pm
+                                )
+
+                        result.update(compile_files(binary, files, pm.path, **compile_kwargs))
+
                 except VyperError as err:
                     raise VyperCompileError(err) from err
 
