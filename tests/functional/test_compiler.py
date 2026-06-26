@@ -258,6 +258,34 @@ def test_compile_zero_four(compiler, project):
     assert "zero_four_in_subdir" in result
 
 
+def test_compile_standalone_vyi_as_abi_contract_type(project, compiler):
+    path = project.contracts_folder / "iface_abi.vyi"
+    contract_types = {ct.name: ct for ct in compiler.compile((path,), project=project)}
+
+    assert set(contract_types) == {"iface_abi"}
+
+    contract_type = contract_types["iface_abi"]
+    assert contract_type.source_id == "tests/contracts/passing_contracts/iface_abi.vyi"
+    assert contract_type.deployment_bytecode.bytecode is None
+    assert contract_type.runtime_bytecode.bytecode is None
+
+    abi = contract_type.abi
+    assert len(abi) == 1
+    assert abi[0].type == "function"
+    assert abi[0].name == "read_stuff"
+    assert abi[0].stateMutability == "view"
+    assert abi[0].inputs == []
+    assert [o.type for o in abi[0].outputs] == ["uint256"]
+
+
+def test_load_contracts_includes_standalone_vyi(project):
+    path = project.contracts_folder / "iface_abi.vyi"
+    contracts = project.load_contracts(path, use_cache=False)
+
+    assert "iface_abi" in contracts
+    assert contracts["iface_abi"].contract_type.abi[0].name == "read_stuff"
+
+
 def test_install_failure(compiler):
     failing_project = ape.Project(FAILING_BASE)
     path = FAILING_BASE / "contract_unknown_pragma.vy"

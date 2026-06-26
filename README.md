@@ -107,6 +107,15 @@ Import the voting contract types like this:
 import voting.ballot as ballot
 ```
 
+Standalone Vyper interface files `.vyi` outside the `interfaces` directory compile into ABI-only ContractTypes. These artifacts are not deployable, but they can be used from Ape scripts to interact with already deployed contracts. For example, `contracts/IFace.vyi` interface can be used in a script:
+
+```python
+from ape import project
+
+iface = project.IFace.at("0x...")
+iface.some_method()
+```
+
 ### Decimals
 
 To use decimals on Vyper 0.4, use the following config:
