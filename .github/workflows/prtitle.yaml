@@ -7,13 +7,9 @@ on:
     - edited
     - synchronize
 
-jobs:
-  check:
-    runs-on: ubuntu-latest
+permissions:
+  contents: read
 
-    steps:
-    - uses: astral-sh/setup-uv@v7
-    - name: Check PR Title
-      env:
-        PR_TITLE: ${{ github.event.pull_request.title }}
-      run: uvx commitlint "$PR_TITLE"
+jobs:
+  check-title:
+    uses: ApeWorX/.github/.github/workflows/prtitle.yaml@main
